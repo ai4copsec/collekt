@@ -1,0 +1,104 @@
+[build-system]
+requires = ["setuptools >= 61.0.0",
+    "wheel",
+    "build",
+    "sphinx"]
+
+# https://packaging.python.org/en/latest/specifications/declaring-project-metadata/
+[project]
+name = "collekt"
+dynamic = ["version"]
+description = "A library to facilitate data collection across arbitrary datasources"
+license = { file="LICENSE" }
+readme = "README.md"
+keywords = ["data source", "collection" ]
+authors = [
+    { name = "Thomas Roehr", email = "roehr@simula.no" },
+    { name = "Ola Formo Kihle", email = "kihle@simula.no" },
+]
+requires-python = ">=3.10"
+
+maintainers = [
+    { name = "Thomas Roehr", email = "roehr@simula.no" },
+]
+
+classifiers = [
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Development Status :: 3 - Alpha",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "License :: OSI Approved :: BSD License",
+]
+
+dependencies = [
+    "pydantic",
+    "pydantic-settings",
+    "requests",
+    "tqdm",
+#    "hozint-apiclient @ git+https://github.com/ai4copsec/hozint-apiclient",
+]
+
+[project.urls]
+homepage = "https://ai4copsec.github.io/collekt"
+documentation = "https://ai4copsec.github.io/collekt"
+repository = "https://github.com/ai4copsec/collekt"
+
+#[project.entry-points]
+
+[project.optional-dependencies]
+dev = [
+    "flake8-gl-codeclimate",
+    "isort",
+    "jupyter-book<2",
+    "pre-commit",
+    "pydot",
+    # With sphinx-autoapi NamedTuple is not
+    # parse correctly
+    "sphinx-autoapi<=3.3",
+    "tox"
+]
+
+test = [
+    "coverage",
+    "pytest",
+    "pytest-console-scripts",
+    "pytest-cov",
+    "pytest-timeout",
+    "pydot",
+    "tox"
+]
+
+[project.scripts]
+collekt = "collekt.cli.main:run"
+
+[tool.setuptools.dynamic]
+version = {attr = "collekt.version.__version__"}
+
+[tool.mypy]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+# Disable to be able to debug in IDE
+#addopts = "--cov --cov-report html:doc/ --cov-report term-missing"
+
+[tool.coverage.run]
+source = ["src"]
+
+[tool.pylint]
+max-line-length = 120
+disable = [
+    "C0103", # (invalid-name)
+    #    "C0114", # (missing-module-docstring)
+    #    "C0115", # (missing-class-docstring)
+    #    "C0116", # (missing-function-docstring)
+    #    "R0903", # (too-few-public-methods)
+    #    "R0913", # (too-many-arguments)
+    #    "W0105", # (pointless-string-statement)
+]
+
+[tool.isort]
+multi_line_output = 8

@@ -1,0 +1,64 @@
+import datetime as dt
+import logging
+import tempfile
+from argparse import ArgumentParser
+from pathlib import Path
+
+from tqdm import tqdm
+
+from collekt.cli.base import BaseParser
+
+from collekt.core.collector import Collector
+from collekt.core.config import (
+    DATE_FORMAT,
+    Credentials,
+)
+
+logger = logging.getLogger(__name__)
+
+class QueryParser(BaseParser):
+    """
+    :param parser: The base parser
+    """
+
+    def __init__(self, parser: ArgumentParser):
+        super().__init__(parser=parser)
+
+        parser.description = "hozint-apiclient query"
+
+        parser.add_argument("--from-time", type=str, help="Starting date in the format YYYY-mm-dd")
+        parser.add_argument("--to-time", type=str, help="End date in the format YYYY-mm-dd")
+
+        parser.add_argument("--at-lat", type=float, default=None, help="At latitude")
+        parser.add_argument("--at-lon", type=float, default=None, help="At longitude")
+        parser.add_argument("--radius", type=float, default=None, help="Radius in km")
+
+        parser.add_argument("--region", type=Path, default=None, help="A geojson file describing a region")
+
+        default_output_dir = Path(tempfile.gettempdir()) / "collekt" / f"{dt.datetime.now(tz=dt.timezone.utc).strftime('%Y%m%d-%H:%M:%S+00:00')}"
+        parser.add_argument("--output-dir", type=str, default=str(default_output_dir), help="Output directory to store the data, default: %(default)s")
+
+    def execute(self, args):
+        super().execute(args)
+
+        from_time = None
+        if args.from_time:
+            from_time = dt.datetime.strptime(args.from_time, DATE_FORMAT)
+
+        to_time = None
+        if args.to_time:
+            to_time = dt.datetime.strptime(args.to_time, DATE_FORMAT)
+
+        if args.output_dir:
+            output_dir = Path(args.output_dir)
+            output_dir.mkdir(parents=True, exist_ok=True)
+
+        collector = Collector()
+        collector.execute(from_time=from_time,
+                          to_time=to_time,
+                          longitude=args.at_lon,
+                          latitude=args.at_lat,
+                          radius=args.radius,
+                          region=args.region,
+                          output_dir=output_dir
+                )
