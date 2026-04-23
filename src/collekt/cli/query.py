@@ -4,15 +4,8 @@ import tempfile
 from argparse import ArgumentParser
 from pathlib import Path
 
-from tqdm import tqdm
-
 from collekt.cli.base import BaseParser
-
 from collekt.core.collector import Collector
-from collekt.core.config import (
-    DATE_FORMAT,
-    Credentials,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -26,8 +19,8 @@ class QueryParser(BaseParser):
 
         parser.description = "hozint-apiclient query"
 
-        parser.add_argument("--from-time", type=str, help="Starting date in the format YYYY-mm-dd")
-        parser.add_argument("--to-time", type=str, help="End date in the format YYYY-mm-dd")
+        parser.add_argument("--from-time", type=str, help="Starting date in isoformat")
+        parser.add_argument("--to-time", type=str, help="End date in isoformat")
 
         parser.add_argument("--at-lat", type=float, default=None, help="At latitude")
         parser.add_argument("--at-lon", type=float, default=None, help="At longitude")
@@ -43,11 +36,11 @@ class QueryParser(BaseParser):
 
         from_time = None
         if args.from_time:
-            from_time = dt.datetime.strptime(args.from_time, DATE_FORMAT)
+            from_time = dt.datetime.fromisoformat(args.from_time)
 
         to_time = None
         if args.to_time:
-            to_time = dt.datetime.strptime(args.to_time, DATE_FORMAT)
+            to_time = dt.datetime.fromisoformat(args.to_time)
 
         if args.output_dir:
             output_dir = Path(args.output_dir)
@@ -60,5 +53,7 @@ class QueryParser(BaseParser):
                           latitude=args.at_lat,
                           radius=args.radius,
                           region=args.region,
-                          output_dir=output_dir
+                          output_dir=output_dir,
+                          log_level=args.log_level,
+                          verbose=args.verbose
                 )
