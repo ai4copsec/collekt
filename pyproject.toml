@@ -35,11 +35,14 @@ classifiers = [
 ]
 
 dependencies = [
+    "geopy",
     "pydantic",
     "pydantic-settings",
     "requests",
     "tqdm",
-#    "hozint-apiclient @ git+https://github.com/ai4copsec/hozint-apiclient",
+#   datasources
+    "copernicusmarine",
+    "hozint-apiclient",
 ]
 
 [project.urls]

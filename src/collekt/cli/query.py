@@ -17,7 +17,7 @@ class QueryParser(BaseParser):
     def __init__(self, parser: ArgumentParser):
         super().__init__(parser=parser)
 
-        parser.description = "hozint-apiclient query"
+        parser.description = "collekt query"
 
         parser.add_argument("--from-time", type=str, help="Starting date in isoformat")
         parser.add_argument("--to-time", type=str, help="End date in isoformat")

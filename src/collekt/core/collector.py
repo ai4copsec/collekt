@@ -3,13 +3,17 @@ import logging
 import tempfile
 from pathlib import Path
 
+from collekt.datasources.copernicusmarine import CopernicusMarineDataset
 from collekt.datasources.hozint import Hozint
 
 logger = logging.getLogger(__name__)
 
 class Collector:
     datasources = [
-            Hozint
+            Hozint(),
+            CopernicusMarineDataset(
+                dataset_id="cmems_obs-sst_glo_phy_l3s_gir_P1D-m"
+            )
     ]
 
     def execute(self,
@@ -28,8 +32,7 @@ class Collector:
         for datasource in self.datasources:
             logger.info(f"Querying {datasource=}")
             try:
-                ds = datasource()
-                ds.execute(
+                datasource.execute(
                     from_time=from_time,
                     to_time=to_time,
                     longitude=longitude,
