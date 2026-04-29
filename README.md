@@ -1,9 +1,43 @@
 # collekt: a library to facilitate spatio-temporal data collection over arbitrary data sources
 
+## Installation
+
+Install the library from source:
+
+```
+python -m venv venv-collekt
+. venv-collect/bin/activate
+
+git clone https://github.com/ai4copsec/collekt.git
+pip install ./collekt
+```
+
 ## Usage
+We are starting to develop the library and interface, so frequent changes might be possible.
+However, the following examples show how the commandline interface can be used:
 
-We are starting to develop the interface, so stay tuned.
+```
+$> collekt query --from-time 2026-04-06 --to-time 2026-04-06 --at-lat 50 --at-lon 5 --radius 50 --output-dir all-results
+```
 
+
+
+If a datasource requires a login, add this information to the .env file.
+The following credentials are requires per datasource
+
+
+### Datasource: HOZINT API
+```
+HOZINT_APICLIENT_USER=your@email.com
+HOZINT_APICLIENT_PASSWORD=yourpassword
+HOZINT_APICLIENT_CSRF_TOKEN=yourscsrftoken
+```
+
+### Datasource: copernicusmarine
+```
+COPERNICUSMARINE_SERVICE_USERNAME=your@email.com
+COPERNICUSMARINE_SERVICE_PASSWORD=yourcmspassword
+```
 
 ## Testing
 
