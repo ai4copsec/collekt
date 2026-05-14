@@ -25,7 +25,7 @@ API = "https://nedlasting.geonorge.no/api"
 CAPABILITIES_URL = f"{API}/capabilities/{DATASET_UUID}"
 ORDER_URL = f"{API}/order"
 
-DEFAULT_LAYER = "Fiskerisone"  # Jan Mayen fisheries zone — demo example
+DEFAULT_LAYER = "Fiskerisone"  # demo example is Jan Mayen fisheries zone
 
 
 class Credentials(BaseSettings):
