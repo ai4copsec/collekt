@@ -35,9 +35,11 @@ classifiers = [
 ]
 
 dependencies = [
+    "geopandas",
     "geopy",
     "pydantic",
     "pydantic-settings",
+    "pyogrio",
     "requests",
     "tqdm",
 #   datasources
