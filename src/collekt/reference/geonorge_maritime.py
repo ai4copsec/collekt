@@ -1,12 +1,4 @@
 """
-Fetch reference geometry from 'Norges maritime grenser' (Kartverket's official
-Norwegian maritime-boundaries dataset, served by Geonorge).
-
-This is *reference geometry* — static legal-boundary polygons (Jan Mayen
-fisheries zone, Norwegian EEZ, territorial sea, etc.) — not spatio-temporal
-observation data. The emitted GeoJSON files are intended to be consumed via
-the `region` argument of DataSource.execute() on observation sources.
-
 Usage:
     from pathlib import Path
     from collekt.reference.geonorge_maritime import fetch
@@ -26,7 +18,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 logger = logging.getLogger(__name__)
 
-# 'Norges maritime grenser' — Kartverket. 22 layers including Fiskerisone
+# 'Norges maritime grenser' - 22 layers including Fiskerisone
 # (Jan Mayen), Fiskevernsone (Svalbard), NorgesØkonomiskeSone, etc.
 DATASET_UUID = "e106adf4-c9d8-4fce-a9b5-7886a4126d23"
 API = "https://nedlasting.geonorge.no/api"
@@ -43,7 +35,7 @@ class Credentials(BaseSettings):
     the order endpoint accepts anonymous requests. The slot exists so the
     same module can later fetch restricted Geonorge datasets (FKB, Matrikkel)
     by populating GEONORGE_USERNAME / GEONORGE_PASSWORD. email is required
-    by the order endpoint regardless.
+    by the order endpoint regardless so needs to be there...
     """
     username: str | None = None
     password: str | None = None
