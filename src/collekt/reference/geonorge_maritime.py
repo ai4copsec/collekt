@@ -1,4 +1,11 @@
 """
+Fetch reference geometry from 'Norges maritime grenser' (official Norwegian maritime-boundaries dataset, served by Geonorge).
+
+This is *reference geometry* — static boundary polygons (Jan Mayen
+fisheries zone, Norwegian EEZ, territorial sea, etc.) — not spatio-temporal
+observation data. When used, the intention is that the resulting GeoJSON files will be consumed via the `region` argument of DataSource.execute() (?)
+
+
 Usage:
     from pathlib import Path
     from collekt.reference.geonorge_maritime import fetch
