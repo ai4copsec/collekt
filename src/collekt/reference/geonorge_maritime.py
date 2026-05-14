@@ -1,9 +1,9 @@
 """
-Fetch reference geometry from 'Norges maritime grenser' (official Norwegian maritime-boundaries dataset, served by Geonorge).
+Fetch reference geometry from an official maritime-boundaries dataset, served by Geonorge.
 
-This is *reference geometry* — static boundary polygons (Jan Mayen
-fisheries zone, Norwegian EEZ, territorial sea, etc.) — not spatio-temporal
-observation data. When used, the intention is that the resulting GeoJSON files will be consumed via the `region` argument of DataSource.execute() (?)
+This is *reference geometry* — static polygons (Jan Mayen
+fisheries zone, Norwegian EEZ, territorial sea, etc.), not
+observation data. So the intention is that the resulting GeoJSON files will be consumed via the `region` argument ?
 
 
 Usage:
