@@ -12,7 +12,8 @@ class Collector:
     datasources = [
             Hozint(),
             CopernicusMarineDataset(
-                dataset_id="cmems_obs-sst_glo_phy_l3s_gir_P1D-m"
+                dataset_id="cmems_mod_glo_phy-cur_anfc_0.083deg_P1D-m",
+                variables=["uo", "vo"],
             )
     ]
 
