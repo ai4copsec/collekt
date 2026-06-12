@@ -41,6 +41,10 @@ dependencies = [
     "requests",
     "tqdm",
 #   datasources
+    "numpy",
+    "xarray",
+    "pandas",
+    "netcdf4",
     "copernicusmarine",
     "hozint-apiclient",
 ]
