@@ -4,6 +4,7 @@ import tempfile
 from pathlib import Path
 
 from collekt.datasources.copernicusmarine import CopernicusMarineDataset
+from collekt.datasources.geonorge import Geonorge
 from collekt.datasources.hozint import Hozint
 
 logger = logging.getLogger(__name__)
@@ -13,7 +14,8 @@ class Collector:
             Hozint(),
             CopernicusMarineDataset(
                 dataset_id="cmems_obs-sst_glo_phy_l3s_gir_P1D-m"
-            )
+            ),
+            Geonorge()
     ]
 
     def execute(self,

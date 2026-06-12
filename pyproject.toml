@@ -42,7 +42,10 @@ dependencies = [
     "tqdm",
 #   datasources
     "copernicusmarine",
+    "geopandas",
     "hozint-apiclient",
+    "pyogrio",
+    "shapely",
 ]
 
 [project.urls]
