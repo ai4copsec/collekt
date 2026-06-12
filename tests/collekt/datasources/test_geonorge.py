@@ -2,14 +2,21 @@
 
 Network-dependent stages are skipped placeholders for now. 
 """
+import types
+
 import geopandas as gpd
 import pytest
 from shapely.geometry import Point
 
+from collekt.datasources import geonorge
 from collekt.datasources.geonorge import (
     DatasetRecord,
+    _await_order,
+    _bbox_ring,
+    _pick_format,
     annotate,
     bbox_intersects,
+    build_order,
     classify,
     crop,
     parse_coverage_bbox,
@@ -115,6 +122,102 @@ def test_annotate_adds_provenance_to_every_feature():
         assert (annotated[column] == expected).all()
     assert annotated["collekt_retrieved_at"].notna().all()
     assert gdf.columns.tolist() == ["geometry"]  # input untouched
+
+
+_BBOX = (4.63, 60.82, 5.37, 61.18)  # Vestland coast
+_FORMATS = [{"name": "SOSI"}, {"name": "GML"}, {"name": "FGDB"}]
+_PROJECTIONS = [{"code": "25832", "name": "EUREF89 UTM sone 32, 2d"},
+                {"code": "25833", "name": "EUREF89 UTM sone 33, 2d"}]
+
+
+def test_bbox_ring_is_closed_with_five_pairs():
+    ring = _bbox_ring(_BBOX)
+    values = ring.split()
+    assert len(values) == 10
+    assert values[0:2] == values[8:10]  # closed ring
+    northings = [float(v) for v in values[1::2]]
+    assert all(6_700_000 < y < 6_850_000 for y in northings)  # ~61N in UTM33
+
+
+def test_build_order_with_polygon_clip():
+    order = build_order("uuid-1", _BBOX, {"supportsPolygonSelection": True},
+                        _FORMATS, _PROJECTIONS, [], "user@example.com")
+    line = order["orderLines"][0]
+    assert order["email"] == "user@example.com"
+    assert line["metadataUuid"] == "uuid-1"
+    assert line["formats"] == [{"name": "GML"}]  # OGR-readable preferred over SOSI
+    assert line["projections"][0]["code"] == "25833"
+    assert line["coordinatesystem"] == "25833"  # lowercase 's', unlike can-download
+    assert line["coordinates"].count(" ") == 9
+
+
+def test_build_order_national_fallback():
+    areas = [{"type": "fylke", "name": "Agder", "code": "42"},
+             {"type": "landsdekkende", "name": "Hele landet", "code": "0000"}]
+    order = build_order("uuid-1", _BBOX, {"supportsPolygonSelection": False},
+                        _FORMATS, _PROJECTIONS, areas, "user@example.com")
+    line = order["orderLines"][0]
+    assert "coordinates" not in line
+    assert line["areas"] == [{"code": "0000", "name": "Hele landet",
+                              "type": "landsdekkende"}]
+
+
+def test_pick_format_rejects_sosi_only():
+    with pytest.raises(RuntimeError, match="SOSI"):
+        _pick_format([{"name": "SOSI"}])
+
+
+def test_await_order_polls_until_ready(monkeypatch):
+    pending = {"referenceNumber": "r1",
+               "files": [{"name": "a.zip", "status": "WaitingForProcessing"}]}
+    ready = {"referenceNumber": "r1",
+             "files": [{"name": "a.zip", "status": "ReadyForDownload"}]}
+    polled = []
+
+    class _Resp:
+        status_code = 200
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return ready
+
+    monkeypatch.setattr(geonorge, "_session",
+                        types.SimpleNamespace(get=lambda url, **kw: (polled.append(url), _Resp())[1]))
+    monkeypatch.setattr(geonorge.time, "sleep", lambda s: None)
+
+    files = _await_order(pending, auth=None)
+    assert files[0]["status"] == "ReadyForDownload"
+    assert polled and polled[0].endswith("/order/r1")
+
+
+def test_await_order_raises_on_failed_file():
+    receipt = {"referenceNumber": "r1", "files": [{"name": "a.zip", "status": "Error"}]}
+    with pytest.raises(RuntimeError, match="a.zip"):
+        _await_order(receipt, auth=None)
+
+
+def test_await_order_explains_401_on_status_poll(monkeypatch):
+    # some datasets gate the order-status endpoint behind a Geonorge login
+    pending = {"referenceNumber": "r1",
+               "files": [{"name": "a.zip", "status": "WaitingForProcessing"}]}
+    resp = types.SimpleNamespace(status_code=401)
+    monkeypatch.setattr(geonorge, "_session",
+                        types.SimpleNamespace(get=lambda url, **kw: resp))
+    monkeypatch.setattr(geonorge.time, "sleep", lambda s: None)
+    with pytest.raises(RuntimeError, match="login"):
+        _await_order(pending, auth=None)
+
+
+def test_crop_reads_all_layers(tmp_path):
+    src = tmp_path / "multi.gpkg"
+    for layer, point in [("layer_a", Point(10.5, 63.5)), ("layer_b", Point(10.6, 63.6))]:
+        gpd.GeoDataFrame({"name": [layer]}, geometry=[point],
+                         crs="EPSG:4326").to_file(src, layer=layer, driver="GPKG")
+
+    cropped = crop([src], bbox=(10.0, 63.0, 11.0, 64.0))
+    assert sorted(cropped["name"]) == ["layer_a", "layer_b"]
 
 
 @pytest.mark.skip(reason="network: not implemented yet")
