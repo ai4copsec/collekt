@@ -113,7 +113,7 @@ def classify(protocol: str) -> Literal["wfs", "download", "skip"]:
     """The only protocol dispatch point.
 
     OGC:WFS is bbox-clippable server-side; GEONORGE:DOWNLOAD goes through the
-    order API (P3); everything else (WMS, services, APIs) is skipped.
+    order API; everything else (WMS, services, APIs) is skipped.
     """
     if protocol == "OGC:WFS":
         return "wfs"
