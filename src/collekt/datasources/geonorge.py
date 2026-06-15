@@ -44,6 +44,7 @@ WFS_PAGE_SIZE = 1000
 WFS_MAX_PAGES_PER_TYPE = 20
 
 NEDLASTING_API = "https://nedlasting.geonorge.no/api"
+KOMMUNEINFO_API = "https://ws.geonorge.no/kommuneinfo/v1"  # open admin-unit lookup, no auth
 ORDER_PROJECTION = "25833"  # EUREF89 UTM 33, same as reference.geonorge_maritime
 ORDER_POLL_SECONDS = 5
 ORDER_TIMEOUT_SECONDS = 600
@@ -343,13 +344,67 @@ def _pick_projection(projections: list[dict]) -> dict:
     return projections[0] if projections else {"code": ORDER_PROJECTION}
 
 
+def _admin_units_for_bbox(bbox: Bbox) -> set[str]:
+    """Kommune numbers whose territory the buffered bbox touches.
+    """
+    lon_min, lat_min, lon_max, lat_max = bbox
+    lons = (lon_min, (lon_min + lon_max) / 2, lon_max)
+    lats = (lat_min, (lat_min + lat_max) / 2, lat_max)
+    kommuner: set[str] = set()
+    for lat in lats:
+        for lon in lons:
+            try:
+                r = _session.get(f"{KOMMUNEINFO_API}/punkt",
+                                 params={"nord": lat, "ost": lon, "koordsys": 4258},
+                                 timeout=30)
+                r.raise_for_status()
+            except requests.RequestException:
+                continue  # points in the sea / outside Norway map to no kommune
+            knr = (r.json() or {}).get("kommunenummer")
+            if knr:
+                kommuner.add(knr)
+    # TODO: a 3x3 grid can miss a kommune that only clips a bbox edge between
+    # samples; a true polygon intersection against kommune boundaries would be
+    # exact but far heavier. Adequate for the small query windows we target.
+    return kommuner
+
+
+def _areas_for_bbox(bbox: Bbox, areas: list[dict]) -> list[dict] | None:
+    """Finest-granularity area codes the dataset offers that the bbox intersects.
+
+    Prefers kommune over fylke; returns None when the codelist has nothing below
+    landsdekkende --> fallsback to ordering 'Hele landet'.
+    """
+    has_kommune = any(a.get("type") == "kommune" for a in areas)
+    has_fylke = any(a.get("type") == "fylke" for a in areas)
+    if not (has_kommune or has_fylke):
+        return None
+    kommuner = _admin_units_for_bbox(bbox)
+    if not kommuner:
+        return None
+    # TODO: assumes codelist 'code' matches kommuneinfo's kommunenummer format
+    # (4-digit string, leading zeros preserved); fylke code = first two digits.
+    if has_kommune:
+        chosen = [a for a in areas
+                  if a.get("type") == "kommune" and a.get("code") in kommuner]
+        if chosen:
+            return chosen
+    if has_fylke:
+        fylker = {k[:2] for k in kommuner}
+        chosen = [a for a in areas
+                  if a.get("type") == "fylke" and a.get("code") in fylker]
+        if chosen:
+            return chosen
+    return None
+
+
 def build_order(uuid: str, bbox: Bbox, capabilities: dict, formats: list[dict],
-                projections: list[dict], areas: list[dict], email: str) -> dict:
+                projections: list[dict], areas: list[dict], email: str,
+                selected_areas: list[dict] | None = None) -> dict:
     """Order payload for one dataset.
 
-    Server-side clip via coordinates + coordinatesystem (lowercase 's', unlike
-    the can-download endpoint!) when supportsPolygonSelection; otherwise order
-    'Hele landet' and let crop() do the reduction.
+    Server-side clip via coordinates + coordinatesystem; else order the
+    given selected_areas (admin-areas municipality/county covering the window); else 'Hele landet' --> crop() locally.
     """
     fmt = _pick_format(formats)
     proj = _pick_projection(projections)
@@ -363,6 +418,9 @@ def build_order(uuid: str, bbox: Bbox, capabilities: dict, formats: list[dict],
         line["coordinates"] = _bbox_ring(bbox)
         line["coordinatesystem"] = ORDER_PROJECTION
         line["areas"] = [{"code": "Kart", "name": "Valgt fra kart", "type": "polygon"}]
+    elif selected_areas:
+        line["areas"] = [{"code": a.get("code"), "name": a.get("name"),
+                          "type": a.get("type")} for a in selected_areas]
     else:
         national = next((a for a in areas if a.get("type") == "landsdekkende"), None)
         if national is None:
@@ -374,9 +432,6 @@ def build_order(uuid: str, bbox: Bbox, capabilities: dict, formats: list[dict],
 
 def _await_order(receipt: dict, auth: tuple[str, str] | None) -> list[dict]:
     """Re-fetch the order until every file is ReadyForDownload.
-
-    Clipped orders are processed asynchronously; prepackaged national files are
-    usually ready immediately (status missing or already ReadyForDownload).
     """
     deadline = time.monotonic() + ORDER_TIMEOUT_SECONDS
     while True:
@@ -423,11 +478,7 @@ def _download_order_files(files: list[dict], out_dir: Path,
 
 
 def _unzip_all(paths: list[Path], out_dir: Path) -> list[Path]:
-    """Unzip archives; returns the extracted files (a .gdb directory counts as one).
-
-    Clipped orders arrive without a filename extension, so zips are detected by
-    content, not suffix.
-    """
+    """Unzip archives; returns the extracted files (a .gdb directory counts as one). """
     out_dir.mkdir(parents=True, exist_ok=True)
     out: list[Path] = []
     for p in paths:
@@ -461,9 +512,10 @@ def fetch_download(record: DatasetRecord, bbox: Bbox, output_dir: Path) -> list[
     generalized to any dataset uuid).
 
     Server-side polygon clip when the dataset capabilities report
-    supportsPolygonSelection; otherwise (or when the clip job fails on
-    Geonorge's side) the prepackaged 'Hele landet' file, reduced by local crop.
-    Requires GEONORGE_EMAIL; anonymous is fine for open data.
+    supportsPolygonSelection; otherwise (or if clip job fails) the prepackaged 'Hele landet' file which is cropped locally.
+    
+    - Require GEONORGE_EMAIL
+    - anonymous is fine for open data.
     """
     settings = GeonorgeSettings()
     if not settings.email:
@@ -487,8 +539,17 @@ def fetch_download(record: DatasetRecord, bbox: Bbox, output_dir: Path) -> list[
                            f"retrying with 'Hele landet'")
 
     areas = _nedlasting(f"codelists/area/{record.uuid}")
-    order = build_order(record.uuid, bbox, {**capabilities, "supportsPolygonSelection": False},
-                        formats, projections, areas, settings.email)
+    selected = (_areas_for_bbox(bbox, areas)
+                if capabilities.get("supportsAreaSelection") else None)
+    if selected:
+        logger.info(f"{record.title}: ordering {len(selected)} {selected[0]['type']}(s) "
+                    f"covering the window instead of 'Hele landet'")
+    else:
+        logger.info(f"{record.title}: no sub-national area available; ordering 'Hele landet'")
+    order = build_order(record.uuid, bbox,
+                        {**capabilities, "supportsPolygonSelection": False},
+                        formats, projections, areas, settings.email,
+                        selected_areas=selected)
     return _order_and_download(order, out_dir, auth)
 
 
@@ -501,7 +562,7 @@ def _layers(path: Path) -> list[str | None]:
 
 
 def crop(paths: list[Path], bbox: Bbox) -> gpd.GeoDataFrame:
-    """Clip fetched vector files (every layer) to buffered window bbox in WGS84.
+    """Clip fetched vector files to buffered window bbox.
 
     This is the step that reduces national data to only what is inside the box.
     """
