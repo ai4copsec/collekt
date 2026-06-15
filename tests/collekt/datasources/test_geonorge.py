@@ -1,7 +1,8 @@
 """Tests for collekt.datasources.geonorge.  Offline so no network.
 
-Network-dependent stages are skipped placeholders for now. 
+Network-dependent stages are skipped placeholders for now.
 """
+import json
 import types
 
 import geopandas as gpd
@@ -225,11 +226,118 @@ def test_search_datasets():
     """search_datasets"""
 
 
-@pytest.mark.skip(reason="network: not implemented yet")
-def test_fetch_wfs_falls_back_on_axis_order_and_output_format():
-    """ testing fetch WFS. GML's uses lon/lat-convention unfortunately, so we do need a check for this..."""
+class _FakeResp:
+    def __init__(self, body: bytes, ok: bool = True, status_code: int = 200):
+        self.content = body
+        self.text = body.decode("utf-8", "replace")
+        self.ok = ok
+        self.status_code = status_code
+
+
+def _geojson_bytes(n: int) -> bytes:
+    fc = {"type": "FeatureCollection",
+          "features": [{"type": "Feature", "properties": {"i": i},
+                        "geometry": {"type": "Point", "coordinates": [5.0, 61.0]}}
+                       for i in range(n)]}
+    return json.dumps(fc).encode("utf-8")
+
+
+class _PagingSession:
+    """Serves GeoJSON slices with startIndex/count, records every request."""
+
+    def __init__(self, total: int):
+        self.total = total
+        self.calls: list[dict] = []
+
+    def get(self, url, params=None, timeout=None, **kw):
+        params = dict(params or {})
+        self.calls.append(params)
+        start = int(params.get("startIndex", 0))
+        count = int(params.get("count", 0))
+        n = max(0, min(count, self.total - start))
+        return _FakeResp(_geojson_bytes(n))
+
+
+def test_safe_name_strips_path_unsafe_chars():
+    assert ":" not in geonorge._safe_name("app:Type")
+    assert "/" not in geonorge._safe_name("a/b")
+    assert geonorge._safe_name("Sjøkart:Dybdedata") == "sjoekart_dybdedata"
+
+
+@pytest.mark.parametrize("total, expected_files, expected_starts", [
+    (0, 0, [0]),        # empty: one request
+    (1, 1, [0]),        # short first page
+    (2, 1, [0, 2]),     # exactly one full page
+    (3, 2, [0, 2]),     # full page + short page
+    (4, 2, [0, 2, 4]),  # exact multiple of page size
+])
+def test_wfs_pages_termination(tmp_path, monkeypatch, total, expected_files, expected_starts):
+    monkeypatch.setattr(geonorge, "WFS_PAGE_SIZE", 2)
+    session = _PagingSession(total)
+    monkeypatch.setattr(geonorge, "_session", session)
+
+    paths = geonorge._wfs_pages("http://wfs.test", "app:Type", "bbox", tmp_path)
+    assert len(paths) == expected_files
+    assert [c.get("startIndex") for c in session.calls] == expected_starts
+    assert sorted(tmp_path.iterdir()) == sorted(paths)
+
+
+class _NegotiationSession:
+    """similar to the one I found online """
+
+    def __init__(self, geojson_ok: bool):
+        self.geojson_ok = geojson_ok
+        self.calls: list[dict] = []
+
+    def get(self, url, params=None, timeout=None, **kw):
+        params = dict(params or {})
+        self.calls.append(params)
+        if "outputFormat" in params and self.geojson_ok:
+            return _FakeResp(_geojson_bytes(1))
+        # GeoJSON refused or GML retry: return XML
+        return _FakeResp(b"<?xml version='1.0'?><wfs:FeatureCollection/>")
+
+
+@pytest.mark.parametrize("geojson_ok, expected_requests, expected_suffix", [
+    (True, 1, ".json"),
+    (False, 2, ".gml"),
+])
+def test_wfs_pages_format_negotiation(tmp_path, monkeypatch, geojson_ok,
+                                      expected_requests, expected_suffix):
+    monkeypatch.setattr(geonorge, "WFS_PAGE_SIZE", 1000)         # one page suffices
+    monkeypatch.setattr(geonorge, "_feature_count", lambda path: 1)  # isolate from GDAL
+    session = _NegotiationSession(geojson_ok)
+    monkeypatch.setattr(geonorge, "_session", session)
+
+    paths = geonorge._wfs_pages("http://wfs.test", "app:Type", "bbox", tmp_path)
+
+    assert len(session.calls) == expected_requests
+    assert "outputFormat" in session.calls[0]            # check GeoJSON first
+    if not geojson_ok:
+        assert "outputFormat" not in session.calls[1]    # retry without it (GML)
+    assert [p.suffix for p in paths] == [expected_suffix]
+
+
+def test_fetch_wfs_falls_back_to_second_axis_order(tmp_path, monkeypatch):
+    monkeypatch.setattr(geonorge, "wfs_feature_types", lambda url: ["app:Type"])
+    seen_axes = []
+
+    def fake_pages(url, type_name, axis_bbox, out_dir):
+        seen_axes.append(axis_bbox)
+        if "urn:ogc" in axis_bbox:          # first (urn lat/lon) order -> nothing
+            return []
+        return [out_dir / "page_0.json"]    # legacy lon/lat order -> features
+
+    monkeypatch.setattr(geonorge, "_wfs_pages", fake_pages)
+
+    record = _record(distribution_url="https://wfs.test/wfs?service=wfs&request=getcapabilities")
+    paths = geonorge.fetch_wfs(record, _BBOX, tmp_path)
+
+    assert len(seen_axes) == 2              # trying both axis orders
+    assert "urn:ogc" in seen_axes[0]        # lat/lon attempted first
+    assert paths == [tmp_path / "raw" / record.uuid / "page_0.json"]
 
 
 @pytest.mark.skip(reason="network: not implemented yet")
 def test_execute_writes_manifest_with_every_dataset_status():
-    """test execute(). discover/fetch; manifest.json lists all records incl. skipped/empty/deferred reasons."""
+    """test execute(). discover/fetch; manifest.json listing all records"""

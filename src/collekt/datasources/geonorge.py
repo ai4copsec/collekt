@@ -103,10 +103,10 @@ def bbox_intersects(a: Bbox, b: Bbox) -> bool:
 
 
 def _safe_name(s: str) -> str:
-    """Filesystem-safe lowercase (mirrors reference.geonorge_maritime, P3 unifies)."""
+    """Filesystem-safe lowercase (mirrors reference.geonorge_maritime."""
     return (s.lower()
              .replace("ø", "oe").replace("å", "aa").replace("æ", "ae")
-             .replace(" ", "_").replace("/", "_"))
+             .replace(" ", "_").replace("/", "_").replace(":", "_"))
 
 
 def classify(protocol: str) -> Literal["wfs", "download", "skip"]:
