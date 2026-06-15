@@ -458,7 +458,7 @@ def _await_order(receipt: dict, auth: tuple[str, str] | None) -> list[dict]:
             # some datasets gate the order-status endpoint behind a Geonorge login,
             # even when the order itself was accepted anonymously
             raise RestrictedDatasetError(
-                "restricted dataset; set GEONORGE_USERNAME/GEONORGE_PASSWORD")
+                "restricted dataset; use GEONORGE_USERNAME/GEONORGE_PASSWORD")
         r.raise_for_status()
         receipt = r.json()
 
