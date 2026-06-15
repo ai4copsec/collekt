@@ -207,7 +207,7 @@ def test_await_order_explains_401_on_status_poll(monkeypatch):
     monkeypatch.setattr(geonorge, "_session",
                         types.SimpleNamespace(get=lambda url, **kw: resp))
     monkeypatch.setattr(geonorge.time, "sleep", lambda s: None)
-    with pytest.raises(RuntimeError, match="login"):
+    with pytest.raises(geonorge.RestrictedDatasetError, match="GEONORGE_USERNAME"):
         _await_order(pending, auth=None)
 
 

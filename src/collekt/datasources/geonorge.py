@@ -53,6 +53,12 @@ OGR_READABLE_FORMATS = ("GML", "FGDB", "GEOJSON", "GPKG", "SHAPE")
 Bbox = tuple[float, float, float, float] # (lon_min, lat_min, lon_max, lat_max), WGS84
 
 
+class RestrictedDatasetError(Exception):
+    """A download hit a Geonorge auth wall (401/403 or a GeoID login page) instead
+    of data. Use GEONORGE_USERNAME/GEONORGE_PASSWORD.
+    """
+
+
 class GeonorgeSettings(BaseSettings):
     """GEONORGE_* settings
 
@@ -451,8 +457,8 @@ def _await_order(receipt: dict, auth: tuple[str, str] | None) -> list[dict]:
         if r.status_code in (401, 403):
             # some datasets gate the order-status endpoint behind a Geonorge login,
             # even when the order itself was accepted anonymously
-            raise RuntimeError(
-                "order status requires Geonorge login (set GEONORGE_USERNAME/GEONORGE_PASSWORD)")
+            raise RestrictedDatasetError(
+                "restricted dataset; set GEONORGE_USERNAME/GEONORGE_PASSWORD")
         r.raise_for_status()
         receipt = r.json()
 
@@ -465,11 +471,14 @@ def _download_order_files(files: list[dict], out_dir: Path,
         url = f["downloadUrl"]
         dest = out_dir / (f.get("name") or url.rsplit("/", 1)[-1])
         with _session.get(url, auth=auth, stream=True, timeout=600) as r:
+            if r.status_code in (401, 403):
+                raise RestrictedDatasetError(
+                    "restricted dataset; use GEONORGE_USERNAME/GEONORGE_PASSWORD")
             r.raise_for_status()
             if "text/html" in (r.headers.get("content-type") or ""):
                 # restricted datasets answer with a GeoID login page, HTTP 200
-                raise RuntimeError(
-                    "download returned a login page - dataset requires Geonorge login")
+                raise RestrictedDatasetError(
+                    "restricted dataset; use GEONORGE_USERNAME/GEONORGE_PASSWORD")
             with dest.open("wb") as fh:
                 for chunk in r.iter_content(64 * 1024):
                     fh.write(chunk)
@@ -664,6 +673,10 @@ class Geonorge(DataSource):
                 features.to_file(path, driver="GeoJSON")
                 record.status = f"collected: {len(features)} features"
                 written.append(path)
+            except RestrictedDatasetError as e:
+                # auth wall, not data: never write it, record it as skipped
+                record.status = "skipped: restricted dataset; use GEONORGE_USERNAME/GEONORGE_PASSWORD"
+                logger.warning(f"{record.title} ({record.uuid}) skipped -- {e}")
             except Exception as e:
                 record.status = f"error: {e}"
                 logger.warning(f"{record.title} ({record.uuid}) failed -- {e}")
