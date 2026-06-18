@@ -52,6 +52,27 @@ OGR_READABLE_FORMATS = ("GML", "FGDB", "GEOJSON", "GPKG", "SHAPE")
 
 Bbox = tuple[float, float, float, float] # (lon_min, lat_min, lon_max, lat_max), WGS84
 
+# --- marine relevance allowlists: tune freely
+MARINE_ORGS = {            # single-domain marine agencies only
+    "Kystverket",
+    "Fiskeridirektoratet",
+    # "Havforskningsinstituttet", 
+    # "Miljødirektoratet",
+}
+MARINE_THEMES = {          # verify exact strings against Geonorge
+    "Kyst og fiskeri",     # confirmed
+    # "Hav"/marine theme, 
+    # "Samferdsel" (fairways)
+}
+MARINE_KEYWORDS = {        # matched as substrings of title+abstract+theme
+    # Norwegian
+    "farled", "skipslei", "havn", "sjømerke", "fyr", "navigasjon", "ankring",
+    "dybde", "batymetri", "akvakultur", "laksefjord", "trafikkseparering",
+    "sjøtrafikk", "sjøkart", "maritim", "kyst", "hav",
+    # English
+    "ais", "maritime",
+}
+
 
 class RestrictedDatasetError(Exception):
     """A download hit a Geonorge auth wall (401/403 or a GeoID login page) instead
@@ -71,6 +92,7 @@ class GeonorgeSettings(BaseSettings):
     password: str | None = None
     buffer_km: float = 0.0
     max_datasets: int = 20
+    marine_filter: bool = True  # drop non-marine datasets at discovery
 
     model_config = SettingsConfigDict(
                     env_file='.env',
@@ -175,10 +197,49 @@ def parse_coverage_bbox(metadata: dict) -> Bbox | None:
         return None
 
 
+def marine_relevance(title: str, abstract: str, theme: str,
+                     organization: str, organizations: list[str] | None = None,
+                     ) -> tuple[bool, str]:
+    """
+    Keeps the dataset if ANY signal fires: 
+    - theme in MARINE_THEMES
+    - producing organisation in MARINE_ORGS (single-domain marine agencies only), 
+    - or any MARINE_KEYWORDS term occurring in title+abstract+theme. 
+
+    Returns (keep, reason) 
+    """
+    themes_lower = {t.lower() for t in MARINE_THEMES}
+    if theme and theme.lower() in themes_lower:
+        return True, f"theme {theme!r}"
+
+    orgs_lower = {o.lower() for o in MARINE_ORGS}
+    for org in (organization, *(organizations or [])):
+        if org and org.lower() in orgs_lower:
+            return True, f"organisation {org!r}"
+
+    haystack = " ".join(s for s in (title, abstract, theme) if s).lower()
+    for keyword in MARINE_KEYWORDS:
+        if keyword in haystack:
+            return True, f"keyword {keyword!r}"
+
+    return False, "no marine signal"
+
+
+def _hit_is_marine(hit: dict) -> tuple[bool, str]:
+    """Apply marine_relevance to a raw Kartkatalog /api/search hit"""
+    return marine_relevance(
+        title=hit.get("Title") or "",
+        abstract=hit.get("Abstract") or "",
+        theme=hit.get("Theme") or "",
+        organization=hit.get("Organization") or "",
+        organizations=hit.get("Organizations") or [],
+    )
+
+
 def discover(bbox: Bbox, search_text: str | None,
              settings: GeonorgeSettings) -> list[DatasetRecord]:
     """search -> classify -> coverage/licence metadata -> relevance.
-    The search API has no spatial filter unfortunately....
+    The API has no spatial filter unfortunately....
 
     Every hit comes back as a record; non-candidates carry a status explaining
     why, so the manifest accounts for the full catalogue sweep. 
@@ -203,6 +264,12 @@ def discover(bbox: Bbox, search_text: str | None,
         if record.kind == "skip":
             record.status = f"skipped: unsupported protocol {protocol!r}"
             continue
+        if settings.marine_filter:
+            keep, reason = _hit_is_marine(hit)
+            if not keep:
+                record.status = f"skipped: not marine-relevant ({reason})"
+                logger.info(f"skip {record.title!r} -- {reason}")
+                continue
         if candidates >= settings.max_datasets:
             record.status = f"skipped: over GEONORGE_MAX_DATASETS={settings.max_datasets}"
             continue

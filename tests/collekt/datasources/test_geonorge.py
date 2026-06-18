@@ -12,14 +12,18 @@ from shapely.geometry import Point
 from collekt.datasources import geonorge
 from collekt.datasources.geonorge import (
     DatasetRecord,
+    GeonorgeSettings,
     _await_order,
     _bbox_ring,
+    _hit_is_marine,
     _pick_format,
     annotate,
     bbox_intersects,
     build_order,
     classify,
     crop,
+    discover,
+    marine_relevance,
     parse_coverage_bbox,
     window_bbox,
 )
@@ -336,6 +340,117 @@ def test_fetch_wfs_falls_back_to_second_axis_order(tmp_path, monkeypatch):
     assert len(seen_axes) == 2              # trying both axis orders
     assert "urn:ogc" in seen_axes[0]        # lat/lon attempted first
     assert paths == [tmp_path / "raw" / record.uuid / "page_0.json"]
+
+
+# --- marine relevance filter --------------------------------------------------
+
+def test_marine_relevance_keep_by_theme():
+    keep, reason = marine_relevance(
+        title="Some neutral title", abstract="", theme="Kyst og fiskeri",
+        organization="Kartverket")
+    assert keep and "theme" in reason
+
+
+def test_marine_relevance_keep_by_org():
+    keep, reason = marine_relevance(
+        title="Forskrift", abstract="", theme="", organization="Kystverket")
+    assert keep and "organisation" in reason
+
+
+def test_marine_relevance_keep_by_keyword_in_title():
+    keep, reason = marine_relevance(
+        title="Farledsforskrift", abstract="", theme="", organization="Kartverket")
+    assert keep and "keyword" in reason
+
+
+def test_marine_relevance_keep_by_keyword_in_abstract():
+    keep, reason = marine_relevance(
+        title="Neutral", abstract="Datasettet viser farleder langs kysten",
+        theme="", organization="Kartverket")
+    assert keep and "keyword" in reason
+
+
+def test_marine_relevance_skips_land_dataset():
+    keep, reason = marine_relevance(
+        title="Eiendomsgrenser", abstract="Matrikkelkart over teiger",
+        theme="Eiendom", organization="Kartverket")
+    assert not keep
+    assert reason == "no marine signal"
+
+
+def test_marine_relevance_multidomain_org_guard():
+    # Kartverket's land dataset are dropped
+    land_keep, _ = marine_relevance(
+        title="Høydedata", abstract="terrengmodell", theme="Basis geodata",
+        organization="Kartverket")
+    assert not land_keep
+    # Kartverket marine dataset is kept on the keyword signal
+    sea_keep, reason = marine_relevance(
+        title="Sjøkart Dybdedata", abstract="", theme="Basis geodata",
+        organization="Kartverket")
+    assert sea_keep and "keyword" in reason
+
+
+def test_marine_relevance_is_case_insensitive():
+    assert marine_relevance("FARLED", "", "", "")[0]
+    assert marine_relevance("x", "", "KYST OG FISKERI", "")[0]
+    assert marine_relevance("x", "", "", "KYSTVERKET")[0]
+
+
+def test_hit_is_marine_uses_organizations_list():
+    # primary Organization is non-marine, but Organizations carries Kystverket
+    keep, reason = _hit_is_marine({
+        "Title": "Neutral", "Abstract": "", "Theme": "",
+        "Organization": "Kartverket", "Organizations": ["Kartverket", "Kystverket"],
+    })
+    assert keep and "Kystverket" in reason
+
+
+def test_discover_filters_non_marine_before_metadata(monkeypatch):
+    hits = [
+        {"Uuid": "u-sea", "Title": "Farledsforskrift", "Abstract": "",
+         "Theme": "Kyst og fiskeri", "Organization": "Kystverket",
+         "DistributionProtocol": "OGC:WFS", "DistributionUrl": "https://wfs/sea"},
+        {"Uuid": "u-land", "Title": "Eiendomsgrenser", "Abstract": "matrikkel",
+         "Theme": "Eiendom", "Organization": "Kartverket",
+         "DistributionProtocol": "OGC:WFS", "DistributionUrl": "https://wfs/land"},
+    ]
+    monkeypatch.setattr(geonorge, "search_datasets", lambda text: hits)
+
+    def _boom(uuid):
+        raise AssertionError(f"get_metadata called for {uuid}")
+
+    # only the marine hit should reach metadata
+    monkeypatch.setattr(geonorge, "get_metadata",
+                        lambda uuid: {"BoundingBox": {
+                            "WestBoundLongitude": "4,0", "SouthBoundLatitude": "60,0",
+                            "EastBoundLongitude": "6,0", "NorthBoundLatitude": "62,0"}}
+                        if uuid == "u-sea" else _boom(uuid))
+
+    records = discover(bbox=(4.0, 60.0, 6.0, 62.0), search_text=None,
+                       settings=GeonorgeSettings(marine_filter=True))
+
+    by_uuid = {r.uuid: r for r in records}
+    assert by_uuid["u-land"].status.startswith("skipped: not marine-relevant")
+    assert by_uuid["u-sea"].status == "candidate"
+
+
+def test_discover_toggle_off_passes_non_marine_through(monkeypatch):
+    hits = [
+        {"Uuid": "u-land", "Title": "Eiendomsgrenser", "Abstract": "",
+         "Theme": "Eiendom", "Organization": "Kartverket",
+         "DistributionProtocol": "OGC:WFS", "DistributionUrl": "https://wfs/land"},
+    ]
+    monkeypatch.setattr(geonorge, "search_datasets", lambda text: hits)
+    monkeypatch.setattr(geonorge, "get_metadata",
+                        lambda uuid: {"BoundingBox": {
+                            "WestBoundLongitude": "4,0", "SouthBoundLatitude": "60,0",
+                            "EastBoundLongitude": "6,0", "NorthBoundLatitude": "62,0"}})
+
+    records = discover(bbox=(4.0, 60.0, 6.0, 62.0), search_text=None,
+                       settings=GeonorgeSettings(marine_filter=False))
+
+    assert records[0].status == "candidate"  # filter is a no-op when off
 
 
 @pytest.mark.skip(reason="network: not implemented yet")
