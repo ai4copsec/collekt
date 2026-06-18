@@ -72,6 +72,8 @@ MARINE_KEYWORDS = {        # matched as substrings of title+abstract+theme
     # English
     "ais", "maritime",
 }
+_MARINE_THEMES_LOWER = {t.lower() for t in MARINE_THEMES}
+_MARINE_ORGS_LOWER = {o.lower() for o in MARINE_ORGS}
 
 
 class RestrictedDatasetError(Exception):
@@ -208,13 +210,11 @@ def marine_relevance(title: str, abstract: str, theme: str,
 
     Returns (keep, reason) 
     """
-    themes_lower = {t.lower() for t in MARINE_THEMES}
-    if theme and theme.lower() in themes_lower:
+    if theme and theme.lower() in _MARINE_THEMES_LOWER:
         return True, f"theme {theme!r}"
 
-    orgs_lower = {o.lower() for o in MARINE_ORGS}
     for org in (organization, *(organizations or [])):
-        if org and org.lower() in orgs_lower:
+        if org and org.lower() in _MARINE_ORGS_LOWER:
             return True, f"organisation {org!r}"
 
     haystack = " ".join(s for s in (title, abstract, theme) if s).lower()
@@ -327,6 +327,7 @@ def _wfs_pages(url: str, type_name: str, axis_bbox: str, out_dir: Path) -> list[
     Return only page that actually contains features..
     """
     paths: list[Path] = []
+    safe_type = _safe_name(type_name)
     output_format, suffix = "application/json", ".json"
     for page in range(WFS_MAX_PAGES_PER_TYPE):
         params = {
@@ -345,7 +346,7 @@ def _wfs_pages(url: str, type_name: str, axis_bbox: str, out_dir: Path) -> list[
         if not r.ok or "ExceptionReport" in r.text[:512]:
             logger.debug(f"WFS GetFeature failed for {type_name} ({url}): {r.text[:200]}")
             break
-        path = out_dir / f"{_safe_name(type_name)}_{page}{suffix}"
+        path = out_dir / f"{safe_type}_{page}{suffix}"
         path.write_bytes(r.content)
         count = _feature_count(path)
         if count == 0:
@@ -411,10 +412,8 @@ def _pick_format(formats: list[dict]) -> dict:
 
 
 def _pick_projection(projections: list[dict]) -> dict:
-    for p in projections:
-        if p.get("code") == ORDER_PROJECTION:
-            return p
-    return projections[0] if projections else {"code": ORDER_PROJECTION}
+    return next((p for p in projections if p.get("code") == ORDER_PROJECTION),
+                projections[0] if projections else {"code": ORDER_PROJECTION})
 
 
 def _admin_units_for_bbox(bbox: Bbox) -> set[str]:
