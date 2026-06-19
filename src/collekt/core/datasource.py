@@ -64,14 +64,14 @@ class CLIDataSource(DataSource):
         if to_time:
             cmd += [ "--to-time", to_time.strftime(self.time_format)]
 
-        if latitude:
-            cmd += [ "--at-lat", latitude ]
+        if latitude is not None:
+            cmd += ["--at-lat", str(latitude)]
 
-        if longitude:
-            cmd += [ "--at-lon", latitude ]
-
-        if radius:
-            cmd += [ "--radius", radius ]
+        if longitude is not None:
+            cmd += ["--at-lon", str(longitude)]
+            
+        if radius is not None:
+            cmd += ["--radius", str(radius)]
 
         if region:
             cmd += [ "--region", region ]
