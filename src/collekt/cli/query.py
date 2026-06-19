@@ -31,6 +31,17 @@ class QueryParser(BaseParser):
         default_output_dir = Path(tempfile.gettempdir()) / "collekt" / f"{dt.datetime.now(tz=dt.timezone.utc).strftime('%Y%m%d-%H:%M:%S+00:00')}"
         parser.add_argument("--output-dir", type=str, default=str(default_output_dir), help="Output directory to store the data, default: %(default)s")
 
+        datasource_choices = [x.name.lower() for x in Collector.datasources]
+        parser.add_argument("--datasource",
+                            nargs="+",
+                            choices=datasource_choices,
+                            metavar='DATASOURCE',
+                            default=None,
+                            help=f"Select datasource from: {','.join(datasource_choices)}"
+        )
+
+
+
     def execute(self, args):
         super().execute(args)
 
@@ -55,5 +66,6 @@ class QueryParser(BaseParser):
                           region=args.region,
                           output_dir=output_dir,
                           log_level=args.log_level,
-                          verbose=args.verbose
+                          verbose=args.verbose,
+                          use_datasources=args.datasource
                 )

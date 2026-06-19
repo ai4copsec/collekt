@@ -20,10 +20,15 @@ However, the following examples show how the commandline interface can be used:
 $> collekt query --from-time 2026-04-06 --to-time 2026-04-06 --at-lat 50 --at-lon 5 --radius 50 --output-dir all-results
 ```
 
-
-
 If a datasource requires a login, add this information to the .env file.
 The following credentials are requires per datasource
+
+
+To limit the datasource use the '--datasource NAME-OF-DATASOURCE' option:
+
+```
+$> collekt query --from-time 2024-01-30 --to-time 2024-01-31 --at-lat 13.311 --at-lon 42.923 --radius 50 --output-dir all-results --datasource skytruth
+```
 
 
 ### Datasource: HOZINT API
