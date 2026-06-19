@@ -1,12 +1,15 @@
 """
-Geonorge datasource: discover Geonorge datasets covering a query spatial window,
-fetch & crop to window, 
-then annotate the features with metadata for possible search/filtering.
+Geonorge datasource: fetch a curated allowlist of maritime datasets, crop each
+to the query window, then annotate features with per-feature provenance.
 
-Divided into phases.
-1: discover + relevance
-2: WFS end-to-end
-3: download/order API (order -> poll -> download -> unzip -> crop)
+Pipeline per dataset: fetch (WFS server-side bbox, or the download/order API)
+-> crop to window -> annotate. The set of datasets is fixed (ALLOWLIST, pinned
+by UUID) rather than discovered, so a run is deterministic and fast: no
+catalogue sweep, no rasters, no time wasted on data we do not want.
+
+WFS datasets are cropped server-side via BBOX. Download datasets are cropped
+server-side too when they support a polygon clip; the rest fall back to ordering
+the whole-country ('Hele landet') file and cropping it locally.
 """
 
 from __future__ import annotations
@@ -16,7 +19,6 @@ import json
 import logging
 import tempfile
 import time
-import xml.etree.ElementTree as ET
 import zipfile
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -36,44 +38,79 @@ from .copernicusmarine import get_coordinates_min_max
 logger = logging.getLogger(__name__)
 _session = requests.Session()
 
-KARTKATALOG_API = "https://kartkatalog.geonorge.no/api"
+# GDAL's GML driver otherwise resolves each page's xsi:schemaLocation by
+# fetching the remote XSD (a DescribeFeatureType call back to the slow Geonorge
+# server) on every cold open -- 30-60 s even for a 2-feature page. We don't need
+# it: geometry and attributes are inferred from the data. This single line is
+# the biggest geonorge fetch speedup (profiled: ~122 s -> ~0 across a run).
+pyogrio.set_gdal_config_options({"GML_DOWNLOAD_SCHEMA": "NO"})
+
 DETAIL_PAGE = "https://kartkatalog.geonorge.no/metadata/uuid/{uuid}"
 
-SEARCH_PAGE_SIZE = 50
 WFS_PAGE_SIZE = 1000
 WFS_MAX_PAGES_PER_TYPE = 20
+WFS_REQUEST_TIMEOUT = 60  # s; GetFeature is bbox-filtered (small) so fail fast
 
 NEDLASTING_API = "https://nedlasting.geonorge.no/api"
-KOMMUNEINFO_API = "https://ws.geonorge.no/kommuneinfo/v1"  # open admin-unit lookup, no auth
-ORDER_PROJECTION = "25833"  # EUREF89 UTM 33, same as reference.geonorge_maritime
+ORDER_PROJECTION = "25833"  # EUREF89 UTM 33
 ORDER_POLL_SECONDS = 5
 ORDER_TIMEOUT_SECONDS = 600
 OGR_READABLE_FORMATS = ("GML", "FGDB", "GEOJSON", "GPKG", "SHAPE")
 
-Bbox = tuple[float, float, float, float] # (lon_min, lat_min, lon_max, lat_max), WGS84
+Bbox = tuple[float, float, float, float]  # (lon_min, lat_min, lon_max, lat_max), WGS84
 
-# --- marine relevance allowlists: tune freely
-MARINE_ORGS = {            # single-domain marine agencies only
-    "Kystverket",
-    "Fiskeridirektoratet",
-    # "Havforskningsinstituttet", 
-    # "Miljødirektoratet",
-}
-MARINE_THEMES = {          # verify exact strings against Geonorge
-    "Kyst og fiskeri",     # confirmed
-    # "Hav"/marine theme, 
-    # "Samferdsel" (fairways)
-}
-MARINE_KEYWORDS = {        # matched as substrings of title+abstract+theme
-    # Norwegian
-    "farled", "skipslei", "havn", "sjømerke", "fyr", "navigasjon", "ankring",
-    "dybde", "batymetri", "akvakultur", "laksefjord", "trafikkseparering",
-    "sjøtrafikk", "sjøkart", "maritim", "kyst", "hav",
-    # English
-    "ais", "maritime",
-}
-_MARINE_THEMES_LOWER = {t.lower() for t in MARINE_THEMES}
-_MARINE_ORGS_LOWER = {o.lower() for o in MARINE_ORGS}
+# --- Allowlist: the ONLY Geonorge datasets we fetch. Curated for maritime
+# surveillance and pinned by UUID (stable across title edits). Prefer the
+# OGC:WFS variant (server-side bbox crop, no national download); fall back to
+# GEONORGE:DOWNLOAD only where no WFS exists. All are open, OGR-readable vector
+# layers -- no rasters.
+#
+# WFS entries carry the exact feature-type name(s) to request, so we skip the
+# slow per-dataset GetCapabilities call and GetFeature only the layers we want
+# (the general Fiskeridir/Norkyst services expose 56/11 layers; we name a few).
+# Re-probe an endpoint's GetCapabilities only when adding/changing a dataset.
+#                (uuid, title, protocol, endpoint-or-url, wfs_type_names)
+ALLOWLIST: list[tuple[str, str, str, str, tuple[str, ...]]] = [
+    # navigation & infrastructure
+    ("871960a1-0f01-4c47-8f79-5d338b65197e", "Dybdedata - kurver generaliserte",
+     "GEONORGE:DOWNLOAD", "https://nedlasting.geonorge.no/api/capabilities/", ()),
+    ("42e58e93-13da-4f47-8c1c-3525af7c3e77", "Hovedled og biled WFS",
+     "OGC:WFS", "https://wfs.geonorge.no/skwms1/wfs.farled",
+     ("app:HovedledOgBiled",)),  # fairway centrelines only; drop the area polygon + its outline
+    ("73e46cf4-d9f5-4d75-b148-bb5edf888c4a", "Navigasjonsinstallasjoner WFS",
+     "OGC:WFS", "https://maps.kystverket.cloudgis.no/enterprise/services/PROD/nfs_sistop_ekstern_prod/MapServer/WFSServer",
+     ("nfs_sistop_ekstern_prod:Lys", "nfs_sistop_ekstern_prod:IB",
+      "nfs_sistop_ekstern_prod:Racon", "nfs_sistop_ekstern_prod:Fast_sjømerke",
+      "nfs_sistop_ekstern_prod:Flytende_merke",)),
+    ("3eef614a-b82f-4779-8a30-02876b792d1a", "Nødhavner WFS",
+     "OGC:WFS", "https://wfs.geonorge.no/skwms1/wfs.nodhavner", ("app:Nødhavn",)),
+    ("1765495c-cfce-49d1-899e-321e2c421f39", "Akvakultur - lokaliteter WFS",
+     "OGC:WFS", "https://wfs.geonorge.no/skwms1/wfs.akvakulturlokaliteter",
+     ("app:AkvakulturFlate", "app:AkvakulturPunkt", "app:Akvakulturgrense")),
+    ("4e3c59b4-528f-4806-ada3-e9455c9b7d4e", "Korallrev WFS",
+     "OGC:WFS", "https://wfs.geonorge.no/skwms1/wfs.korallrev", ("app:Korallrev",)),
+    ("e8c675c4-ada7-427e-8103-abf891b824b9", "Korallrev - forbudsområder WFS",
+     "OGC:WFS", "https://wfs.geonorge.no/skwms1/wfs.korallrevforbudsomrader",
+     ("app:Korallrev", "app:KorallrevGrense")),
+    ("e46767e4-c6d9-49a6-93e8-716da0922fd7", "Havnedata",
+     "GEONORGE:DOWNLOAD", "https://nedlasting.geonorge.no/api/capabilities/", ()),
+    # regulatory / restricted zones
+    ("f9552903-2445-46c9-8a0d-37439f87a448", "Forsvarets skyte- og øvingsfelt i sjø WFS",
+     "OGC:WFS", "https://wfs.geonorge.no/skwms1/wfs.ovingsfeltsjo",
+     ("app:SkytefeltSjø", "app:Skytefeltgrense")),
+    ("8e7b3c93-4601-487a-b241-7017e2f624e7", "Militære forbudsområder innen sjøforsvaret WFS",
+     "OGC:WFS", "https://wfs.geonorge.no/skwms1/wfs.militereforbudsomradersjo",
+     ("app:ForbudsområdeGrense", "app:MilitærtForbudsområdeSjø")),
+    ("b2c6f249-0c19-45c0-a91a-8f873d2c3c4f", "Tråling forbudsområder",
+     "OGC:WFS", "https://gis.fiskeridir.no/server/services/FiskeridirWFS_fiskeri/MapServer/WFSServer",
+     ("FiskeridirWFS_fiskeri:traalforbud_jennegga_malangsgrunnen",
+      "FiskeridirWFS_fiskeri:traalforbud_storegga",
+      "FiskeridirWFS_fiskeri:reguleringer_stormasket_traal_inntil12nm")),
+    # oceanographic (Norkyst exposes depths 0-250 m; we keep the 0 m surface layer)
+    ("a0e9f7ca-9ab0-4606-a62e-e71b8f78377d", "Norkyst - Gjennomsnittlig strømstyrke og retning WFS",
+     "OGC:WFS", "https://kart.hi.no/data/oseanografi/wfs",
+     ("oseanografi:Norkyst_gjennomsnittlig_stromstyrke_og_retning_000m",)),
+]
 
 
 class RestrictedDatasetError(Exception):
@@ -83,18 +120,13 @@ class RestrictedDatasetError(Exception):
 
 
 class GeonorgeSettings(BaseSettings):
-    """GEONORGE_* settings
-
-    email/username/password are only needed by the download/order API.
-    buffer_km is the fallback when no buffer is given at construction.
-    max_datasets caps fetch candidates per run
+    """GEONORGE_* settings. email/username/password are only needed by the
+    download/order API; buffer_km is the fallback window buffer.
     """
     email: str | None = None
     username: str | None = None
     password: str | None = None
     buffer_km: float = 0.0
-    max_datasets: int = 20
-    marine_filter: bool = True  # drop non-marine datasets at discovery
 
     model_config = SettingsConfigDict(
                     env_file='.env',
@@ -106,18 +138,18 @@ class GeonorgeSettings(BaseSettings):
 
 @dataclass
 class DatasetRecord:
-    """One discovered dataset and what it is turned into."""
+    """One allowlisted dataset and what it is turned into."""
     uuid: str
     title: str
-    organization: str
     protocol: str
     kind: str
     distribution_url: str | None
     detail_url: str
-    coverage_bbox: Bbox | None = None
-    is_open: bool = False
+    type_names: tuple[str, ...] = ()
+    organization: str = ""
+    is_open: bool = True
     licence_url: str | None = None
-    status: str = "candidate"
+    status: str = "pending"
 
 
 def window_bbox(latitude: float, longitude: float,
@@ -129,23 +161,15 @@ def window_bbox(latitude: float, longitude: float,
             bounds['lon_max'], bounds['lat_max'])
 
 
-def bbox_intersects(a: Bbox, b: Bbox) -> bool:
-    return a[0] <= b[2] and b[0] <= a[2] and a[1] <= b[3] and b[1] <= a[3]
-
-
 def _safe_name(s: str) -> str:
-    """Filesystem-safe lowercase (mirrors reference.geonorge_maritime."""
+    """Filesystem-safe lowercase."""
     return (s.lower()
              .replace("ø", "oe").replace("å", "aa").replace("æ", "ae")
              .replace(" ", "_").replace("/", "_").replace(":", "_"))
 
 
 def classify(protocol: str) -> Literal["wfs", "download", "skip"]:
-    """The only protocol dispatch point.
-
-    OGC:WFS is bbox-clippable server-side; GEONORGE:DOWNLOAD goes through the
-    order API; everything else (WMS, services, APIs) is skipped.
-    """
+    """Protocol dispatch: OGC:WFS clips server-side; GEONORGE:DOWNLOAD orders."""
     if protocol == "OGC:WFS":
         return "wfs"
     if protocol == "GEONORGE:DOWNLOAD":
@@ -153,162 +177,14 @@ def classify(protocol: str) -> Literal["wfs", "download", "skip"]:
     return "skip"
 
 
-def search_datasets(text: str | None) -> list[dict]:
-    """All search hits (paged).
-
-    WFS access is catalogued on service-type entries, not on dataset entries themselves 
-    (this gets verified against the live catalogue)
-    """
-    hits: list[dict] = []
-    while True:
-        params: dict = {
-            "limit": SEARCH_PAGE_SIZE,
-            "offset": len(hits) + 1,
-        }
-        if text:
-            params["text"] = text
-        r = _session.get(f"{KARTKATALOG_API}/search", params=params, timeout=60)
-        r.raise_for_status()
-        page = r.json()
-        results = page.get("Results") or []
-        hits.extend(results)
-        if not results or len(hits) >= page.get("NumFound", 0):
-            return hits
-
-
-def get_metadata(uuid: str) -> dict:
-    """GET /api/getdata/{uuid}: coverage BoundingBox, Constraints, distribution."""
-    r = _session.get(f"{KARTKATALOG_API}/getdata/{uuid}", timeout=60)
-    r.raise_for_status()
-    return r.json()
-
-
-def _parse_bound(value) -> float:
-    # comma decimals, for example '−56,00' (Unfortunately strange norwegian format)
-    return float(str(value).replace("−", "-").replace(",", "."))
-
-
-def parse_coverage_bbox(metadata: dict) -> Bbox | None:
-    bounds = metadata.get("BoundingBox") or {}
-    try:
-        return (_parse_bound(bounds["WestBoundLongitude"]),
-                _parse_bound(bounds["SouthBoundLatitude"]),
-                _parse_bound(bounds["EastBoundLongitude"]),
-                _parse_bound(bounds["NorthBoundLatitude"]))
-    except (KeyError, TypeError, ValueError):
-        return None
-
-
-def marine_relevance(title: str, abstract: str, theme: str,
-                     organization: str, organizations: list[str] | None = None,
-                     ) -> tuple[bool, str]:
-    """
-    Keeps the dataset if ANY signal fires: 
-    - theme in MARINE_THEMES
-    - producing organisation in MARINE_ORGS (single-domain marine agencies only), 
-    - or any MARINE_KEYWORDS term occurring in title+abstract+theme. 
-
-    Returns (keep, reason) 
-    """
-    if theme and theme.lower() in _MARINE_THEMES_LOWER:
-        return True, f"theme {theme!r}"
-
-    for org in (organization, *(organizations or [])):
-        if org and org.lower() in _MARINE_ORGS_LOWER:
-            return True, f"organisation {org!r}"
-
-    haystack = " ".join(s for s in (title, abstract, theme) if s).lower()
-    for keyword in MARINE_KEYWORDS:
-        if keyword in haystack:
-            return True, f"keyword {keyword!r}"
-
-    return False, "no marine signal"
-
-
-def _hit_is_marine(hit: dict) -> tuple[bool, str]:
-    """Apply marine_relevance to a raw Kartkatalog /api/search hit"""
-    return marine_relevance(
-        title=hit.get("Title") or "",
-        abstract=hit.get("Abstract") or "",
-        theme=hit.get("Theme") or "",
-        organization=hit.get("Organization") or "",
-        organizations=hit.get("Organizations") or [],
-    )
-
-
-def discover(bbox: Bbox, search_text: str | None,
-             settings: GeonorgeSettings) -> list[DatasetRecord]:
-    """search -> classify -> coverage/licence metadata -> relevance.
-    The API has no spatial filter unfortunately....
-
-    Every hit comes back as a record; non-candidates carry a status explaining
-    why, so the manifest accounts for the full catalogue sweep. 
-    """
-    records = []
-    candidates = 0
-    for hit in search_datasets(search_text):
-        protocol = hit.get("DistributionProtocol") or ""
-        uuid = hit.get("Uuid") or ""
-        record = DatasetRecord(
-            uuid=uuid,
-            title=hit.get("Title") or "",
-            organization=hit.get("Organization") or "",
-            protocol=protocol,
-            kind=classify(protocol),
-            distribution_url=hit.get("DistributionUrl"),
-            detail_url=hit.get("ShowDetailsUrl") or DETAIL_PAGE.format(uuid=uuid),
-            is_open=bool(hit.get("IsOpenData")),
-        )
-        records.append(record)
-
-        if record.kind == "skip":
-            record.status = f"skipped: unsupported protocol {protocol!r}"
-            continue
-        if settings.marine_filter:
-            keep, reason = _hit_is_marine(hit)
-            if not keep:
-                record.status = f"skipped: not marine-relevant ({reason})"
-                logger.info(f"skip {record.title!r} -- {reason}")
-                continue
-        if candidates >= settings.max_datasets:
-            record.status = f"skipped: over GEONORGE_MAX_DATASETS={settings.max_datasets}"
-            continue
-        try:
-            metadata = get_metadata(record.uuid)
-        except requests.RequestException as e:
-            record.status = f"error: metadata fetch failed ({e})"
-            continue
-        constraints = metadata.get("Constraints") or {}
-        record.licence_url = constraints.get("OtherConstraintsLink")
-        record.coverage_bbox = parse_coverage_bbox(metadata)
-        if record.coverage_bbox is None:
-            record.status = "skipped: no coverage extent"
-        elif not bbox_intersects(record.coverage_bbox, bbox):
-            record.status = "skipped: coverage outside window"
-        else:
-            candidates += 1
-    return records
-
-
-def _local_name(tag: str) -> str: 
-    #  strip the XML namespace
-    return tag.rsplit('}', 1)[-1]
-
-
-def wfs_feature_types(url: str) -> list[str]:
-    """Feature type names from WFS GetCapabilities document."""
-    r = _session.get(url, params={"service": "WFS", "request": "GetCapabilities"},
-                     timeout=60)
-    r.raise_for_status()
-    names = []
-    for element in ET.fromstring(r.content).iter():
-        if _local_name(element.tag) != "FeatureType":
-            continue
-        for child in element:
-            if _local_name(child.tag) == "Name" and child.text:
-                names.append(child.text.strip())
-                break
-    return names
+def discover() -> list[DatasetRecord]:
+    """Build records straight from ALLOWLIST -- no catalogue search, no network."""
+    return [
+        DatasetRecord(uuid=uuid, title=title, protocol=protocol,
+                      kind=classify(protocol), distribution_url=url,
+                      detail_url=DETAIL_PAGE.format(uuid=uuid), type_names=types)
+        for uuid, title, protocol, url, types in ALLOWLIST
+    ]
 
 
 def _feature_count(path: Path) -> int:
@@ -320,15 +196,30 @@ def _feature_count(path: Path) -> int:
         return 0
 
 
-def _wfs_pages(url: str, type_name: str, axis_bbox: str, out_dir: Path) -> list[Path]:
-    """GetFeature for one feature type
+def _wfs_output_format(endpoint: str) -> str | None:
+    """Format to request per server (probed), to avoid a wasted first request.
 
-    Asks for GeoJSON. And if refused then fallback to server default (GML).
-    Return only page that actually contains features..
+    deegree (wfs.geonorge.no) and the ArcGIS MapServer services both serve GML
+    by default and reject GeoJSON, so we request GML directly (None) -- cheap to
+    read now that remote-schema resolution is off, and full fidelity (ArcGIS
+    GeoJSON drops some features). geoserver (hi.no) returns GeoJSON cleanly.
+    """
+    if "MapServer/WFSServer" in endpoint or "wfs.geonorge.no" in endpoint:
+        return None
+    return "application/json"
+
+
+def _wfs_pages(url: str, type_name: str, axis_bbox: str, out_dir: Path,
+               output_format: str | None) -> list[Path]:
+    """GetFeature pages for one feature type, requesting output_format
+    (None = the server's GML default). Keeps a one-shot GML fallback in case a
+    server unexpectedly refuses the expected format. Returns only pages with
+    features.
     """
     paths: list[Path] = []
     safe_type = _safe_name(type_name)
-    output_format, suffix = "application/json", ".json"
+    of = output_format
+    suffix = ".json" if of else ".gml"
     for page in range(WFS_MAX_PAGES_PER_TYPE):
         params = {
             "service": "WFS", "version": "2.0.0", "request": "GetFeature",
@@ -336,13 +227,13 @@ def _wfs_pages(url: str, type_name: str, axis_bbox: str, out_dir: Path) -> list[
             "bbox": axis_bbox,
             "count": WFS_PAGE_SIZE, "startIndex": page * WFS_PAGE_SIZE,
         }
-        if output_format:
-            params["outputFormat"] = output_format
-        r = _session.get(url, params=params, timeout=300)
-        if output_format and (not r.ok or not r.text.lstrip().startswith(("{", "["))):
-            output_format, suffix = None, ".gml"
+        if of:
+            params["outputFormat"] = of
+        r = _session.get(url, params=params, timeout=WFS_REQUEST_TIMEOUT)
+        if of and (not r.ok or not r.text.lstrip().startswith(("{", "["))):
+            of, suffix = None, ".gml"
             params.pop("outputFormat")
-            r = _session.get(url, params=params, timeout=300)
+            r = _session.get(url, params=params, timeout=WFS_REQUEST_TIMEOUT)
         if not r.ok or "ExceptionReport" in r.text[:512]:
             logger.debug(f"WFS GetFeature failed for {type_name} ({url}): {r.text[:200]}")
             break
@@ -359,29 +250,24 @@ def _wfs_pages(url: str, type_name: str, axis_bbox: str, out_dir: Path) -> list[
 
 
 def fetch_wfs(record: DatasetRecord, bbox: Bbox, output_dir: Path) -> list[Path]:
-    """Fetch. GetFeature per feature type with a server-side BBOX of
-    the buffered window, so national layers shrink before the local crop.
+    """GetFeature each allowlisted type with a server-side BBOX of the window.
 
-    Axis order for EPSG:4326 bboxes varies between servers: the spec urn form
-    (lat/lon) is tried first, the legacy lon/lat form second.
+    Requests the output format the endpoint is known to support (skipping the
+    GeoJSON attempt on GML-only servers). WFS 2.0.0 with the urn CRS uses lat/lon
+    axis order per spec, which all our endpoints honor -- so we send that
+    directly rather than retrying the legacy lon/lat form.
     """
     out_dir = output_dir / "raw" / record.uuid
     out_dir.mkdir(parents=True, exist_ok=True)
     # catalogue DistributionUrls embed query strings (?service=wfs&request=...)
     # that would collide with the GetFeature params
     endpoint = (record.distribution_url or "").split("?", 1)[0]
+    output_format = _wfs_output_format(endpoint)
     lon_min, lat_min, lon_max, lat_max = bbox
-    axis_orders = (
-        f"{lat_min},{lon_min},{lat_max},{lon_max},urn:ogc:def:crs:EPSG::4326",
-        f"{lon_min},{lat_min},{lon_max},{lat_max},EPSG:4326",
-    )
+    axis_bbox = f"{lat_min},{lon_min},{lat_max},{lon_max},urn:ogc:def:crs:EPSG::4326"
     paths: list[Path] = []
-    for type_name in wfs_feature_types(endpoint):
-        for axis_bbox in axis_orders:
-            pages = _wfs_pages(endpoint, type_name, axis_bbox, out_dir)
-            if pages:
-                paths.extend(pages)
-                break
+    for type_name in record.type_names:
+        paths.extend(_wfs_pages(endpoint, type_name, axis_bbox, out_dir, output_format))
     return paths
 
 
@@ -391,18 +277,8 @@ def _nedlasting(path: str) -> dict | list:
     return r.json()
 
 
-def _bbox_ring(bbox: Bbox, epsg: str = ORDER_PROJECTION) -> str:
-    """Closed bbox ring as the order API's 'x1 y1 x2 y2 ...' string, in epsg."""
-    transformer = Transformer.from_crs(4326, int(epsg), always_xy=True)
-    lon_min, lat_min, lon_max, lat_max = bbox
-    corners = [(lon_min, lat_min), (lon_max, lat_min), (lon_max, lat_max),
-               (lon_min, lat_max), (lon_min, lat_min)]
-    return " ".join(f"{x:.2f} {y:.2f}"
-                    for x, y in (transformer.transform(*c) for c in corners))
-
-
 def _pick_format(formats: list[dict]) -> dict:
-    """First format crop() can actually read; SOSI-only datasets are an error."""
+    """First format crop() can actually read; raster-only datasets are an error."""
     by_name = {(f.get("name") or "").upper(): f for f in formats}
     for preferred in OGR_READABLE_FORMATS:
         if preferred in by_name:
@@ -411,75 +287,26 @@ def _pick_format(formats: list[dict]) -> dict:
         f"no OGR-readable download format, available: {[f.get('name') for f in formats]}")
 
 
-def _pick_projection(projections: list[dict]) -> dict:
-    return next((p for p in projections if p.get("code") == ORDER_PROJECTION),
-                projections[0] if projections else {"code": ORDER_PROJECTION})
-
-
-def _admin_units_for_bbox(bbox: Bbox) -> set[str]:
-    """Kommune numbers whose territory the buffered bbox touches.
-    """
+def _bbox_ring(bbox: Bbox) -> str:
+    """Closed bbox ring as the order API's 'x1 y1 x2 y2 ...' string, in ORDER_PROJECTION."""
+    transformer = Transformer.from_crs(4326, int(ORDER_PROJECTION), always_xy=True)
     lon_min, lat_min, lon_max, lat_max = bbox
-    lons = (lon_min, (lon_min + lon_max) / 2, lon_max)
-    lats = (lat_min, (lat_min + lat_max) / 2, lat_max)
-    kommuner: set[str] = set()
-    for lat in lats:
-        for lon in lons:
-            try:
-                r = _session.get(f"{KOMMUNEINFO_API}/punkt",
-                                 params={"nord": lat, "ost": lon, "koordsys": 4258},
-                                 timeout=30)
-                r.raise_for_status()
-            except requests.RequestException:
-                continue  # points in the sea / outside Norway map to no kommune
-            knr = (r.json() or {}).get("kommunenummer")
-            if knr:
-                kommuner.add(knr)
-    # TODO: a 3x3 grid can miss a kommune that only clips a bbox edge between
-    # samples; a true polygon intersection against kommune boundaries would be
-    # exact but far heavier. Adequate for the small query windows we target.
-    return kommuner
-
-
-def _areas_for_bbox(bbox: Bbox, areas: list[dict]) -> list[dict] | None:
-    """Finest-granularity area codes the dataset offers that the bbox intersects.
-
-    Prefers kommune over fylke; returns None when the codelist has nothing below
-    landsdekkende --> fallsback to ordering 'Hele landet'.
-    """
-    has_kommune = any(a.get("type") == "kommune" for a in areas)
-    has_fylke = any(a.get("type") == "fylke" for a in areas)
-    if not (has_kommune or has_fylke):
-        return None
-    kommuner = _admin_units_for_bbox(bbox)
-    if not kommuner:
-        return None
-    # TODO: assumes codelist 'code' matches kommuneinfo's kommunenummer format
-    # (4-digit string, leading zeros preserved); fylke code = first two digits.
-    if has_kommune:
-        chosen = [a for a in areas
-                  if a.get("type") == "kommune" and a.get("code") in kommuner]
-        if chosen:
-            return chosen
-    if has_fylke:
-        fylker = {k[:2] for k in kommuner}
-        chosen = [a for a in areas
-                  if a.get("type") == "fylke" and a.get("code") in fylker]
-        if chosen:
-            return chosen
-    return None
+    corners = [(lon_min, lat_min), (lon_max, lat_min), (lon_max, lat_max),
+               (lon_min, lat_max), (lon_min, lat_min)]
+    return " ".join(f"{x:.2f} {y:.2f}"
+                    for x, y in (transformer.transform(*c) for c in corners))
 
 
 def build_order(uuid: str, bbox: Bbox, capabilities: dict, formats: list[dict],
-                projections: list[dict], areas: list[dict], email: str,
-                selected_areas: list[dict] | None = None) -> dict:
-    """Order payload for one dataset.
+                projections: list[dict], areas: list[dict], email: str) -> dict:
+    """Order payload for one dataset, in an OGR-readable format.
 
-    Server-side clip via coordinates + coordinatesystem; else order the
-    given selected_areas (admin-areas municipality/county covering the window); else 'Hele landet' --> crop() locally.
+    Prefer the server-side polygon clip (returns only the window); otherwise
+    order the whole-country ('Hele landet') file, which crop() reduces locally.
     """
     fmt = _pick_format(formats)
-    proj = _pick_projection(projections)
+    proj = next((p for p in projections if p.get("code") == ORDER_PROJECTION),
+                projections[0] if projections else {"code": ORDER_PROJECTION})
     line: dict = {
         "metadataUuid": uuid,
         "formats": [{"name": fmt.get("name")}],
@@ -490,9 +317,6 @@ def build_order(uuid: str, bbox: Bbox, capabilities: dict, formats: list[dict],
         line["coordinates"] = _bbox_ring(bbox)
         line["coordinatesystem"] = ORDER_PROJECTION
         line["areas"] = [{"code": "Kart", "name": "Valgt fra kart", "type": "polygon"}]
-    elif selected_areas:
-        line["areas"] = [{"code": a.get("code"), "name": a.get("name"),
-                          "type": a.get("type")} for a in selected_areas]
     else:
         national = next((a for a in areas if a.get("type") == "landsdekkende"), None)
         if national is None:
@@ -573,24 +397,19 @@ def _unzip_all(paths: list[Path], out_dir: Path) -> list[Path]:
     return out
 
 
-def _order_and_download(order: dict, out_dir: Path,
-                        auth: tuple[str, str] | None) -> list[Path]:
-    r = _session.post(f"{NEDLASTING_API}/order", json=order, auth=auth, timeout=60)
-    r.raise_for_status()
-    files = _await_order(r.json(), auth)
-    raw = _download_order_files(files, out_dir, auth)
-    return _unzip_all(raw, out_dir / "unzipped")
-
-
 def fetch_download(record: DatasetRecord, bbox: Bbox, output_dir: Path) -> list[Path]:
-    """Order via nedlasting.geonorge.no (the geonorge_maritime download path,
-    generalized to any dataset uuid).
+    """Order the dataset via nedlasting.geonorge.no, then crop locally.
 
-    Server-side polygon clip when the dataset capabilities report
-    supportsPolygonSelection; otherwise (or if clip job fails) the prepackaged 'Hele landet' file which is cropped locally.
-    
-    - Require GEONORGE_EMAIL
-    - anonymous is fine for open data.
+    Always prefer a server-side crop: if the dataset supports a polygon clip the
+    order is bbox-clipped server-side; only datasets without one fall back to the
+    whole-country ('Hele landet') download. Requires GEONORGE_EMAIL; anonymous is
+    fine for open data.
+
+    NOTE for future additions: before adding a GEONORGE:DOWNLOAD dataset, prefer a
+    server-side crop where one exists -- an OGC:WFS / OGC:API-Features variant of
+    the same data, or this order API's polygon clip -- and only rely on the full
+    'Hele landet' download when no cropping option is available (it is the slow
+    path, and some datasets do not even produce a national file).
     """
     settings = GeonorgeSettings()
     if not settings.email:
@@ -601,31 +420,17 @@ def fetch_download(record: DatasetRecord, bbox: Bbox, output_dir: Path) -> list[
     capabilities = _nedlasting(f"capabilities/{record.uuid}")
     formats = _nedlasting(f"codelists/format/{record.uuid}")
     projections = _nedlasting(f"codelists/projection/{record.uuid}")
-    use_polygon = bool(capabilities.get("supportsPolygonSelection"))
+    # only the 'Hele landet' fallback needs the area codelist
+    areas = ([] if capabilities.get("supportsPolygonSelection")
+             else _nedlasting(f"codelists/area/{record.uuid}"))
+    order = build_order(record.uuid, bbox, capabilities, formats, projections,
+                        areas, settings.email)
     out_dir = output_dir / "raw" / record.uuid
-
-    if use_polygon:
-        order = build_order(record.uuid, bbox, capabilities, formats,
-                            projections, [], settings.email)
-        try:
-            return _order_and_download(order, out_dir, auth)
-        except RuntimeError as e:
-            logger.warning(f"{record.title}: clipped order failed ({e}); "
-                           f"retrying with 'Hele landet'")
-
-    areas = _nedlasting(f"codelists/area/{record.uuid}")
-    selected = (_areas_for_bbox(bbox, areas)
-                if capabilities.get("supportsAreaSelection") else None)
-    if selected:
-        logger.info(f"{record.title}: ordering {len(selected)} {selected[0]['type']}(s) "
-                    f"covering the window instead of 'Hele landet'")
-    else:
-        logger.info(f"{record.title}: no sub-national area available; ordering 'Hele landet'")
-    order = build_order(record.uuid, bbox,
-                        {**capabilities, "supportsPolygonSelection": False},
-                        formats, projections, areas, settings.email,
-                        selected_areas=selected)
-    return _order_and_download(order, out_dir, auth)
+    r = _session.post(f"{NEDLASTING_API}/order", json=order, auth=auth, timeout=60)
+    r.raise_for_status()
+    files = _await_order(r.json(), auth)
+    raw = _download_order_files(files, out_dir, auth)
+    return _unzip_all(raw, out_dir / "unzipped")
 
 
 def _layers(path: Path) -> list[str | None]:
@@ -636,17 +441,50 @@ def _layers(path: Path) -> list[str | None]:
         return [None]
 
 
-def crop(paths: list[Path], bbox: Bbox) -> gpd.GeoDataFrame:
-    """Clip fetched vector files to buffered window bbox.
+# shapefile sidecars + schema/doc files that are not standalone vector sources:
+# reading a .dbf/.shx re-opens the parent .shp and duplicates its features.
+_NON_VECTOR_SUFFIXES = {
+    ".dbf", ".shx", ".prj", ".cpg", ".sbn", ".sbx", ".qix", ".aih", ".ain",
+    ".gfs", ".xsd", ".xml", ".txt", ".pdf", ".doc", ".docx", ".html", ".htm",
+    ".png", ".jpg", ".jpeg",
+}
 
-    This is the step that reduces national data to only what is inside the box.
+
+def _read_bbox(window, layer_crs) -> tuple | None:
+    """The window's bounds in the layer's CRS, for a pyogrio bbox= pushdown.
+
+    The transformed bounds are an axis-aligned superset of the window (crop()
+    then clips exactly), so no in-window feature is dropped. None when the CRS is
+    unknown -- the whole layer is read and clipped, as before.
+    """
+    if not layer_crs:
+        return None
+    try:
+        return tuple(gpd.GeoSeries([window], crs="EPSG:4326")
+                     .to_crs(layer_crs).total_bounds)
+    except Exception:
+        return None
+
+
+def crop(paths: list[Path], bbox: Bbox) -> gpd.GeoDataFrame:
+    """Clip fetched vector files to the buffered window bbox.
+
+    Reads only the window via a bbox= pushdown in each layer's CRS (national
+    download files are otherwise read in full), then clips exactly. Skips
+    shapefile sidecars/doc files, which would re-open the same .shp.
     """
     window = shapely_box(*bbox)
     frames = []
     for path in paths:
+        if path.suffix.lower() in _NON_VECTOR_SUFFIXES:
+            continue
         for layer in _layers(path):
             try:
-                gdf = gpd.read_file(path, layer=layer)
+                read_bbox = _read_bbox(window, pyogrio.read_info(path, layer=layer).get("crs"))
+            except Exception:
+                read_bbox = None
+            try:
+                gdf = gpd.read_file(path, layer=layer, bbox=read_bbox)
             except Exception as e:
                 logger.warning(f"unreadable layer {layer!r} in {path.name} -- {e}")
                 continue
@@ -681,19 +519,14 @@ def annotate(gdf: gpd.GeoDataFrame, record: DatasetRecord) -> gpd.GeoDataFrame:
 
 
 class Geonorge(DataSource):
-    """Datasource driven by Kartkatalog. Discover datasets covering the query
-    window, fetch per DistributionProtocol, crop to buffered bbox,
-    annotate per-feature metadata, store as GeoJSON files plus metadata in a manifest."""
+    """Fetch the curated ALLOWLIST of maritime Geonorge datasets, crop each to the
+    query window, annotate per-feature provenance, write GeoJSON + a manifest."""
 
     buffer_km: float | None
-    search_text: str | None
 
-    def __init__(self, buffer_km: float | None = None, search_text: str | None = None):
-        # search_text is the interim home of the optional filter
+    def __init__(self, buffer_km: float | None = None):
         super().__init__(name="geonorge")
-
         self.buffer_km = buffer_km
-        self.search_text = search_text
 
     def execute(self,
             from_time: dt.datetime | None = None,
@@ -717,25 +550,21 @@ class Geonorge(DataSource):
         out_dir = Path(output_dir) / "geonorge"
         out_dir.mkdir(parents=True, exist_ok=True)
 
-        records = discover(bbox, self.search_text, settings)
-        logger.info(f"Discovered {len(records)} datasets, "
-                    f"{sum(r.status == 'candidate' for r in records)} candidates")
+        records = discover()
+        logger.info(f"Fetching {len(records)} allowlisted Geonorge datasets")
 
         written: list[Path] = []
         for record in records:
-            if record.status != "candidate":
-                continue
             try:
-                if record.kind == "wfs":
-                    raw = fetch_wfs(record, bbox, out_dir)
-                else:
-                    raw = fetch_download(record, bbox, out_dir)
+                raw = (fetch_wfs(record, bbox, out_dir) if record.kind == "wfs"
+                       else fetch_download(record, bbox, out_dir))
                 features = crop(raw, bbox)
                 if features.empty:
                     record.status = "empty: no features inside window"
                     continue
                 features = annotate(features, record)
                 path = out_dir / f"{record.uuid}_{_safe_name(record.title)}.geojson"
+                path.unlink(missing_ok=True)  # pyogrio/Windows errors on overwriting an existing GeoJSON
                 features.to_file(path, driver="GeoJSON")
                 record.status = f"collected: {len(features)} features"
                 written.append(path)
