@@ -4,28 +4,12 @@ import tempfile
 from pathlib import Path
 
 import copernicusmarine
-import geopy.distance as geopy_distance
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from ..core.datasource import DataSource
+from ..utils import get_coordinates_min_max
 
 logger = logging.getLogger(__name__)
-
-def get_coordinates_min_max(latitude: float, longitude: float, radius_in_km: float):
-    center = (latitude, longitude)
-
-    lat_max = geopy_distance.distance(kilometers=radius_in_km).destination(center, bearing=0).latitude
-    lat_min = geopy_distance.distance(kilometers=radius_in_km).destination(center, bearing=180).latitude
-
-    lon_min = geopy_distance.distance(kilometers=radius_in_km).destination(center, bearing=270).longitude
-    lon_max = geopy_distance.distance(kilometers=radius_in_km).destination(center, bearing=90).longitude
-
-    return {
-            'lat_min': lat_min,
-            'lat_max': lat_max,
-            'lon_min': lon_min,
-            'lon_max': lon_max
-    }
 
 class Credentials(BaseSettings):
     username: str
@@ -43,7 +27,7 @@ class CopernicusMarineDataset(DataSource):
     variables: list[str] | None
 
     def __init__(self, dataset_id: str, variables: list[str] | None = None):
-        super().__init__(name="copernicusmarine")
+        super().__init__(name=f"copernicusmarine__{dataset_id}")
 
         self.dataset_id = dataset_id
         self.variables = variables

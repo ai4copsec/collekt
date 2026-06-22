@@ -35,10 +35,12 @@ classifiers = [
 ]
 
 dependencies = [
+    "geopandas",
     "geopy",
     "pydantic",
     "pydantic-settings",
     "requests",
+    "shapely",
     "tqdm",
 #   datasources
     "copernicusmarine",
