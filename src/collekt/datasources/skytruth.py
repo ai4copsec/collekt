@@ -41,7 +41,6 @@ class SkytruthDataset(DataSource):
             output_dir: Path | None = Path(tempfile.gettempdir())
            ) -> list[any]:
 
-        min_max = get_coordinates_min_max(latitude, longitude, radius_in_km=radius)
         url = CERULEAN_SKYTRUTH_API_SLICK
         # Keep sortby here, to handle encoding issue with ~slick_timestamp
         # Sorting is in descending order - so latests timestamps first
@@ -51,8 +50,10 @@ class SkytruthDataset(DataSource):
         if limit:
             parameters["limit"] = limit
 
-        # bbox=lon0,lat0,lon1,lat1"
-        parameters["bbox"] = f"{min_max['lon_min']},{min_max['lat_min']},{min_max['lon_max']},{min_max['lat_max']}"
+        if latitude and longitude:
+            min_max = get_coordinates_min_max(latitude, longitude, radius_in_km=radius)
+            # bbox=lon0,lat0,lon1,lat1"
+            parameters["bbox"] = f"{min_max['lon_min']},{min_max['lat_min']},{min_max['lon_max']},{min_max['lat_max']}"
 
         if from_time:
             # Format: datetime=START_DATE/END_DATE
