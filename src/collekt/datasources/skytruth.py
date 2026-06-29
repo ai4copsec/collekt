@@ -94,5 +94,8 @@ class SkytruthDataset(DataSource):
         m.add_annotation(damast.core.Annotation(name=damast.core.Annotation.Key.Comment, value=f"Created from request: {response.request.url}"))
 
         adf = damast.core.AnnotatedDataFrame(dataframe=df, metadata=m)
-        adf.export(output_dir / "skytruth.parquet")
+        filename = output_dir / "skytruth.parquet"
+        adf.export(filename)
+
+        print(f"Saved {filename}")
 
