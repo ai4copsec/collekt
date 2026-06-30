@@ -13,7 +13,7 @@ from tqdm import tqdm
 
 from ..core.datasource import DataSource
 from ..core.types import Query
-from ..utils import get_coordinates_min_max
+from ..utils import get_coordinates_min_max, wkt_from_geojson_file
 
 logger = logging.getLogger(__name__)
 
@@ -179,7 +179,8 @@ class CopernicusDataspace(DataSource):
             max_records: int = 100,
             lat: float | None = None,
             lon: float | None = None,
-            radius: float | None = None
+            radius: float | None = None,
+            region: Path | str | None = None
             ):
 
         search_path = f"{COPERNICUS_CATALOG}/search"
@@ -193,8 +194,11 @@ class CopernicusDataspace(DataSource):
         if end_date:
             end_date = get_datetime(end_date)
 
+        if region:
+            wkt_geometry = wkt_from_geojson_file(region)
+            params["$filter"] = f"OData.CSC.Intersects(area=geography'{wkt_geometry}')"
         # longitude, latitude for bbox
-        if lat and lon and radius:
+        elif lat and lon and radius:
             coordinates = get_coordinates_min_max(latitude=lat, longitude=lon, radius_in_km=radius)
             params["bbox"] = ','.join([str(coordinates[x]) for x in ['lon_min', 'lat_min', 'lon_max', 'lat_max']])
 
@@ -213,7 +217,6 @@ class CopernicusDataspace(DataSource):
 
         headers = { 'Authorization': f'Bearer {self.access_token}' }
         logger.info(f"Searching {search_path} with {params=}")
-        breakpoint()
         response = requests.get(search_path, params=params, headers=headers)
         response.raise_for_status()
         return response.json()
@@ -265,7 +268,8 @@ class CopernicusDataspace(DataSource):
                 cloud_cover=self.query_parameters.cloudCover,
                 lat=query.latitude,
                 lon=query.longitude,
-                radius=query.radius
+                radius=query.radius,
+                region=query.region,
         )
 
         if not df["features"]:

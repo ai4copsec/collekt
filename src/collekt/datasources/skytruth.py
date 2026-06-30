@@ -8,12 +8,11 @@ import geopandas as gpd
 import polars as pl
 import requests
 import shapely.geometry
-import shapely.wkt
 from tqdm import tqdm
 
 from ..core.datasource import DataSource
 from ..core.types import Query
-from ..utils import get_coordinates_min_max
+from ..utils import get_coordinates_min_max, wkt_from_geojson_file
 
 logger = logging.getLogger(__name__)
 
@@ -48,19 +47,7 @@ class SkytruthDataset(DataSource):
             parameters["limit"] = limit
 
         if query.region:
-            with open(query.region, "r") as f:
-                geojson = json.load(f)
-
-                geometries = []
-                if geojson.get("type") == "FeatureCollection":
-                    for feature in geojson["features"]:
-                        geometries.append(shapely.geometry.shape(feature["geometry"]))
-                else:
-                    geometries.append(shapely.geometry.shape(geojson))
-
-                unified_geometry = shapely.ops.unary_union(geometries)
-                wkt_geometry = unified_geometry.simplify(0.005, preserve_topology=True).wkt
-
+            wkt_geometry = wkt_from_geojson_file(filename=query.region)
             cql_filter = f"S_INTERSECTS(geometry, {wkt_geometry})"
             parameters["filter"] = cql_filter
             parameters["filter-lang"] = "cql2-text"
