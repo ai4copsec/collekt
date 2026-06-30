@@ -34,7 +34,8 @@ class SkytruthDataset(DataSource):
             log_level: str | None = None,
             verbose: bool | None = None,
             limit: int | None = 1000,
-            output_dir: Path | None = Path(tempfile.gettempdir())
+            output_dir: Path | None = Path(tempfile.gettempdir()),
+            output_filename: str = "skytruth.parquet"
            ) -> list[any]:
 
         url = CERULEAN_SKYTRUTH_API_SLICK
@@ -46,7 +47,24 @@ class SkytruthDataset(DataSource):
         if limit:
             parameters["limit"] = limit
 
-        if query.latitude and query.longitude:
+        if query.region:
+            with open(query.region, "r") as f:
+                geojson = json.load(f)
+
+                geometries = []
+                if geojson.get("type") == "FeatureCollection":
+                    for feature in geojson["features"]:
+                        geometries.append(shapely.geometry.shape(feature["geometry"]))
+                else:
+                    geometries.append(shapely.geometry.shape(geojson))
+
+                unified_geometry = shapely.ops.unary_union(geometries)
+                wkt_geometry = unified_geometry.simplify(0.005, preserve_topology=True).wkt
+
+            cql_filter = f"S_INTERSECTS(geometry, {wkt_geometry})"
+            parameters["filter"] = cql_filter
+            parameters["filter-lang"] = "cql2-text"
+        elif query.latitude and query.longitude:
             min_max = get_coordinates_min_max(query.latitude, query.longitude, radius_in_km=query.radius)
             # bbox=lon0,lat0,lon1,lat1"
             parameters["bbox"] = f"{min_max['lon_min']},{min_max['lat_min']},{min_max['lon_max']},{min_max['lat_max']}"
@@ -69,7 +87,7 @@ class SkytruthDataset(DataSource):
         pbar = None
         dataframes = []
 
-        logger.info(f"Querying skytruth: {url} with {parameters}")
+        logger.info(f"SkytruthDataset: querying {url} with {parameters}")
         while url:
             page_count += 1
             try:
@@ -77,7 +95,7 @@ class SkytruthDataset(DataSource):
                 response.raise_for_status()
                 data = response.json()
             except requests.exceptions.RequestException as e:
-                logger.warning(f"Failed to retrieve data -- {e}")
+                logger.warning(f"SkytruthDataset: failed to retrieve data -- {e}")
                 break
 
             if "features" in data and len(data["features"]) == 0:
@@ -120,14 +138,18 @@ class SkytruthDataset(DataSource):
         if pbar:
             pbar.close()
 
+        if not dataframes:
+            logger.warning("SkytruthDataset: no matching results")
+            return
+
         df = pl.concat(dataframes)
 
         m = damast.core.MetaData.load_yaml(CERULEAN_SKYTRUTH_SPEC_YAML)
         m.add_annotation(damast.core.Annotation(name=damast.core.Annotation.Key.Comment, value=f"Created from request: {response.request.url}"))
 
-        adf = damast.core.AnnotatedDataFrame(dataframe=df, metadata=m)
-        filename = output_dir / "skytruth.parquet"
+        adf = damast.core.AnnotatedDataFrame(dataframe=df, metadata=m, validation_mode=damast.core.ValidationMode.UPDATE_DATA)
+        filename = output_dir / output_filename
         adf.export(filename)
 
-        print(f"Saved {filename}")
+        logger.info(f"skytruth: saved {filename}")
 
