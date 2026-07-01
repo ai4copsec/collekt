@@ -1,7 +1,8 @@
-import datetime as dt
 import subprocess
 import tempfile
 from pathlib import Path
+
+from .types import Query
 
 
 class DataSource:
@@ -11,12 +12,7 @@ class DataSource:
         self.name = name
 
     def execute(self,
-            from_time: dt.datetime | None = None,
-            to_time: dt.datetime | None = None,
-            longitude: float | None = None,
-            latitude: float | None = None,
-            radius: float | None = None,
-            region: Path | None = None,
+            query: Query = Query(),
             log_level: str | None = None,
             verbose: bool | None = None,
             output_dir: Path | None = Path(tempfile.gettempdir())
@@ -39,12 +35,7 @@ class CLIDataSource(DataSource):
         self.time_format = time_format
 
     def execute(self,
-            from_time: dt.datetime | None = None,
-            to_time: dt.datetime | None = None,
-            longitude: float | None = None,
-            latitude: float | None = None,
-            radius: float | None = None,
-            region: Path | None = None,
+            query: Query = Query(),
             log_level: str | None = None,
             verbose: bool | None = None,
             output_dir: Path | None = Path(tempfile.gettempdir())
@@ -58,25 +49,26 @@ class CLIDataSource(DataSource):
         if verbose:
             cmd += [ "--verbose"]
 
-        if from_time:
-            cmd += [ "--from-time", from_time.strftime(self.time_format)]
-
-        if to_time:
-            cmd += [ "--to-time", to_time.strftime(self.time_format)]
-
-        if latitude is not None:
-            cmd += ["--at-lat", str(latitude)]
-
-        if longitude is not None:
-            cmd += ["--at-lon", str(longitude)]
-            
-        if radius is not None:
-            cmd += ["--radius", str(radius)]
-
-        if region:
-            cmd += [ "--region", region ]
-
         if output_dir:
             cmd += [ "--output-dir", output_dir ]
+
+        # Query
+        if query.from_time:
+            cmd += [ "--from-time", query.from_time.strftime(self.time_format)]
+
+        if query.to_time:
+            cmd += [ "--to-time", query.to_time.strftime(self.time_format)]
+
+        if query.latitude is not None:
+            cmd += [ "--at-lat", str(query.latitude) ]
+
+        if query.longitude is not None:
+            cmd += [ "--at-lon", str(query.latitude) ]
+
+        if query.radius is not None:
+            cmd += [ "--radius", str(query.radius) ]
+
+        if query.region is not None:
+            cmd += [ "--region", query.region ]
 
         subprocess.run(cmd)

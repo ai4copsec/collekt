@@ -1,4 +1,5 @@
 import datetime as dt
+import difflib
 import json
 import logging
 import tempfile
@@ -11,7 +12,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from tqdm import tqdm
 
 from ..core.datasource import DataSource
-from ..utils import get_coordinates_min_max
+from ..core.types import Query
+from ..utils import get_coordinates_min_max, wkt_from_geojson_file
 
 logger = logging.getLogger(__name__)
 
@@ -85,7 +87,7 @@ class MinMax(BaseModel):
     def __repr__(self):
         return f"[{self.lower_bound},{self.upper_bound}]"
 
-class Query(BaseModel):
+class QueryParameters(BaseModel):
     cloudCover: int = Field(None, ge=0, le=10)
 
 
@@ -105,21 +107,22 @@ class CopernicusDataspace(DataSource):
     collection: str
     available_collections: dict[str, str]
 
-    query: Query
+    query_parameters: QueryParameters
 
     access_token: str | None
 
     AUTH_URL = "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token"
 
-    def __init__(self, collection: str, query: Query = Query()):
+    def __init__(self, collection: str, query_parameters: QueryParameters = QueryParameters()):
         super().__init__(name=f"copernicus_{collection}")
 
         self.available_collections = CopernicusDataspace.get_collections()
         if collection not in self.available_collections:
-            raise ValueError(f"Collection {collection} is not known. Available are {','.join(self.available_collections)}")
+            closest_matches = difflib.get_close_matches(collection, self.available_collections, n=8, cutoff=0.3)
+            raise ValueError(f"Collection {collection} is not known. Did you mean {','.join(closest_matches)}")
 
         self.collection = collection
-        self.query = query
+        self.query_parameters = query_parameters
 
         self.access_token = None
 
@@ -177,7 +180,7 @@ class CopernicusDataspace(DataSource):
             lat: float | None = None,
             lon: float | None = None,
             radius: float | None = None,
-
+            region: Path | str | None = None
             ):
 
         search_path = f"{COPERNICUS_CATALOG}/search"
@@ -191,9 +194,13 @@ class CopernicusDataspace(DataSource):
         if end_date:
             end_date = get_datetime(end_date)
 
+        if region:
+            wkt_geometry = wkt_from_geojson_file(region)
+            params["$filter"] = f"OData.CSC.Intersects(area=geography'{wkt_geometry}')"
         # longitude, latitude for bbox
-        coordinates = get_coordinates_min_max(latitude=lat, longitude=lon, radius_in_km=radius)
-        params["bbox"] = ','.join([str(coordinates[x]) for x in ['lon_min', 'lat_min', 'lon_max', 'lat_max']])
+        elif lat and lon and radius:
+            coordinates = get_coordinates_min_max(latitude=lat, longitude=lon, radius_in_km=radius)
+            params["bbox"] = ','.join([str(coordinates[x]) for x in ['lon_min', 'lat_min', 'lon_max', 'lat_max']])
 
         params["datetime"] = f"{start_date.isoformat(timespec='seconds')}"
         if end_date != start_date:
@@ -240,19 +247,13 @@ class CopernicusDataspace(DataSource):
 
         params["Authorization"] = f"Bearer {self.access_token}"
         logger.info(f"Search catalogue: {search_path} {params=}")
-
         response = requests.get(search_path, params=params)
         response.raise_for_status()
         return response.json()
 
 
     def execute(self,
-            from_time: dt.datetime | None = None,
-            to_time: dt.datetime | None = None,
-            longitude: float | None = None,
-            latitude: float | None = None,
-            radius: float | None = None,
-            region: Path | None = None,
+            query: Query = Query(),
             log_level: str | None = None,
             verbose: bool | None = None,
             output_dir: Path | None = Path(tempfile.gettempdir())
@@ -262,13 +263,17 @@ class CopernicusDataspace(DataSource):
 
         df = self.search(
                 collection=self.collection,
-                start_date=from_time,
-                end_date=to_time,
-                cloud_cover=self.query.cloudCover,
-                lat=latitude,
-                lon=longitude,
-                radius=radius
+                start_date=query.from_time,
+                end_date=query.to_time,
+                cloud_cover=self.query_parameters.cloudCover,
+                lat=query.latitude,
+                lon=query.longitude,
+                radius=query.radius,
+                region=query.region,
         )
+
+        if not df["features"]:
+            print("No results available")
 
         for feature in df["features"]:
             # feature['assets']['Product']
