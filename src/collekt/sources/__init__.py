@@ -8,5 +8,12 @@ lives in `collekt.sources.base`.
 
 # Importing each adapter module registers it. Adapters lazy-import their heavy
 # provider clients, so importing this package stays light.
-from collekt.sources import cmems, ecmwf_open_data, era5  # noqa: F401
+from collekt.sources import (  # noqa: F401
+    cmems,
+    copernicus_dataspace,
+    ecmwf_open_data,
+    era5,
+    hozint,
+    skytruth,
+)
 from collekt.sources.base import SourceResult, SourceStatus  # noqa: F401
