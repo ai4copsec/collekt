@@ -3,6 +3,8 @@
 Public API.
 """
 
+# Importing the sources package registers the built-in source adapters.
+from collekt import sources  # noqa: F401
 from collekt.core.fetcher import Fetcher
 from collekt.core.request import Region, Request
 from collekt.core.result import Result

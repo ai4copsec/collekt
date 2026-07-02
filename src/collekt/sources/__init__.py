@@ -1,5 +1,12 @@
 """Source adapters.
 
-Each adapter fetches source-native files for a request and returns
-`SourceResult` records. The shared contract lives in `collekt.sources.base`.
+Importing this package registers the built-in adapters (through
+`collekt.sources.base.register_adapter`). Each adapter fetches source-native
+files for a request and returns `SourceResult` records; the shared contract
+lives in `collekt.sources.base`.
 """
+
+# Importing each adapter module registers it. Adapters lazy-import their heavy
+# provider clients, so importing this package stays light.
+from collekt.sources import cmems, ecmwf_open_data, era5  # noqa: F401
+from collekt.sources.base import SourceResult, SourceStatus  # noqa: F401
