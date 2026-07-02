@@ -45,3 +45,5 @@ quartodoc:
       desc: "Public API for collekt."
       contents:
         - __version__
+        - Request
+        - Region

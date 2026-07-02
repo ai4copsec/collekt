@@ -1,0 +1,20 @@
+# collekt base configuration.
+#
+# This file holds output defaults and cache policy only. Source catalogs and
+# curated presets are supplied by the consuming brick through its own conf/
+# directory (passed as `conf_dir`); collekt ships the loading mechanism plus,
+# in later phases, minimal first-party source definitions. See docs/plan.qmd.
+
+output:
+  root: "data/collections"
+  request_pattern: "{start:%Y%m%d}_{end:%Y%m%d}_{sampling}_{bbox_hash}"
+  manifest_name: "manifest.json"
+
+cache:
+  reuse_existing: true
+  overwrite: false
+  strict: false
+
+credentials:
+  cdsapi_rc: "$HOME/.cdsapirc"
+  copernicusmarine_credentials_file: null
