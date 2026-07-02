@@ -256,7 +256,8 @@ class CopernicusDataspace(DataSource):
             query: Query = Query(),
             log_level: str | None = None,
             verbose: bool | None = None,
-            output_dir: Path | None = Path(tempfile.gettempdir())
+            output_dir: Path | None = Path(tempfile.gettempdir()),
+            download: bool = False
            ) -> list[any]:
 
         self.login()
@@ -292,28 +293,55 @@ class CopernicusDataspace(DataSource):
             download_url = feature['assets']['Product']['href']
             product_name = feature['assets']['Product']['file:local_path']
 
-            headers = {}
-            headers["Authorization"] = f"Bearer {self.access_token}"
+            # output_dir / 'region' / 'time' / 'collection'
+            timestamp = dt.datetime.fromisoformat(feature['properties']['start_datetime'])
+            output_base_dir = output_dir / timestamp.strftime("%Y-%m-%d")
+            if query.region:
+                output_base_dir = output_base_dir / Path(query.region).stem
+            output_base_dir.mkdir(parents=True, exist_ok=True)
 
-            filename = output_dir / product_name
-            print(f"Starting download of {product_name} from {download_url}")
-            response = requests.get(download_url, headers=headers, stream=True)
+            feature_id = feature['id']
+            feature_filename = output_base_dir / f"{feature_id}.json"
+            with open(feature_filename, "w") as f:
+                json.dump(obj=feature, fp=f, indent=4)
 
-            # Check for authorization or endpoint errors before starting
-            if response.status_code != 200:
-                print(f"Failed to initiate download. Status code: {response.status_code}")
-                print(response.text)
-            else:
-                # Get total file size from header (fallback to 0 if not provided by server)
-                total_size = int(response.headers.get('content-length', 0))
+            idx_filename = output_base_dir / f".{feature_id}.idx.collekt"
+            with open(idx_filename, "w") as f:
+                properties = {
+                    'id': feature_id,
+                    'bbox': feature['bbox'],
+                    'timestamp': timestamp.isoformat(),
+                    'download_url': download_url
+                }
+                json.dump(obj=properties, fp=f, indent=4)
 
-                # Define block/chunk size (8 KB)
-                block_size = 1024 * 8
+            for f in [feature_filename, idx_filename]:
+                logger.info(f"Written: {f}")
 
-                # Initialize tqdm progress bar
-                with tqdm(total=total_size, unit='iB', unit_scale=True, desc=product_name[:20] + "...") as progress_bar:
-                    with open(filename, 'wb') as file:
-                        for chunk in response.iter_content(chunk_size=block_size):
-                            if chunk: # Filter out keep-alive new chunks
-                                file.write(chunk)
-                                progress_bar.update(len(chunk))
+
+            if download:
+                headers = {}
+                headers["Authorization"] = f"Bearer {self.access_token}"
+
+                filename = output_dir / product_name
+                print(f"Starting download of {product_name} from {download_url}")
+                response = requests.get(download_url, headers=headers, stream=True)
+
+                # Check for authorization or endpoint errors before starting
+                if response.status_code != 200:
+                    print(f"Failed to initiate download. Status code: {response.status_code}")
+                    print(response.text)
+                else:
+                    # Get total file size from header (fallback to 0 if not provided by server)
+                    total_size = int(response.headers.get('content-length', 0))
+
+                    # Define block/chunk size (8 KB)
+                    block_size = 1024 * 8
+
+                    # Initialize tqdm progress bar
+                    with tqdm(total=total_size, unit='iB', unit_scale=True, desc=product_name[:20] + "...") as progress_bar:
+                        with open(filename, 'wb') as file:
+                            for chunk in response.iter_content(chunk_size=block_size):
+                                if chunk: # Filter out keep-alive new chunks
+                                    file.write(chunk)
+                                    progress_bar.update(len(chunk))
