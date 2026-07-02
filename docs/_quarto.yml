@@ -47,3 +47,5 @@ quartodoc:
         - __version__
         - Request
         - Region
+        - Fetcher
+        - Result
