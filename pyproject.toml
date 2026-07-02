@@ -92,11 +92,6 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]  # imports in a package __init__ are re-exports, not dead code
-# Legacy modules carried over unchanged until the tb-rea core port replaces them
-# (see docs/plan.qmd, phases 1-5). Remove each ignore as its module is rewritten.
-"src/collekt/core/collector.py" = ["B008"]
-"src/collekt/core/datasource.py" = ["B008"]
-"src/collekt/datasources/*.py" = ["B008", "UP042", "SIM108", "SIM117"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

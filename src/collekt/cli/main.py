@@ -1,80 +1,192 @@
-"""
-Main argument parser and CLI entry point.
-"""
+"""Command-line interface for collekt."""
 
+from __future__ import annotations
+
+import argparse
 import logging
-import sys
-import traceback as tb
-from argparse import ArgumentParser
 from pathlib import Path
 
-from collekt import __version__ as collekt_version
-from collekt.cli.base import BaseParser
-from collekt.cli.query import QueryParser
-from collekt.core.config import (
-    LOG_DATE_FORMAT,
-    LOG_FORMAT,
-    LOG_STYLE,
-)
+from rich.console import Console
+from rich.table import Table
 
-logging.basicConfig(
-    format=LOG_FORMAT,
-    style=LOG_STYLE,
-    datefmt=LOG_DATE_FORMAT,
-)
-
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
+from collekt.core.config import LOG_DATE_FORMAT, LOG_FORMAT, LOG_STYLE, load_config
+from collekt.core.doctor import run_doctor
+from collekt.core.fetcher import Fetcher
+from collekt.core.reporting import CliReporter
+from collekt.core.request import Region, Request
+from collekt.sources.base import SourceResult
 
 
-class MainParser(ArgumentParser):
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.description = "collekt - collect spatio-temporal data from arbitrary datasources"
-
-        self.add_argument("-w", "--workdir", default=str(Path(".").resolve()))
-        self.add_argument("-v", "--verbose", action="store_true")
-        self.add_argument("--log-level", type=str, default="INFO", help="Logging level")
-        self.add_argument("--version", action="store_true", default=False, help="Show current version of collekt")
-
-        self.subparsers = self.add_subparsers(help="sub-command help")
-
-    def attach_subcommand_parser(self, subcommand: str, help: str, parser_klass: BaseParser):
-        parser = self.subparsers.add_parser(subcommand, help=help)
-        parser_klass(parser=parser)
+def _parse_variables(value: str | None) -> tuple[str, ...]:
+    if not value:
+        return ()
+    return tuple(part.strip() for part in value.split(",") if part.strip())
 
 
-def run():
-    """
-    Run the main command line interface
-    """
-    main_parser = MainParser()
-    main_parser.attach_subcommand_parser(subcommand="query", help="Query the datasources", parser_klass=QueryParser)
+def _parse_source_variable_overrides(values: list[str] | None) -> dict[str, tuple[str, ...]]:
+    overrides: dict[str, tuple[str, ...]] = {}
+    for value in values or []:
+        if "=" not in value:
+            raise ValueError("source variable overrides must use SOURCE=default,group,var")
+        source, raw_variables = value.split("=", 1)
+        source = source.strip()
+        variables = _parse_variables(raw_variables)
+        if not source or not variables:
+            raise ValueError("source variable overrides must use SOURCE=default,group,var")
+        overrides[source] = variables
+    return overrides
 
-    args, unknown_args = main_parser.parse_known_args()
 
-    if args.version:
-        print(f"collekt {collekt_version}")
-        sys.exit(0)
+def _build_region(args: argparse.Namespace) -> Region:
+    if args.bbox:
+        return Region.from_bbox(args.bbox)
+    if args.at_lat is not None and args.at_lon is not None and args.radius is not None:
+        return Region.from_point_radius(args.at_lat, args.at_lon, args.radius)
+    if args.region:
+        return Region.from_geojson(args.region)
+    raise ValueError("provide a region: --bbox W E S N, --at-lat/--at-lon/--radius, or --region <geojson>")
 
-    for current_logger in [logging.getLogger(x) for x in logging.root.manager.loggerDict]:
-        if current_logger.name.startswith("collekt"):
-            current_logger.setLevel(logging.getLevelName(args.log_level))
 
-    if hasattr(args, "active_subparser"):
+def _render_plan(console: Console, results: tuple[SourceResult, ...]) -> None:
+    table = Table(title="collekt dry-run plan")
+    table.add_column("Source")
+    table.add_column("Day")
+    table.add_column("Available")
+    table.add_column("Sampling")
+    table.add_column("Dataset")
+    table.add_column("Variables")
+    table.add_column("Output")
+    styles = {"available": "green", "unavailable": "red", "unknown": "yellow", "not_checked": "yellow"}
+    for result in results:
+        details = result.details or {}
+        temporal = details.get("temporal") or {}
+        availability = (details.get("availability") or {}).get("status", "")
+        available_cell = f"[{styles[availability]}]{availability}[/]" if availability in styles else availability
+        table.add_row(
+            result.source,
+            result.day or "",
+            available_cell,
+            str(temporal.get("actual_sampling", "")),
+            result.dataset_id or "",
+            ", ".join(result.variables),
+            str(result.path or ""),
+        )
+    console.print(table)
+
+
+def _render_doctor(console: Console, preset: str | None, conf_dir: Path | None, *, online: bool = False) -> int:
+    checks = run_doctor(preset=preset, conf_dir=conf_dir, online=online)
+    table = Table(title="collekt doctor")
+    table.add_column("Status")
+    table.add_column("Check")
+    table.add_column("Message")
+    status_styles = {"ok": "green", "warn": "yellow", "fail": "red"}
+    for check in checks:
+        table.add_row(f"[{status_styles.get(check.status, 'white')}]{check.status}[/]", check.name, check.message)
+    console.print(table)
+    return 1 if any(check.status == "fail" for check in checks) else 0
+
+
+def build_parser() -> argparse.ArgumentParser:
+    """Build the collekt argument parser."""
+    parser = argparse.ArgumentParser(prog="collekt", description="Collect spatio-temporal data from arbitrary sources")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    fetch = subparsers.add_parser("fetch", help="Fetch source-native data for a region and time window")
+    fetch.add_argument("--bbox", nargs=4, type=float, metavar=("WEST", "EAST", "SOUTH", "NORTH"))
+    fetch.add_argument("--at-lat", type=float, help="Centre latitude (with --at-lon and --radius)")
+    fetch.add_argument("--at-lon", type=float, help="Centre longitude (with --at-lat and --radius)")
+    fetch.add_argument("--radius", type=float, help="Radius in km around the centre point")
+    fetch.add_argument("--region", type=Path, help="GeoJSON file describing the region")
+    fetch.add_argument("--start", help="Start date/datetime; defaults to current UTC day")
+    fetch.add_argument("--end", help="End date/datetime; defaults to the start day")
+    fetch.add_argument("--sampling", choices=("1h", "3h", "6h", "24h"), default="24h", help="Temporal sampling")
+    fetch.add_argument("--variables", help="Comma-separated variable groups, e.g. currents,wind")
+    fetch.add_argument(
+        "--use-variables",
+        action="append",
+        metavar="SOURCE=ITEMS",
+        help="Override one source's variables/groups, e.g. cmems_duacs=default,sea_level",
+    )
+    fetch.add_argument("--datasource", nargs="+", metavar="NAME", help="Restrict the run to these source names")
+    fetch.add_argument("--preset", default=None, help="Configuration preset (from --conf-dir)")
+    fetch.add_argument("--conf-dir", type=Path, help="Configuration directory (a brick's catalogs/presets)")
+    fetch.add_argument("--output-dir", type=Path, help="Staging root for downloaded files")
+    fetch.add_argument("--strict", action="store_true", help="Fail if any requested source is skipped")
+    fetch.add_argument("--no-cache", action="store_true", help="Ignore cached files and download again")
+    fetch.add_argument("--dry-run", action="store_true", help="Plan provider requests without downloading")
+
+    doctor = subparsers.add_parser("doctor", help="Check the local environment and source configuration")
+    doctor.add_argument("--preset", default=None)
+    doctor.add_argument("--conf-dir", type=Path)
+    doctor.add_argument("--online", action="store_true", help="Validate CMEMS datasets and variables online")
+
+    config = subparsers.add_parser("config", help="Inspect configuration")
+    config_subparsers = config.add_subparsers(dest="config_command", required=True)
+    show = config_subparsers.add_parser("show", help="Print merged configuration")
+    show.add_argument("--preset", default=None)
+    show.add_argument("--conf-dir", type=Path)
+
+    return parser
+
+
+def run(argv: list[str] | None = None) -> int:
+    """Run the collekt command-line interface."""
+    logging.basicConfig(format=LOG_FORMAT, style=LOG_STYLE, datefmt=LOG_DATE_FORMAT, level=logging.INFO)
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    console = Console()
+
+    if args.command == "config" and args.config_command == "show":
+        import yaml
+
+        console.print(yaml.safe_dump(load_config(preset=args.preset, conf_dir=args.conf_dir), sort_keys=False))
+        return 0
+
+    if args.command == "doctor":
+        return _render_doctor(console, args.preset, args.conf_dir, online=args.online)
+
+    if args.command == "fetch":
+        reporter = CliReporter(console)
         try:
-            active_subparser = args.active_subparser
-            active_subparser.unknown_args = unknown_args
-            active_subparser.execute(args)
-        except Exception as e:
-            if args.verbose:
-                tb.print_exception(e)
-            else:
-                print(f"\033[91mError: {e}\033[00m")
-            sys.exit(1)
-    else:
-        main_parser.print_help()
+            request = Request(
+                region=_build_region(args),
+                start=args.start,
+                end=args.end,
+                variables=_parse_variables(args.variables),
+                sampling=args.sampling,
+            )
+            fetcher = Fetcher(
+                request,
+                preset=args.preset,
+                conf_dir=args.conf_dir,
+                strict=args.strict,
+                source_variable_overrides=_parse_source_variable_overrides(args.use_variables),
+                use_datasources=[name.lower() for name in args.datasource] if args.datasource else None,
+                staging_root=args.output_dir,
+                progress=reporter.progress,
+            )
+            result = fetcher.plan() if args.dry_run else fetcher.download(use_cache=not args.no_cache)
+        except (RuntimeError, ValueError) as exc:
+            console.print(f"ERROR {exc}", style="red")
+            return 1
+        if args.dry_run:
+            _render_plan(console, result.results)
+            reporter.summary(
+                result.summary,
+                result.output_dir,
+                result.manifest_path,
+                title="collekt dry run complete",
+                manifest_written=False,
+            )
+            return 0
+        reporter.warnings(result.results)
+        reporter.summary(result.summary, result.output_dir, result.manifest_path)
+        return 0
+
+    parser.error(f"unknown command {args.command!r}")
+    return 2
 
 
-if __name__ == "__main__":
-    run()
+if __name__ == "__main__":  # pragma: no cover
+    raise SystemExit(run())

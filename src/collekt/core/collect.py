@@ -46,6 +46,7 @@ def run_collection(
     conf_dir: str | Path | None = None,
     strict: bool | None = None,
     source_variable_overrides: SourceVariableOverrides | None = None,
+    use_datasources: list[str] | None = None,
     use_cache: bool = True,
     dry_run: bool = False,
     progress: ProgressCallback = null_progress,
@@ -60,6 +61,7 @@ def run_collection(
         strict: Override config strict mode. If true, warnings become a final
             `RuntimeError` after the manifest is written.
         source_variable_overrides: Optional per-source ``use_variables`` overrides.
+        use_datasources: Optional lower-cased source names to restrict the run to.
         use_cache: If true, reuse files already staged for this exact request
             (same region and time range). If false, delete the request directory
             and download everything again.
@@ -95,6 +97,8 @@ def run_collection(
     results: list[SourceResult] = []
     for source in cfg.sources.values():
         if not source.enabled or not _source_matches_request(source, request):
+            continue
+        if use_datasources is not None and source.name.lower() not in use_datasources:
             continue
         adapter = get_adapter(source.kind)
         if adapter is None:

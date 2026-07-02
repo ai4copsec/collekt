@@ -8,6 +8,7 @@ from pathlib import Path
 
 from collekt.core.collect import run_collection
 from collekt.core.config import Config, SourceVariableOverrides, apply_source_variable_overrides, get_config
+from collekt.core.doctor import DoctorCheck, run_doctor
 from collekt.core.exporting import export_directory, export_zip
 from collekt.core.request import Request
 from collekt.core.result import Result
@@ -56,6 +57,7 @@ class Fetcher:
             `RuntimeError` after the manifest is written.
         source_variable_overrides: Optional mapping from source name to
             ``use_variables`` values for targeted product-variable selection.
+        use_datasources: Optional lower-cased source names to restrict the run to.
         staging_root: Optional root directory for staged downloads. By default a
             temporary directory is created when `config` is not supplied.
         progress: Optional progress callback.
@@ -70,6 +72,7 @@ class Fetcher:
         conf_dir: str | Path | None = None,
         strict: bool | None = None,
         source_variable_overrides: SourceVariableOverrides | None = None,
+        use_datasources: list[str] | None = None,
         staging_root: str | Path | None = None,
         progress: ProgressCallback = null_progress,
     ) -> None:
@@ -77,9 +80,11 @@ class Fetcher:
         self.preset = preset
         self.conf_dir = conf_dir
         self.strict = strict
+        self.use_datasources = use_datasources
         self.progress = progress
         self.plan_result: Result | None = None
         self.download_result: Result | None = None
+        self.doctor_checks: tuple[DoctorCheck, ...] = ()
 
         loaded_config = config or get_config(preset=preset, conf_dir=conf_dir)
         if staging_root is None and config is None:
@@ -94,6 +99,19 @@ class Fetcher:
         """Root directory used for staged downloads."""
         return self.config.output.root
 
+    def check(self, *, online: bool = False) -> Result:
+        """Run diagnostics, then return a dry-run plan.
+
+        Args:
+            online: If true, query provider catalogues where supported.
+
+        Returns:
+            Planned collection result. Diagnostics are also stored in
+            `doctor_checks`.
+        """
+        self.doctor_checks = tuple(run_doctor(online=online, config=self.config))
+        return self.plan()
+
     def plan(self) -> Result:
         """Plan provider requests and output paths without downloading files.
 
@@ -106,6 +124,7 @@ class Fetcher:
             config=self.config,
             conf_dir=self.conf_dir,
             strict=self.strict,
+            use_datasources=self.use_datasources,
             dry_run=True,
             progress=self.progress,
         )
@@ -136,6 +155,7 @@ class Fetcher:
             config=self.config,
             conf_dir=self.conf_dir,
             strict=self.strict,
+            use_datasources=self.use_datasources,
             use_cache=use_cache,
             dry_run=False,
             progress=self.progress,

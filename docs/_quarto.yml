@@ -50,3 +50,5 @@ quartodoc:
         - Fetcher
         - Result
         - Assembler
+        - run_doctor
+        - DoctorCheck
