@@ -1,0 +1,48 @@
+---
+title: "Manifest"
+toc: true
+number-sections: false
+---
+
+Every download writes a `manifest.json` into the request directory. It is
+collekt's machine-readable record of what was requested, fetched, reused, and
+skipped, and it is the contract downstream consumers rely on.
+
+## Structure
+
+```json
+{
+  "manifest_schema_version": "0.1",
+  "request": {
+    "region": {"west": -6.0, "east": 20.0, "south": 35.0, "north": 45.0},
+    "start": "2023-06-15T00:00:00Z",
+    "end": "2023-06-15T23:59:59Z",
+    "variables": ["currents"],
+    "sampling": "24h",
+    "preset": null,
+    "metadata": {}
+  },
+  "summary": {"planned": 0, "downloaded": 1, "reused": 0, "skipped": 0, "failed": 0},
+  "sources": { "cmems_glorys": { "kind": "cmems", "resolved_variables": ["uo", "vo"], "...": "..." } },
+  "files":    [ { "source": "cmems_glorys", "status": "downloaded", "path": "cmems/glorys/…nc", "format": "netcdf", "inspection": {"size_bytes": 12345, "data_variables": ["uo", "vo"]} } ],
+  "planned":  [],
+  "warnings": [],
+  "failures": []
+}
+```
+
+- **Paths are relative** to the request directory, so a collection directory or
+  zip archive is relocatable.
+- Downloaded/reused files carry an **inspection** block: variables/sizes for
+  NetCDF, columns/row count for Parquet, otherwise the file size.
+- `warnings` holds skipped sources; `failures` holds failed ones. Both are
+  non-blocking unless the run is `--strict`.
+
+## Draft schema
+
+A permissive draft JSON Schema ships at
+`collekt/resources/schema/manifest.schema.json`. During alpha the manifest stays
+**flexible** and the schema is provided for reference only — it is not enforced.
+Core fields are required; provider-specific metadata under `details` may evolve.
+`manifest_schema_version` is bumped when the shape changes materially; a strict,
+validated schema is a 1.0 goal.

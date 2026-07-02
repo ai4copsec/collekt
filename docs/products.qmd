@@ -1,0 +1,79 @@
+---
+title: "Products"
+toc: true
+number-sections: false
+---
+
+collekt ships a **source-adapter** for each supported provider. An adapter knows
+how to fetch source-native files for a request and how to plan (dry-run) the same
+work. Adapters are registered on import (`collekt.sources`) and selected by a
+source's `kind`.
+
+## Built-in adapters
+
+| Kind | Produces | Access | Format |
+|---|---|---|---|
+| `cmems` | Gridded ocean fields (currents, SST, waves, biogeochemistry) | open | NetCDF |
+| `ecmwf_open_data` | Gridded forecast wind | open | GRIB2 |
+| `era5` | Gridded reanalysis wind | credentials (CDS) | NetCDF |
+| `copernicus_dataspace` | Sentinel / Landsat product files | credentials | product (e.g. `.zip`) |
+| `skytruth` | Oil-slick detections (features) | open | Parquet |
+| `hozint` | Threat-intelligence reports (features) | credentials | Parquet |
+| `eodyn` | eOdyn surface currents / drifters | credentials | NetCDF |
+
+Open sources need no secrets; credential-gated sources resolve their secrets from
+the environment or provider tools — see [Credentials](credentials.qmd). The eOdyn
+adapter serves a historical preview archive (`mode: archive`) until the
+production API ships (`mode: api`).
+
+## Configuring sources
+
+collekt provides the adapters and the configuration *mechanism*; the concrete
+**catalog** (which datasets and variables each source pulls) and any curated
+**presets** are supplied by the caller through a configuration directory:
+
+```bash
+collekt fetch --bbox -6 20 35 45 --start 2023-06-15 \
+  --variables currents --conf-dir path/to/catalogs --preset drift
+```
+
+A configuration directory contains a `default.yaml`, an optional `source/` folder
+of catalogs referenced by `source_catalogs`, and an optional `preset/` folder.
+A source entry looks like:
+
+```yaml
+sources:
+  cmems_glorys:
+    kind: cmems
+    variable_groups: [currents]
+    path: "cmems/glorys"
+    filename_pattern: "glorys_{dataset_id}_{date:%Y%m%d}_{bbox_hash}.nc"
+    dataset_nrt: "cmems_mod_glo_phy-cur_anfc_0.083deg_P1D-m"
+    dataset_my: "cmems_mod_glo_phy_my_0.083deg_P1D-m"
+    nrt_cutoff: "2024-07-01"
+    variables:
+      default: [uo, vo]
+    temporal:
+      native_sampling: 24h
+      supported_sampling: [24h]
+    depth: [1.0, 1.1]
+```
+
+The broad **variable-group vocabulary** (what `currents`/`wind`/`waves` select)
+and curated presets are domain concerns and live with the consuming brick, not in
+collekt. A request's `variables` are matched generically against each source's
+`variable_groups`.
+
+## Extras
+
+Heavy provider clients are optional. Install only what you need:
+
+| Extra | Enables |
+|---|---|
+| `gridded` | the `Assembler` (xarray/scipy) and GRIB2 reading |
+| `features` | the Parquet feature backend (damast/geopandas/polars) used by Skytruth |
+| `cmems` | CMEMS downloads (`copernicusmarine`) |
+| `era5` | ERA5 downloads (`cdsapi`) |
+| `ecmwf` | ECMWF Open Data forecasts (`ecmwf-opendata`) |
+| `hozint` | the `hozint-apiclient` CLI |
+| `all` | all of the above |

@@ -1,0 +1,62 @@
+---
+title: "Repository layout"
+toc: true
+number-sections: false
+---
+
+Keep this map in sync with the package after any structural change (new or moved
+modules).
+
+```text
+src/collekt/
+  __init__.py              # public API: Request, Region, Fetcher, Result,
+                           #   Assembler, run_doctor, DoctorCheck
+  version.py               # single version source (bumped by commitizen)
+
+  core/
+    request.py             # Region, Request, datetime/sampling parsing
+    temporal.py            # SamplingPlan + per-source timestamp planning
+    naming.py              # filename/request-dir patterns + bbox hashing
+    collect.py             # run_collection orchestration (adapter dispatch)
+    fetcher.py             # Fetcher workflow (check / plan / download / export)
+    result.py              # Result
+    manifest.py            # manifest builder + post-fetch inspection
+    reporting.py           # Summary, summarize, CliReporter
+    availability.py        # coverage checks (declarative + online describe)
+    doctor.py              # environment / configuration diagnostics
+    exporting.py           # directory / zip exports
+    geo.py                 # bbox maths (geopy) + GeoJSON -> WKT (shapely)
+    credentials.py         # environment credential resolution
+    config/
+      loader.py            # layered YAML load, preset merge, env expansion
+      schema.py            # typed Config / SourceConfig / ... + variable resolution
+
+  sources/
+    base.py                # adapter protocol + registry, SourceResult/status
+    planning.py            # shared dry-run planner (plan_source, coverage)
+    cmems.py               # copernicusmarine.subset               (open)
+    ecmwf_open_data.py     # forecast wind, GRIB2                   (open)
+    era5.py                # reanalysis wind, cdsapi                (credentials)
+    copernicus_dataspace.py# Sentinel/Landsat product files        (credentials)
+    skytruth.py            # oil-slick features -> Parquet          (open)
+    hozint.py              # threat-intel reports -> Parquet        (credentials)
+    eodyn.py               # eOdyn ocean-data (archive/api)         (credentials)
+    skytruth.spec.yaml     # Skytruth column metadata (damast spec)
+
+  assemble/
+    gridded.py             # Assembler: regrid + time-align -> xarray/NetCDF/Zarr/NumPy
+
+  conf/
+    default.yaml           # output / cache / credential-path defaults
+
+  resources/
+    schema/manifest.schema.json   # draft manifest schema (reference; not enforced)
+    regions/                      # example region GeoJSON files
+
+  cli/
+    main.py                # `collekt fetch` / `doctor` / `config show`
+```
+
+Source catalogs (`source/*.yaml`) and curated presets (`preset/*.yaml`) are
+supplied by the caller through a configuration directory (`--conf-dir`); collekt
+ships the loading mechanism and the adapters, not a domain catalog.

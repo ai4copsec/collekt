@@ -12,6 +12,14 @@ website:
     left:
       - text: "Home"
         href: index.qmd
+      - text: "Products"
+        href: products.qmd
+      - text: "Credentials"
+        href: credentials.qmd
+      - text: "Manifest"
+        href: manifest.qmd
+      - text: "Repository layout"
+        href: modulemap.qmd
       - text: "Plan"
         href: plan.qmd
       - text: "API reference"

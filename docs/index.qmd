@@ -6,19 +6,52 @@ number-sections: false
 ---
 
 **collekt** is a library to facilitate spatio-temporal data collection across
-arbitrary datasources.
+arbitrary datasources. A single request — a region of interest, a time window,
+an optional sampling and set of variable groups — is fanned out to a set of
+pluggable source adapters, each of which fetches source-native files and records
+what it did in a machine-readable manifest.
 
 ## Getting started
 
 ```bash
-uv sync --all-groups --all-extras
+uv sync --all-groups --all-extras   # or: just install
 ```
 
 ```python
 import collekt
 
-print(collekt.__version__)
+request = collekt.Request(
+    region=collekt.Region.from_bbox((-6.0, 20.0, 35.0, 45.0)),
+    start="2023-06-15",
+    variables=("currents", "wind"),
+    sampling="6h",
+)
+
+fetcher = collekt.Fetcher(request, conf_dir="path/to/catalogs")
+result = fetcher.download()
+print(result.manifest_path)
 ```
 
-See the [API reference](api/index.qmd) for the public API, and the
-[implementation plan](plan.qmd) for the ongoing integration of the tb-rea core.
+Gridded results can be assembled onto a common grid and time axis:
+
+```python
+assembler = collekt.Assembler(result)
+dataset = assembler.to_xarray(grid="lowest_resolution", time="lowest_resolution")
+```
+
+The same workflow is available from the command line:
+
+```bash
+collekt fetch --bbox -6 20 35 45 --start 2023-06-15 --sampling 6h \
+  --variables currents,wind --conf-dir path/to/catalogs
+collekt doctor
+```
+
+## Where to go next
+
+- [Products](products.qmd): the built-in source adapters and how sources are configured.
+- [Credentials](credentials.qmd): provider setup and secret-handling rules.
+- [Manifest](manifest.qmd): the machine-readable output contract.
+- [Repository layout](modulemap.qmd): the package module map.
+- [API reference](api/index.qmd): the public API.
+- [Implementation plan](plan.qmd): the ongoing integration of the tb-rea core.
