@@ -10,6 +10,7 @@ from collekt.core.types import Query
 
 logger = logging.getLogger(__name__)
 
+
 class QueryParser(BaseParser):
     """
     :param parser: The base parser
@@ -29,19 +30,25 @@ class QueryParser(BaseParser):
 
         parser.add_argument("--region", type=Path, default=None, help="A geojson file describing a region")
 
-        default_output_dir = Path(tempfile.gettempdir()) / "collekt" / f"{dt.datetime.now(tz=dt.timezone.utc).strftime('%Y%m%d-%H:%M:%S+00:00')}"
-        parser.add_argument("--output-dir", type=str, default=str(default_output_dir), help="Output directory to store the data, default: %(default)s")
-
-        datasource_choices = [x.name.lower() for x in Collector.datasources]
-        parser.add_argument("--datasource",
-                            nargs="+",
-                            choices=datasource_choices,
-                            metavar='DATASOURCE',
-                            default=None,
-                            help=f"Select datasource from: {','.join(datasource_choices)}"
+        default_output_dir = (
+            Path(tempfile.gettempdir()) / "collekt" / f"{dt.datetime.now(tz=dt.UTC).strftime('%Y%m%d-%H:%M:%S+00:00')}"
+        )
+        parser.add_argument(
+            "--output-dir",
+            type=str,
+            default=str(default_output_dir),
+            help="Output directory to store the data, default: %(default)s",
         )
 
-
+        datasource_choices = [x.name.lower() for x in Collector.datasources]
+        parser.add_argument(
+            "--datasource",
+            nargs="+",
+            choices=datasource_choices,
+            metavar="DATASOURCE",
+            default=None,
+            help=f"Select datasource from: {','.join(datasource_choices)}",
+        )
 
     def execute(self, args):
         super().execute(args)
@@ -59,21 +66,22 @@ class QueryParser(BaseParser):
             output_dir.mkdir(parents=True, exist_ok=True)
 
         collector = Collector()
-        query = Query(from_time=from_time,
-                      to_time=to_time,
-                      longitude=args.at_lon,
-                      latitude=args.at_lat,
-                      radius=args.radius,
-                      region=args.region
-                )
+        query = Query(
+            from_time=from_time,
+            to_time=to_time,
+            longitude=args.at_lon,
+            latitude=args.at_lat,
+            radius=args.radius,
+            region=args.region,
+        )
 
-        collector.execute(query=query,
-                          output_dir=output_dir,
-                          log_level=args.log_level,
-                          verbose=args.verbose,
-                          use_datasources=args.datasource
-                )
+        collector.execute(
+            query=query,
+            output_dir=output_dir,
+            log_level=args.log_level,
+            verbose=args.verbose,
+            use_datasources=args.datasource,
+        )
 
         with open(output_dir / "query.json", "w") as f:
             f.write(query.model_dump_json(indent=4))
-

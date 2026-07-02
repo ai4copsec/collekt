@@ -1,49 +1,41 @@
-[build-system]
-requires = ["setuptools >= 61.0.0",
-    "wheel",
-    "build",
-    "sphinx"]
-
-# https://packaging.python.org/en/latest/specifications/declaring-project-metadata/
 [project]
 name = "collekt"
-dynamic = ["version"]
-description = "A library to facilitate data collection across arbitrary datasources"
-license = { file="LICENSE" }
+version = "0.1.0"
+description = "A library to facilitate spatio-temporal data collection across arbitrary datasources"
+license = "BSD-3-Clause"
+license-files = ["LICENSE"]
 readme = "README.md"
-keywords = ["data source", "collection" ]
+keywords = ["data source", "collection"]
 authors = [
     { name = "Thomas Roehr", email = "roehr@simula.no" },
     { name = "Ola Formo Kihle", email = "kihle@simula.no" },
+    { name = "Julien Vitay", email = "julien.vitay@eodyn.com" },
 ]
-requires-python = ">=3.10"
-
 maintainers = [
     { name = "Thomas Roehr", email = "roehr@simula.no" },
 ]
-
+requires-python = ">=3.13"
 classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Development Status :: 3 - Alpha",
     "Operating System :: OS Independent",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
-    "License :: OSI Approved :: BSD License",
 ]
 
+# The light engine only. Heavy/optional libraries live in the extras below and
+# are imported lazily by the adapters/backends that need them.
 dependencies = [
-    "geopandas",
-    "geopy",
     "pydantic",
     "pydantic-settings",
+    "pyyaml",
     "requests",
     "shapely",
+    "geopy",
+    "rich",
     "tqdm",
-#   datasources
-    "copernicusmarine",
+    # TODO(phase 3): move to the `hozint` extra once collekt/__init__ no longer
+    # imports hozint_apiclient eagerly.
     "hozint-apiclient",
 ]
 
@@ -52,58 +44,92 @@ homepage = "https://ai4copsec.github.io/collekt"
 documentation = "https://ai4copsec.github.io/collekt"
 repository = "https://github.com/ai4copsec/collekt"
 
-#[project.entry-points]
-
 [project.optional-dependencies]
-dev = [
-    "flake8-gl-codeclimate",
-    "isort",
-    "jupyter-book<2",
-    "pre-commit",
-    "pydot",
-    # With sphinx-autoapi NamedTuple is not
-    # parse correctly
-    "sphinx-autoapi<=3.3",
-    "tox"
+# Gridded output backend (the Assembler) + GRIB reading.
+gridded = [
+    "xarray>=2026.4.0",
+    "scipy>=1.18.0",
+    "cfgrib>=0.9.15.1",
+    "eccodeslib>=2.47.3.21",
 ]
-
-test = [
-    "coverage",
-    "pytest",
-    "pytest-console-scripts",
-    "pytest-cov",
-    "pytest-timeout",
-    "pydot",
-    "tox"
+# Tabular feature backend + Skytruth.
+features = [
+    "damast",
+    "geopandas",
+    "polars",
 ]
+cmems = ["copernicusmarine>=2.4.1"]
+era5 = ["cdsapi>=0.7.7"]
+ecmwf = [
+    "ecmwf-opendata>=0.3.30",
+    "cfgrib>=0.9.15.1",
+    "eccodeslib>=2.47.3.21",
+]
+all = ["collekt[gridded,features,cmems,era5,ecmwf]"]
 
 [project.scripts]
 collekt = "collekt.cli.main:run"
 
-[tool.setuptools.dynamic]
-version = {attr = "collekt.version.__version__"}
+[build-system]
+requires = ["uv_build>=0.11.2,<0.12.0"]
+build-backend = "uv_build"
 
-[tool.mypy]
-ignore_missing_imports = true
+[tool.ruff]
+target-version = "py313"
+line-length = 120
 
-[tool.pytest.ini_options]
-# Disable to be able to debug in IDE
-#addopts = "--cov --cov-report html:doc/ --cov-report term-missing"
+[tool.ruff.format]
+docstring-code-format = true  # also format code blocks inside docstrings
 
-[tool.coverage.run]
-source = ["src"]
-
-[tool.pylint]
-max-line-length = 120
-disable = [
-    "C0103", # (invalid-name)
-    #    "C0114", # (missing-module-docstring)
-    #    "C0115", # (missing-class-docstring)
-    #    "C0116", # (missing-function-docstring)
-    #    "R0903", # (too-few-public-methods)
-    #    "R0913", # (too-many-arguments)
-    #    "W0105", # (pointless-string-statement)
+[tool.ruff.lint]
+# E/W pycodestyle · F pyflakes · I import sorting · UP pyupgrade
+# · B bugbear (likely bugs) · SIM simplify
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+ignore = [
+    "E501",  # line length: the formatter already wraps code; don't double-flag long strings/URLs
+    "E741",  # allow short math-style names (l, I, O), common in research code
 ]
 
-[tool.isort]
-multi_line_output = 8
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]  # imports in a package __init__ are re-exports, not dead code
+# Legacy modules carried over unchanged until the tb-rea core port replaces them
+# (see docs/plan.qmd, phases 1-5). Remove each ignore as its module is rewritten.
+"src/collekt/core/collector.py" = ["B008"]
+"src/collekt/core/datasource.py" = ["B008"]
+"src/collekt/datasources/*.py" = ["B008", "UP042", "SIM108", "SIM117"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.commitizen]
+version = "0.1.0"
+name = "cz_conventional_commits"
+version_files = [
+    "pyproject.toml:^version = ",
+    "src/collekt/version.py:^__version__ = ",
+]
+tag_format = "$version"
+annotated_tag = true
+major_version_zero = true
+update_changelog_on_bump = false
+
+# Dev-only tooling. uv installs the `dev` group automatically on `uv sync`
+# and `uv run`, so `just test` / `just lint` work without extra flags.
+[dependency-groups]
+test = [
+    "jsonschema>=4.26.0",
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "pytest-timeout>=2.3",
+]
+docs = ["quartodoc>=0.11"]
+dev = [
+    "ruff>=0.4",
+    "commitizen>=3.0",
+    { include-group = "test" },
+]
+notebook = [
+    "ipykernel>=7.3.0",
+    "jupyterlab>=4.6.0",
+    "matplotlib>=3.11.0",
+]

@@ -1,6 +1,7 @@
 """
 Main argument parser and CLI entry point.
 """
+
 import logging
 import sys
 import traceback as tb
@@ -25,8 +26,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-class MainParser(ArgumentParser):
 
+class MainParser(ArgumentParser):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.description = "collekt - collect spatio-temporal data from arbitrary datasources"
@@ -34,16 +35,11 @@ class MainParser(ArgumentParser):
         self.add_argument("-w", "--workdir", default=str(Path(".").resolve()))
         self.add_argument("-v", "--verbose", action="store_true")
         self.add_argument("--log-level", type=str, default="INFO", help="Logging level")
-        self.add_argument("--version", action="store_true", default=False,
-                          help="Show current version of collekt")
+        self.add_argument("--version", action="store_true", default=False, help="Show current version of collekt")
 
-        self.subparsers = self.add_subparsers(help='sub-command help')
+        self.subparsers = self.add_subparsers(help="sub-command help")
 
-    def attach_subcommand_parser(self,
-                                 subcommand: str,
-                                 help: str,
-                                 parser_klass: BaseParser
-                                 ):
+    def attach_subcommand_parser(self, subcommand: str, help: str, parser_klass: BaseParser):
         parser = self.subparsers.add_parser(subcommand, help=help)
         parser_klass(parser=parser)
 
@@ -53,9 +49,7 @@ def run():
     Run the main command line interface
     """
     main_parser = MainParser()
-    main_parser.attach_subcommand_parser(subcommand="query",
-                                         help="Query the datasources",
-                                         parser_klass=QueryParser)
+    main_parser.attach_subcommand_parser(subcommand="query", help="Query the datasources", parser_klass=QueryParser)
 
     args, unknown_args = main_parser.parse_known_args()
 
@@ -69,8 +63,8 @@ def run():
 
     if hasattr(args, "active_subparser"):
         try:
-            active_subparser = getattr(args, "active_subparser")
-            active_subparser.unknown_args  = unknown_args
+            active_subparser = args.active_subparser
+            active_subparser.unknown_args = unknown_args
             active_subparser.execute(args)
         except Exception as e:
             if args.verbose:

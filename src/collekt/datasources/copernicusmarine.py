@@ -11,16 +11,15 @@ from ..utils import get_coordinates_min_max
 
 logger = logging.getLogger(__name__)
 
+
 class Credentials(BaseSettings):
     username: str
     password: str
 
     model_config = SettingsConfigDict(
-                    env_file='.env',
-                    env_nested_delimiter='__',
-                    env_prefix='COPERNICUSMARINE_SERVICE_',
-                    extra='ignore'
-                )
+        env_file=".env", env_nested_delimiter="__", env_prefix="COPERNICUSMARINE_SERVICE_", extra="ignore"
+    )
+
 
 class CopernicusMarineDataset(DataSource):
     dataset_id: str
@@ -32,13 +31,14 @@ class CopernicusMarineDataset(DataSource):
         self.dataset_id = dataset_id
         self.variables = variables
 
-    def execute(self,
-            query: Query = Query(),
-            region: Path | None = None,
-            log_level: str | None = None,
-            verbose: bool | None = None,
-            output_dir: Path | None = Path(tempfile.gettempdir())
-           ) -> list[any]:
+    def execute(
+        self,
+        query: Query = Query(),
+        region: Path | None = None,
+        log_level: str | None = None,
+        verbose: bool | None = None,
+        output_dir: Path | None = Path(tempfile.gettempdir()),
+    ) -> list[any]:
 
         credentials = Credentials()
         copernicusmarine.login(username=credentials.username, password=credentials.password)
@@ -51,19 +51,11 @@ class CopernicusMarineDataset(DataSource):
             variables=self.variables,
             start_datetime=query.from_time,
             end_datetime=query.to_time,
-            minimum_latitude=min_max['lat_min'],
-            maximum_latitude=min_max['lat_max'],
-            minimum_longitude=min_max['lon_min'],
-            maximum_longitude=min_max['lon_max'],
-            output_directory=output_dir
+            minimum_latitude=min_max["lat_min"],
+            maximum_latitude=min_max["lat_max"],
+            minimum_longitude=min_max["lon_min"],
+            maximum_longitude=min_max["lon_max"],
+            output_directory=output_dir,
         )
 
         logger.info(f"Downloaded {ds.file_path}")
-
-
-
-
-
-
-
-

@@ -1,0 +1,47 @@
+project:
+  type: website
+  output-dir: ../public
+
+website:
+  title: "collekt"
+  description: "A library to facilitate spatio-temporal data collection across arbitrary datasources"
+  page-navigation: true
+  bread-crumbs: false
+
+  navbar:
+    left:
+      - text: "Home"
+        href: index.qmd
+      - text: "Plan"
+        href: plan.qmd
+      - text: "API reference"
+        href: api/index.qmd
+    right:
+      - icon: github
+        href: https://github.com/ai4copsec/collekt
+
+  page-footer:
+    center: |
+      Built with [Quarto](https://quarto.org).
+
+format:
+  html:
+    theme: cosmo
+    toc: true
+    toc-depth: 3
+    number-sections: false
+    smooth-scroll: true
+
+highlight-style: github
+
+quartodoc:
+  title: "API Reference"
+  style: pkgdown
+  parser: google
+  package: collekt
+  dir: api
+  sections:
+    - title: "collekt"
+      desc: "Public API for collekt."
+      contents:
+        - __version__

@@ -1,0 +1,24 @@
+---
+title: "collekt"
+page-layout: full
+toc: false
+number-sections: false
+---
+
+**collekt** is a library to facilitate spatio-temporal data collection across
+arbitrary datasources.
+
+## Getting started
+
+```bash
+uv sync --all-groups --all-extras
+```
+
+```python
+import collekt
+
+print(collekt.__version__)
+```
+
+See the [API reference](api/index.qmd) for the public API, and the
+[implementation plan](plan.qmd) for the ongoing integration of the tb-rea core.

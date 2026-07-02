@@ -13,4 +13,3 @@ class Query(BaseModel):
 
     radius: float | None = Field(default=None, description="Radius in km")
     region: Path | None = Field(default=None, description="Path to geojson file describing the region")
-

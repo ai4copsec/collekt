@@ -23,19 +23,20 @@ CERULEAN_SKYTRUTH_API_SLICK = CERULEAN_SKYTRUTH_API_BASE + "/collections/public.
 # Metadata descriptions at https://colab.research.google.com/drive/1SYWIzPH_2NeqvfqcVzY43y1hv1Ug-YoJ#scrollTo=p_j_cNCnqAuQ"
 CERULEAN_SKYTRUTH_SPEC_YAML = Path(__file__).parent / "skytruth.spec.yaml"
 
-class SkytruthDataset(DataSource):
 
+class SkytruthDataset(DataSource):
     def __init__(self):
         super().__init__(name="skytruth")
 
-    def execute(self,
-            query: Query = Query(),
-            log_level: str | None = None,
-            verbose: bool | None = None,
-            limit: int | None = 1000,
-            output_dir: Path | None = Path(tempfile.gettempdir()),
-            output_filename: str = "skytruth.parquet"
-           ) -> list[any]:
+    def execute(
+        self,
+        query: Query = Query(),
+        log_level: str | None = None,
+        verbose: bool | None = None,
+        limit: int | None = 1000,
+        output_dir: Path | None = Path(tempfile.gettempdir()),
+        output_filename: str = "skytruth.parquet",
+    ) -> list[any]:
 
         url = CERULEAN_SKYTRUTH_API_SLICK
         # Keep sortby here, to handle encoding issue with ~slick_timestamp
@@ -132,11 +133,16 @@ class SkytruthDataset(DataSource):
         df = pl.concat(dataframes)
 
         m = damast.core.MetaData.load_yaml(CERULEAN_SKYTRUTH_SPEC_YAML)
-        m.add_annotation(damast.core.Annotation(name=damast.core.Annotation.Key.Comment, value=f"Created from request: {response.request.url}"))
+        m.add_annotation(
+            damast.core.Annotation(
+                name=damast.core.Annotation.Key.Comment, value=f"Created from request: {response.request.url}"
+            )
+        )
 
-        adf = damast.core.AnnotatedDataFrame(dataframe=df, metadata=m, validation_mode=damast.core.ValidationMode.UPDATE_DATA)
+        adf = damast.core.AnnotatedDataFrame(
+            dataframe=df, metadata=m, validation_mode=damast.core.ValidationMode.UPDATE_DATA
+        )
         filename = output_dir / output_filename
         adf.export(filename)
 
         logger.info(f"skytruth: saved {filename}")
-

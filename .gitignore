@@ -3,10 +3,12 @@
 .tox/*
 artifacts
 .coverage
+coverage.xml
 log.txt
 nohup.out
 cache/*
 .pytest_cache
+.ruff_cache
 *.pyc
 reports/
 
@@ -18,3 +20,14 @@ inputs/*
 _autosummary/
 autoapi/
 docs/examples/hozint-*-help.txt
+
+# uv
+.venv/
+
+# Quarto / quartodoc
+public/
+docs/api/
+docs/objects.json
+docs/.quarto/
+/.quarto/
+_freeze/
