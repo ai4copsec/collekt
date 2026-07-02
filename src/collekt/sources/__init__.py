@@ -12,8 +12,10 @@ from collekt.sources import (  # noqa: F401
     cmems,
     copernicus_dataspace,
     ecmwf_open_data,
+    eodyn,
     era5,
     hozint,
     skytruth,
 )
 from collekt.sources.base import SourceResult, SourceStatus  # noqa: F401
+from collekt.sources.eodyn import EodynArchiveWarning  # noqa: F401
