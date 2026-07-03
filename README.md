@@ -29,15 +29,17 @@ collekt stays fast.
 
 ```python
 import collekt
+from collekt.core.config import get_config
 
 request = collekt.Request(
     region=collekt.Region.from_bbox((-6.0, 20.0, 35.0, 45.0)),
     start="2023-06-15",
-    variables=("currents", "wind"),
-    sampling="6h",
+    sampling="24h",
 )
 
-fetcher = collekt.Fetcher(request, conf_dir="path/to/catalogs")
+# Pick a source from the bundled catalog and select variables from its allow-list.
+config = get_config(overrides={"sources": {"cmems_duacs_my": {"use_variables": ["ugos", "vgos"]}}})
+fetcher = collekt.Fetcher(request, config=config, use_datasources=["cmems_duacs_my"])
 result = fetcher.download()
 print(result.manifest_path)
 
@@ -53,14 +55,14 @@ dataset = assembler.to_xarray(grid="lowest_resolution", time="lowest_resolution"
 ### Command line
 
 ```bash
-collekt fetch --bbox -6 20 35 45 --start 2023-06-15 --sampling 6h \
-  --variables currents,wind --conf-dir path/to/catalogs
+collekt config show       # inspect the bundled catalog
+collekt doctor            # check the environment and configuration
+
+collekt fetch --bbox -6 20 35 45 --start 2023-06-15 \
+  --datasource cmems_duacs_my --use-variables cmems_duacs_my=ugos,vgos
 
 collekt fetch --at-lat 13.3 --at-lon 42.9 --radius 50 --start 2024-01-30 \
-  --datasource skytruth --conf-dir path/to/catalogs --dry-run
-
-collekt doctor            # check the environment and configuration
-collekt config show       # print the merged configuration
+  --datasource skytruth --dry-run
 ```
 
 Use `--dry-run` to plan provider requests without downloading, and `--strict` to
@@ -68,11 +70,14 @@ fail if any requested source is skipped.
 
 ### Sources and configuration
 
-collekt ships the source **adapters** and the configuration **mechanism**. Which
-datasets and variables each source pulls (the catalog), and any curated presets,
-are supplied by the caller through a configuration directory (`--conf-dir` /
-`conf_dir=`). See [Products](https://ai4copsec.github.io/collekt/products.html)
-and [Credentials](https://ai4copsec.github.io/collekt/credentials.html).
+collekt ships a **curated catalog** of datasets (CMEMS global + Mediterranean,
+ECMWF Open Data, ERA5, Skytruth, Copernicus Data Space, eOdyn). Select concrete
+source names (`--datasource`), choose variables with `--use-variables` or config
+overrides, and extend or override sources via
+`get_config(overrides=...)` or a `--conf-dir` overlay. Presets and variable-group
+tagging are left to downstream. See
+[Products](https://ai4copsec.github.io/collekt/products.html) and
+[Credentials](https://ai4copsec.github.io/collekt/credentials.html).
 
 ## Development
 

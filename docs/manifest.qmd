@@ -23,8 +23,8 @@ skipped, and it is the contract downstream consumers rely on.
     "metadata": {}
   },
   "summary": {"planned": 0, "downloaded": 1, "reused": 0, "skipped": 0, "failed": 0},
-  "sources": { "cmems_glorys": { "kind": "cmems", "resolved_variables": ["uo", "vo"], "...": "..." } },
-  "files":    [ { "source": "cmems_glorys", "status": "downloaded", "path": "cmems/glorys/…nc", "format": "netcdf", "inspection": {"size_bytes": 12345, "data_variables": ["uo", "vo"]} } ],
+  "sources": { "cmems_glorys_my": { "kind": "cmems", "resolved_variables": ["uo", "vo"], "...": "..." } },
+  "files":    [ { "source": "cmems_glorys_my", "status": "downloaded", "path": "cmems/global/glorys/…nc", "format": "netcdf", "inspection": {"size_bytes": 12345, "data_variables": ["uo", "vo"]} } ],
   "planned":  [],
   "warnings": [],
   "failures": []

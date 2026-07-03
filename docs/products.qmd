@@ -26,43 +26,95 @@ the environment or provider tools — see [Credentials](credentials.qmd). The eO
 adapter serves a historical preview archive (`mode: archive`) until the
 production API ships (`mode: api`).
 
-## Configuring sources
+## Bundled catalog
 
-collekt provides the adapters and the configuration *mechanism*; the concrete
-**catalog** (which datasets and variables each source pulls) and any curated
-**presets** are supplied by the caller through a configuration directory:
+collekt ships a **curated catalog** of concrete datasets — the datasets AI4COPSEC
+uses, grouped into catalogs under `collekt/conf/source/`:
+
+| Catalog | Sources |
+|---|---|
+| `cmems_global` | `cmems_glorys_nrt`, `cmems_glorys_my`, `cmems_duacs_nrt`, `cmems_duacs_my`, `cmems_global_sst_nrt`, `cmems_global_sst_my`, `cmems_global_waves`, `cmems_global_chl_obs_nrt`, `cmems_global_chl_obs_my`, `cmems_global_bgc_model` |
+| `cmems_med` | `cmems_med_currents_nrt`, `cmems_med_currents_nrt_15min`, `cmems_med_currents_nrt_2d_hourly`, `cmems_med_currents_nrt_3d_hourly`, `cmems_med_currents_my`, `cmems_med_waves`, `cmems_med_chl_obs`, `cmems_med_bgc_model` |
+| `cmems_ibi` | `cmems_ibi_currents`, `cmems_ibi_waves`, `cmems_atl_chl_obs_nrt`, `cmems_atl_chl_obs_my`, `cmems_ibi_bgc_model` |
+| `cmems_nws` | `cmems_nws_currents`, `cmems_nws_waves`, `cmems_nws_chl_obs`, `cmems_nws_bgc_model` |
+| `ecmwf` | `ecmwf_open_data_forecast`, `era5_reanalysis` |
+| `eodyn` | `eodyn_osmose_currents` |
+| `skytruth` | `skytruth` |
+| `dataspace` | `copernicus_s1_grd`, `copernicus_s2_l2a`, `copernicus_landsat` |
+
+Select concrete sources by name and select variables from each source's
+`available_variables` allow-list:
 
 ```bash
+collekt config show                                    # inspect the catalog
 collekt fetch --bbox -6 20 35 45 --start 2023-06-15 \
-  --variables currents --conf-dir path/to/catalogs --preset drift
+  --datasource cmems_duacs_my --use-variables cmems_duacs_my=ugos,vgos
 ```
 
-A configuration directory contains a `default.yaml`, an optional `source/` folder
-of catalogs referenced by `source_catalogs`, and an optional `preset/` folder.
-A source entry looks like:
+The catalog is **curated, not exhaustive** — dataset IDs drift, so
+`collekt doctor --online` validates the CMEMS entries against the provider
+catalogue.
+
+Each gridded source declares one temporal field: `temporal_sampling`, the
+native cadence of that dataset (`15min`, `1h`, `3h`, `6h`, or `24h`). A request's
+`--sampling` can be that cadence or a coarser integer multiple of it; for example,
+a `15min` dataset can be downloaded at `15min`, `1h`, `3h`, `6h`, or `24h`, but a
+daily dataset can only satisfy `24h` requests. When a provider offers multiple
+cadences or dimensionalities, model them as separate source entries (for example
+`cmems_med_currents_nrt_15min`, `cmems_med_currents_nrt_2d_hourly`, and
+`cmems_med_currents_nrt`) so each source maps to one provider dataset and one
+actual cadence.
+
+Regional Atlantic products use the CMEMS regional names: IBI (`cmems_ibi`) and
+European North-West Shelf (`cmems_nws`) are separate catalogs. Basin-level
+Atlantic ocean-colour observations keep `cmems_atl` in their source names.
+
+Sources may also declare a `coverage` block:
 
 ```yaml
-sources:
-  cmems_glorys:
-    kind: cmems
-    variable_groups: [currents]
-    path: "cmems/glorys"
-    filename_pattern: "glorys_{dataset_id}_{date:%Y%m%d}_{bbox_hash}.nc"
-    dataset_nrt: "cmems_mod_glo_phy-cur_anfc_0.083deg_P1D-m"
-    dataset_my: "cmems_mod_glo_phy_my_0.083deg_P1D-m"
-    nrt_cutoff: "2024-07-01"
-    variables:
-      default: [uo, vo]
-    temporal:
-      native_sampling: 24h
-      supported_sampling: [24h]
-    depth: [1.0, 1.1]
+coverage:
+  longitude: [-19.08, 5.08]
+  latitude: [26.17, 56.08]
+  temporal:
+    start: "2022-11-23"
+    end: null
+    kind: rolling
 ```
 
-The broad **variable-group vocabulary** (what `currents`/`wind`/`waves` select)
-and curated presets are domain concerns and live with the consuming brick, not in
-collekt. A request's `variables` are matched generically against each source's
-`variable_groups`.
+This is an offline planning hint. Static spatial bounds and stable temporal
+starts are shipped in the catalog; rolling/NRT products keep `end: null` because
+their latest date moves. When online catalogue access is available, CMEMS
+planning still prefers Copernicus Marine `describe()` and `collekt doctor
+--online` compares declared coverage with the provider catalogue.
+
+## Extending and overriding
+
+Downstream is expected to select a subset and add its own sources. Two ways:
+
+- **Python** — `get_config(overrides=...)` deep-merges on top of the catalog:
+
+  ```python
+  cfg = get_config(overrides={"sources": {
+      "cmems_duacs_my": {"use_variables": ["ugos", "vgos"]},
+      "my_source": {
+          "kind": "cmems",
+          "dataset_id": "...",
+          "available_variables": ["thetao"],
+          "use_variables": ["thetao"],
+          "temporal_sampling": "24h",
+      },
+  }})
+  ```
+
+- **A `conf_dir` overlay** — a `default.yaml` whose `source_catalogs` can name the
+  **bundled** catalogs (resolved automatically) alongside its own `source/*.yaml`,
+  and whose `sources:` block adds or overrides individual sources.
+
+Curated **presets** and **variable-group tagging** are deliberately left to
+downstream — they are use-case decisions, not universal ones. Bundled sources
+carry no `variable_groups`, so an untagged source is treated as a wildcard
+(selected by name, never excluded by a request's `--variables`); tag your own
+sources downstream if you want group-based selection.
 
 ## Dependencies
 

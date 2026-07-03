@@ -19,15 +19,17 @@ uv sync   # or: just install
 
 ```python
 import collekt
+from collekt.core.config import get_config
 
 request = collekt.Request(
     region=collekt.Region.from_bbox((-6.0, 20.0, 35.0, 45.0)),
     start="2023-06-15",
-    variables=("currents", "wind"),
-    sampling="6h",
+    sampling="24h",
 )
 
-fetcher = collekt.Fetcher(request, conf_dir="path/to/catalogs")
+# Pick a source from the bundled catalog and select variables from its allow-list.
+config = get_config(overrides={"sources": {"cmems_duacs_my": {"use_variables": ["ugos", "vgos"]}}})
+fetcher = collekt.Fetcher(request, config=config, use_datasources=["cmems_duacs_my"])
 result = fetcher.download()
 print(result.manifest_path)
 ```
@@ -42,8 +44,8 @@ dataset = assembler.to_xarray(grid="lowest_resolution", time="lowest_resolution"
 The same workflow is available from the command line:
 
 ```bash
-collekt fetch --bbox -6 20 35 45 --start 2023-06-15 --sampling 6h \
-  --variables currents,wind --conf-dir path/to/catalogs
+collekt fetch --bbox -6 20 35 45 --start 2023-06-15 \
+  --datasource cmems_duacs_my --use-variables cmems_duacs_my=ugos,vgos
 collekt doctor
 ```
 

@@ -47,7 +47,10 @@ src/collekt/
     gridded.py             # Assembler: regrid + time-align -> xarray/NetCDF/Zarr/NumPy
 
   conf/
-    default.yaml           # output / cache / credential-path defaults
+    default.yaml           # output/cache/credential defaults + source_catalogs
+    source/                # curated dataset catalogs: cmems_global, cmems_med,
+                           #   cmems_ibi, cmems_nws, ecmwf, eodyn,
+                           #   skytruth, dataspace
 
   resources/
     schema/manifest.schema.json   # draft manifest schema (reference; not enforced)
@@ -57,6 +60,7 @@ src/collekt/
     main.py                # `collekt fetch` / `doctor` / `config show`
 ```
 
-Source catalogs (`source/*.yaml`) and curated presets (`preset/*.yaml`) are
-supplied by the caller through a configuration directory (`--conf-dir`); collekt
-ships the loading mechanism and the adapters, not a domain catalog.
+collekt ships a curated catalog under `conf/source/`. Downstream users select
+from it by name and extend or override it via `get_config(overrides=...)` or a
+`--conf-dir` overlay (whose `source_catalogs` may reference the bundled catalogs).
+Curated presets and variable-group tagging are left to downstream.

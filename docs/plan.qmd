@@ -200,7 +200,7 @@ collekt's point+radius and GeoJSON conventions.
   - `Region.from_geojson(path)` — bbox of the geometry, **plus** the geometry
     itself retained as optional WKT for sources that support polygon filters
     (Skytruth CQL, Data Space `OData…Intersects`).
-- `Request` gains `sampling` (`1h`/`3h`/`6h`/`24h`), an optional `variables`
+- `Request` gains `sampling` (`15min`/`1h`/`3h`/`6h`/`24h`), an optional `variables`
   field, optional `metadata`, and the `iter_days` / `*_datetime` /
   `sampling_label` helpers. The **meaning** of a variable group (e.g. what
   `currents` selects) is domain vocabulary supplied by the brick's catalog, not
@@ -217,7 +217,7 @@ content (presets, group vocabulary) in the domain brick.
   loader accepts an external `conf_dir`, so a brick supplies its own catalogs and
   presets without collekt shipping them.
 - `core/config/schema.py` — typed `Config`, `SourceConfig`, `OutputConfig`,
-  `CacheConfig`, `CredentialsConfig`, `TemporalConfig`; per-source variable
+  `CacheConfig`, `CredentialsConfig`; per-source temporal sampling and variable
   resolution (`default` / `optional` groups / `use_variables`);
   `apply_source_variable_overrides`.
 - **What collekt ships:** the config machinery plus a minimal catalog defining
@@ -256,7 +256,7 @@ become `skipped` warnings, never exceptions.
 
 `cmems`, `ecmwf_open_data`, `era5` port directly. `cmems` replaces collekt's
 25-line `CopernicusMarineDataset`, bringing NRT↔reanalysis dataset selection by
-date (`nrt_cutoff`), depth/time kwargs, cache reuse, and availability `describe`.
+date, depth/time kwargs, cache reuse, and availability `describe`.
 
 ### Existing collekt sources (adapt to the contract)
 
