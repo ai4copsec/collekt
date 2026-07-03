@@ -1,4 +1,3 @@
-import datetime as dt
 import logging
 import tempfile
 from pathlib import Path
@@ -7,6 +6,7 @@ import copernicusmarine
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from ..core.datasource import DataSource
+from ..core.types import Query
 from ..utils import get_coordinates_min_max
 
 logger = logging.getLogger(__name__)
@@ -33,11 +33,7 @@ class CopernicusMarineDataset(DataSource):
         self.variables = variables
 
     def execute(self,
-            from_time: dt.datetime | None = None,
-            to_time: dt.datetime | None = None,
-            longitude: float | None = None,
-            latitude: float | None = None,
-            radius: float | None = None,
+            query: Query = Query(),
             region: Path | None = None,
             log_level: str | None = None,
             verbose: bool | None = None,
@@ -47,14 +43,14 @@ class CopernicusMarineDataset(DataSource):
         credentials = Credentials()
         copernicusmarine.login(username=credentials.username, password=credentials.password)
 
-        min_max = get_coordinates_min_max(latitude, longitude, radius_in_km=radius)
+        min_max = get_coordinates_min_max(query.latitude, query.longitude, radius_in_km=query.radius)
 
         # https://toolbox-docs.marine.copernicus.eu/en/stable/python-interface.html#copernicusmarine.subset
         ds = copernicusmarine.subset(
             dataset_id=self.dataset_id,
             variables=self.variables,
-            start_datetime=from_time,
-            end_datetime=to_time,
+            start_datetime=query.from_time,
+            end_datetime=query.to_time,
             minimum_latitude=min_max['lat_min'],
             maximum_latitude=min_max['lat_max'],
             minimum_longitude=min_max['lon_min'],

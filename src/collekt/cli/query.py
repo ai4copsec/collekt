@@ -6,6 +6,7 @@ from pathlib import Path
 
 from collekt.cli.base import BaseParser
 from collekt.core.collector import Collector
+from collekt.core.types import Query
 
 logger = logging.getLogger(__name__)
 
@@ -58,14 +59,21 @@ class QueryParser(BaseParser):
             output_dir.mkdir(parents=True, exist_ok=True)
 
         collector = Collector()
-        collector.execute(from_time=from_time,
-                          to_time=to_time,
-                          longitude=args.at_lon,
-                          latitude=args.at_lat,
-                          radius=args.radius,
-                          region=args.region,
+        query = Query(from_time=from_time,
+                      to_time=to_time,
+                      longitude=args.at_lon,
+                      latitude=args.at_lat,
+                      radius=args.radius,
+                      region=args.region
+                )
+
+        collector.execute(query=query,
                           output_dir=output_dir,
                           log_level=args.log_level,
                           verbose=args.verbose,
                           use_datasources=args.datasource
                 )
+
+        with open(output_dir / "query.json", "w") as f:
+            f.write(query.model_dump_json(indent=4))
+
