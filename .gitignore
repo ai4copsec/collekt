@@ -24,6 +24,10 @@ docs/examples/hozint-*-help.txt
 # uv
 .venv/
 
+# Notebooks
+notebooks/cache/
+.ipynb_checkpoints/
+
 # Quarto / quartodoc
 public/
 docs/api/
