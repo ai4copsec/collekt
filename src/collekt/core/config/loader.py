@@ -65,6 +65,21 @@ def _as_list(value: Any) -> list[str]:
     return [str(item) for item in value]
 
 
+def _overlay(base: Mapping[str, Any], overlay: Mapping[str, Any]) -> dict[str, Any]:
+    """Deep-merge ``overlay`` onto ``base``, concatenating ``source_catalogs``.
+
+    A downstream configuration directory extends the bundled one rather than
+    replacing it: its ``default.yaml`` declares only additions and overrides, and
+    its ``source_catalogs`` are appended to the bundled list (deduplicated,
+    bundled first) so the shipped datasets stay available.
+    """
+    merged = _deep_merge(base, overlay)
+    catalogs = [*_as_list(base.get("source_catalogs")), *_as_list(overlay.get("source_catalogs"))]
+    if catalogs:
+        merged["source_catalogs"] = list(dict.fromkeys(catalogs))
+    return merged
+
+
 def _load_source_catalogs(config: Mapping[str, Any], conf_dir: Path) -> dict[str, Any]:
     """Expand ``source_catalogs`` into the final ``sources`` mapping."""
     merged = dict(config)
@@ -105,20 +120,26 @@ def load_config(
 
     Args:
         overrides: Optional mapping merged last.
-        conf_dir: Optional configuration directory. Defaults to the bundled
-            ``conf`` directory; a consuming brick can point this at its own
-            source catalogs.
+        conf_dir: Optional configuration directory that **extends** the bundled
+            one. Its ``default.yaml`` (if present) overlays the bundled defaults
+            and its ``source_catalogs`` are appended, so a consuming brick adds
+            or overrides datasets without re-declaring the shipped ones.
 
     Returns:
         The merged, environment-expanded configuration mapping.
 
     Raises:
-        FileNotFoundError: If the base file or requested source catalog is
-            missing.
+        FileNotFoundError: If the bundled base file or a requested source catalog
+            is missing.
     """
-    base = Path(conf_dir) if conf_dir is not None else default_conf_dir()
-    merged = _read_yaml(base / "default.yaml")
+    merged = _read_yaml(default_conf_dir() / "default.yaml")
+    source_dir = default_conf_dir()
+    if conf_dir is not None:
+        source_dir = Path(conf_dir)
+        overlay_path = source_dir / "default.yaml"
+        if overlay_path.exists():
+            merged = _overlay(merged, _read_yaml(overlay_path))
     if overrides:
         merged = _deep_merge(merged, overrides)
-    merged = _load_source_catalogs(merged, base)
+    merged = _load_source_catalogs(merged, source_dir)
     return _expand_env(merged)

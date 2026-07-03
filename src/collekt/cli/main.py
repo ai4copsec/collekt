@@ -87,6 +87,11 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
         help="YAML file containing a DatasetConfig datasets list",
     )
+    fetch.add_argument(
+        "--conf-dir",
+        type=Path,
+        help="Configuration directory that adds or overrides datasets on top of the bundled catalog",
+    )
     fetch.add_argument("--output-dir", type=Path, required=True, help="Staging root for downloaded files")
     fetch.add_argument("--strict", action="store_true", help="Fail if any requested source is skipped")
     fetch.add_argument("--no-cache", action="store_true", help="Ignore cached files and download again")
@@ -132,6 +137,7 @@ def run(argv: list[str] | None = None) -> int:
                 request=request,
                 config=DatasetConfig.from_yaml(args.dataset_config),
                 output_dir=args.output_dir,
+                conf_dir=args.conf_dir,
                 strict=args.strict,
                 progress=reporter.progress,
             )

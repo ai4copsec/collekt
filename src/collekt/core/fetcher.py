@@ -50,6 +50,9 @@ class Fetcher:
         request: Region, time window, and metadata.
         config: Selected datasets and provider parameters.
         output_dir: Root directory for staged downloads.
+        conf_dir: Optional configuration directory that extends the bundled
+            catalog with additional or overriding datasets. Only used when
+            `config` is a `DatasetConfig`.
         strict: Override config strict mode. If true, warnings become a final
             `RuntimeError` after the manifest is written.
         progress: Optional progress callback.
@@ -61,6 +64,7 @@ class Fetcher:
         *,
         config: DatasetConfig | Config,
         output_dir: str | Path | None = None,
+        conf_dir: str | Path | None = None,
         strict: bool | None = None,
         progress: ProgressCallback = null_progress,
     ) -> None:
@@ -72,7 +76,7 @@ class Fetcher:
         self.doctor_checks: tuple[DoctorCheck, ...] = ()
 
         self.dataset_config = config
-        loaded_config = config.resolve() if isinstance(config, DatasetConfig) else config
+        loaded_config = config.resolve(conf_dir=conf_dir) if isinstance(config, DatasetConfig) else config
         if output_dir is not None:
             root = Path(output_dir).expanduser()
         elif isinstance(config, Config):

@@ -205,7 +205,11 @@ collekt's point+radius and GeoJSON conventions.
   (`CMEMS`, `SkyTruth`, etc.). YAML presets are 1-to-1 serializations of this
   object.
 - `core/config/loader.py` — internal bundled source-catalog load and env-var
-  expansion.
+  expansion. A downstream `conf_dir` **overlays** the bundled configuration: its
+  `default.yaml` adds/overrides entries and its `source_catalogs` are appended
+  (bundled datasets stay available), threaded through
+  `DatasetConfig.resolve(conf_dir=…)`, `Fetcher(conf_dir=…)`, and
+  `collekt fetch --conf-dir`. This is how a brick adds its own datasets.
 - `core/config/schema.py` — typed `Config`, `SourceConfig`, `OutputConfig`,
   `CacheConfig`, `CredentialsConfig`; adapter-facing catalog metadata after
   `DatasetConfig` resolution.
@@ -337,8 +341,9 @@ removed outright — no backward-compatible alias.
 
 - **`collekt fetch`** — args: region as `--bbox W E S N` **or**
   `--at-lat/--at-lon/--radius` **or** `--region <geojson>`; `--start/--end`;
-  `--dataset-config <yaml>`; `--output-dir`; `--dry-run`;
-  `--strict`. Builds a `Request`, loads `DatasetConfig`, runs the workflow, and
+  `--dataset-config <yaml>`; `--conf-dir <dir>` (extend the catalog);
+  `--output-dir`; `--dry-run`; `--strict`. Builds a `Request`, loads
+  `DatasetConfig`, runs the workflow, and
   writes the manifest.
 - **`collekt doctor`** — environment + planned-call diagnostics, `--online` to
   query catalogues, optional `--conf-dir` for source-catalog diagnostics.

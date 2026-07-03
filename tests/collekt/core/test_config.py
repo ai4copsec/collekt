@@ -96,6 +96,33 @@ def test_dataset_config_resolves_selected_catalog_entries(tmp_path):
     }
 
 
+def test_dataset_config_resolves_a_downstream_dataset_via_conf_dir(tmp_path):
+    # A conf_dir lets DatasetConfig select a dataset collekt does not ship.
+    conf = tmp_path / "conf"
+    (conf / "source").mkdir(parents=True)
+    (conf / "default.yaml").write_text("source_catalogs: [ocean]\n", encoding="utf-8")
+    (conf / "source" / "ocean.yaml").write_text(
+        textwrap.dedent(
+            """
+            sources:
+              my_currents:
+                kind: cmems
+                dataset_id: MY-OCEAN-CURRENTS
+                available_variables: [uo, vo]
+            """
+        ),
+        encoding="utf-8",
+    )
+
+    resolved = collekt.DatasetConfig(collekt.CMEMS("my_currents", variables=["uo"])).resolve(conf_dir=conf)
+
+    assert resolved.sources["my_currents"].dataset_id == "MY-OCEAN-CURRENTS"
+    assert resolved.sources["my_currents"].variables == ("uo",)
+    # Without the conf_dir the key is unknown.
+    with pytest.raises(ValueError, match="unknown dataset key"):
+        collekt.DatasetConfig(collekt.CMEMS("my_currents", variables=["uo"])).resolve()
+
+
 def test_dataset_config_validates_variables_and_depth():
     with pytest.raises(ValueError, match="unknown variable"):
         collekt.DatasetConfig(collekt.CMEMS("cmems_duacs_my", variables=["imaginary"])).resolve()
@@ -127,30 +154,19 @@ def test_available_variables_gate_the_selection(tmp_path):
         get_config(conf_dir=conf, overrides={"sources": {"grid": {"variables": ["nope"]}}})
 
 
-def test_conf_dir_selects_bundled_catalogs_by_name(tmp_path):
+def test_conf_dir_extends_the_bundled_catalog(tmp_path):
+    # An overlay conf_dir adds its own catalog; the bundled datasets stay available.
     conf = tmp_path / "conf"
-    conf.mkdir()
-    (conf / "default.yaml").write_text("source_catalogs: [cmems_global]\n", encoding="utf-8")
-
-    cfg = get_config(conf_dir=conf)
-
-    assert "cmems_glorys_my" in cfg.sources  # resolved from the bundled catalog
-    assert "cmems_med_currents_my" not in cfg.sources  # not requested
-
-
-def test_conf_dir_extends_and_overrides_bundled_sources(tmp_path):
-    conf = tmp_path / "conf"
-    conf.mkdir()
-    (conf / "default.yaml").write_text(
+    (conf / "source").mkdir(parents=True)
+    (conf / "default.yaml").write_text("source_catalogs: [ocean]\n", encoding="utf-8")
+    (conf / "source" / "ocean.yaml").write_text(
         textwrap.dedent(
             """
-            source_catalogs: [cmems_global]
             sources:
-              cmems_glorys_my:
-                enabled: false
-              my_source:
+              my_currents:
                 kind: cmems
-                variables: [x]
+                dataset_id: MY-OCEAN-CURRENTS
+                available_variables: [uo, vo]
             """
         ),
         encoding="utf-8",
@@ -158,8 +174,34 @@ def test_conf_dir_extends_and_overrides_bundled_sources(tmp_path):
 
     cfg = get_config(conf_dir=conf)
 
-    assert cfg.sources["cmems_glorys_my"].enabled is False  # overridden
-    assert cfg.sources["my_source"].variables == ("x",)  # added
+    assert cfg.sources["my_currents"].dataset_id == "MY-OCEAN-CURRENTS"  # added downstream
+    assert "cmems_glorys_my" in cfg.sources  # bundled global catalog still present
+    assert "cmems_med_currents_my" in cfg.sources  # ...and the other bundled catalogs too
+
+
+def test_conf_dir_overrides_a_bundled_source(tmp_path):
+    # Overriding a bundled dataset needs no re-listing of the shipped catalogs.
+    conf = tmp_path / "conf"
+    conf.mkdir()
+    (conf / "default.yaml").write_text(
+        textwrap.dedent(
+            """
+            sources:
+              cmems_glorys_my:
+                enabled: false
+              my_source:
+                kind: cmems
+                available_variables: [x]
+            """
+        ),
+        encoding="utf-8",
+    )
+
+    cfg = get_config(conf_dir=conf)
+
+    assert cfg.sources["cmems_glorys_my"].enabled is False  # bundled source overridden
+    assert cfg.sources["my_source"].available_variables == ("x",)  # added
+    assert "cmems_duacs_my" in cfg.sources  # untouched bundled datasets remain
 
 
 def test_unknown_source_catalog_raises(tmp_path):

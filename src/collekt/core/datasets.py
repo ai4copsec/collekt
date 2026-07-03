@@ -199,9 +199,21 @@ class DatasetConfig:
         """Return a YAML-serializable representation."""
         return {"datasets": [dataset.as_dict() for dataset in self.datasets]}
 
-    def resolve(self) -> Config:
-        """Resolve selected datasets against the bundled catalog."""
-        catalog = load_config()
+    def resolve(self, conf_dir: str | Path | None = None) -> Config:
+        """Resolve selected datasets against the catalog.
+
+        Args:
+            conf_dir: Optional configuration directory that extends the bundled
+                catalog with additional or overriding dataset definitions.
+
+        Returns:
+            Parsed configuration containing only the selected datasets.
+
+        Raises:
+            ValueError: If a selected key is unknown, its provider does not match
+                the catalog source kind, or a required variable/depth is missing.
+        """
+        catalog = load_config(conf_dir=conf_dir)
         sources = dict(catalog.get("sources", {}) or {})
         selected: dict[str, Any] = {}
         for dataset in self.datasets:

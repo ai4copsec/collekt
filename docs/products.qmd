@@ -121,6 +121,34 @@ collekt fetch --bbox -6 20 35 45 --start 2023-06-15 \
 They name only desired datasets and provider parameters. The full source catalog
 remains package-maintained metadata under `collekt/conf/source/`.
 
+## Extending the catalog downstream
+
+The bundled catalog is not exhaustive. A downstream project — for example a
+technological brick with its own ocean datasets — adds or overrides datasets with
+a configuration directory, passed as `--conf-dir` (CLI) or `conf_dir=` (`Fetcher`
+/ `DatasetConfig.resolve`). It **overlays** the bundled configuration rather than
+replacing it: its `default.yaml` declares only additions, its `source_catalogs`
+are appended to the shipped ones, and its `source/*.yaml` files define new datasets
+or override bundled ones by key.
+
+```text
+my_brick/conf/
+  default.yaml        # source_catalogs: [ocean]  (bundled catalogs stay available)
+  source/ocean.yaml   # defines cmems / era5 / ... datasets by key
+```
+
+```bash
+collekt fetch --bbox -6 20 35 45 --start 2023-06-15 \
+  --conf-dir my_brick/conf --dataset-config presets/currents.yaml \
+  --output-dir data/collections
+```
+
+`--conf-dir` is the **catalog** (what datasets exist); `--dataset-config` is the
+**selection** (which of them to fetch, and with which variables and depth). A
+selected key must exist in the merged catalog, so a brick's presets can reference
+both bundled and its own datasets. Adding a new *provider* (a new adapter `kind`)
+is a larger extension and is not configured this way.
+
 ## Dependencies
 
 collekt installs all provider clients and the gridded `Assembler` by default, so

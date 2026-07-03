@@ -11,6 +11,10 @@ under `[main]`; `just bump` copies them under the new version.
   Space, including CMEMS Global/MED/IBI/NWS metadata and coverage declarations.
 - Manual `scripts/update_cmems_coverage.py` helper to refresh declared CMEMS
   coverage from the Copernicus catalogue.
+- Downstream catalog extension: a `conf_dir` overlays the bundled configuration
+  (adding or overriding datasets and appending `source_catalogs`, so the shipped
+  datasets stay available), threaded through `collekt fetch --conf-dir`,
+  `Fetcher(conf_dir=…)`, and `DatasetConfig.resolve(conf_dir=…)`.
 - Project tooling: uv + `uv_build`, Ruff, commitizen, a `justfile`, GitHub
   Actions CI, and a Quarto + quartodoc documentation site.
 - Typed request model: `Request` and `Region` (from bounding box, point+radius,
