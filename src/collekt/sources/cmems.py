@@ -27,8 +27,8 @@ def _copernicusmarine():
         import copernicusmarine
     except ImportError as exc:  # pragma: no cover - exercised only without optional extra
         raise ImportError(
-            "The 'copernicusmarine' package is required for CMEMS downloads. "
-            "Install the cmems extra with: uv sync --extra cmems"
+            "The 'copernicusmarine' package is required for CMEMS downloads; "
+            "reinstall collekt's dependencies (uv sync)."
         ) from exc
     return copernicusmarine
 

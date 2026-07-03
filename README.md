@@ -16,12 +16,12 @@ Requires Python 3.13+ and [`uv`](https://docs.astral.sh/uv/).
 ```bash
 git clone https://github.com/ai4copsec/collekt.git
 cd collekt
-uv sync --all-groups --all-extras   # or: just install
+uv sync   # or: just install
 ```
 
-Heavy provider clients are optional; install only the extras you need
-(`gridded`, `features`, `cmems`, `era5`, `ecmwf`, `hozint`, or `all`). The base
-install stays light.
+All provider clients and the gridded `Assembler` are installed by default, so
+every source works out of the box. Clients are imported lazily, so importing
+collekt stays fast.
 
 ## Usage
 

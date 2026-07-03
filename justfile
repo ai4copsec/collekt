@@ -1,9 +1,9 @@
 default:
     just --list
 
-# Install all dependencies (dev + test + docs groups, all extras)
+# Install all dependencies (runtime + dev + test + docs + notebook groups)
 install:
-    uv sync --all-groups --all-extras
+    uv sync --all-groups
 
 # Format code with ruff
 format:

@@ -29,8 +29,8 @@ def _client_class():
         from ecmwf.opendata import Client
     except ImportError as exc:  # pragma: no cover - exercised only without optional extra
         raise ImportError(
-            "The 'ecmwf-opendata' package is required for ECMWF forecast downloads. "
-            "Install the ecmwf extra with: uv sync --extra ecmwf"
+            "The 'ecmwf-opendata' package is required for ECMWF forecast downloads; "
+            "reinstall collekt's dependencies (uv sync)."
         ) from exc
     return Client
 

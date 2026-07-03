@@ -64,16 +64,10 @@ and curated presets are domain concerns and live with the consuming brick, not i
 collekt. A request's `variables` are matched generically against each source's
 `variable_groups`.
 
-## Extras
+## Dependencies
 
-Heavy provider clients are optional. Install only what you need:
-
-| Extra | Enables |
-|---|---|
-| `gridded` | the `Assembler` (xarray/scipy) and GRIB2 reading |
-| `features` | the Parquet feature backend (damast/geopandas/polars) used by Skytruth |
-| `cmems` | CMEMS downloads (`copernicusmarine`) |
-| `era5` | ERA5 downloads (`cdsapi`) |
-| `ecmwf` | ECMWF Open Data forecasts (`ecmwf-opendata`) |
-| `hozint` | the `hozint-apiclient` CLI |
-| `all` | all of the above |
+collekt installs all provider clients and the gridded `Assembler` by default, so
+every source works out of the box after `uv sync`. Clients are imported lazily,
+so importing collekt stays fast and a source only pulls its client into memory
+when it actually runs. The ECMWF Open Data forecast subset and Skytruth need no
+credentials; the other providers do — see [Credentials](credentials.qmd).

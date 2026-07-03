@@ -30,7 +30,7 @@ def _cdsapi():
         import cdsapi
     except ImportError as exc:  # pragma: no cover - exercised only without optional extra
         raise ImportError(
-            "The 'cdsapi' package is required for ERA5 downloads. Install the era5 extra with: uv sync --extra era5"
+            "The 'cdsapi' package is required for ERA5 downloads; reinstall collekt's dependencies (uv sync)."
         ) from exc
     return cdsapi
 

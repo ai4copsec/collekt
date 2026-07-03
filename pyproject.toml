@@ -23,9 +23,11 @@ classifiers = [
     "Programming Language :: Python :: 3.14",
 ]
 
-# The light engine only. Heavy/optional libraries live in the extras below and
-# are imported lazily by the adapters/backends that need them.
+# collekt installs everything by default: most users want all sources and the
+# gridded Assembler. Provider clients are still imported lazily, so importing
+# collekt stays fast and degrades gracefully if a dependency is removed.
 dependencies = [
+    # engine
     "pydantic",
     "pydantic-settings",
     "pyyaml",
@@ -34,38 +36,26 @@ dependencies = [
     "geopy",
     "rich",
     "tqdm",
+    # gridded assembler + GRIB reading
+    "xarray>=2026.4.0",
+    "scipy>=1.18.0",
+    "cfgrib>=0.9.15.1",
+    "eccodeslib>=2.47.3.21",
+    # tabular feature backend (Skytruth)
+    "damast",
+    "geopandas",
+    "polars",
+    # provider clients
+    "copernicusmarine>=2.4.1",
+    "cdsapi>=0.7.7",
+    "ecmwf-opendata>=0.3.30",
+    "hozint-apiclient",
 ]
 
 [project.urls]
 homepage = "https://ai4copsec.github.io/collekt"
 documentation = "https://ai4copsec.github.io/collekt"
 repository = "https://github.com/ai4copsec/collekt"
-
-[project.optional-dependencies]
-# Gridded output backend (the Assembler) + GRIB reading.
-gridded = [
-    "xarray>=2026.4.0",
-    "scipy>=1.18.0",
-    "cfgrib>=0.9.15.1",
-    "eccodeslib>=2.47.3.21",
-]
-# Tabular feature backend + Skytruth.
-features = [
-    "damast",
-    "geopandas",
-    "polars",
-]
-cmems = ["copernicusmarine>=2.4.1"]
-era5 = ["cdsapi>=0.7.7"]
-ecmwf = [
-    "ecmwf-opendata>=0.3.30",
-    "cfgrib>=0.9.15.1",
-    "eccodeslib>=2.47.3.21",
-]
-# hozint-apiclient is a CLI tool invoked as a subprocess by the hozint adapter
-# (not imported), so it is a runtime tool dependency rather than a base one.
-hozint = ["hozint-apiclient"]
-all = ["collekt[gridded,features,cmems,era5,ecmwf,hozint]"]
 
 [project.scripts]
 collekt = "collekt.cli.main:run"

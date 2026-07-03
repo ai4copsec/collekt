@@ -557,54 +557,25 @@ name = "collekt"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "cdsapi" },
+    { name = "cfgrib" },
+    { name = "copernicusmarine" },
+    { name = "damast" },
+    { name = "eccodeslib" },
+    { name = "ecmwf-opendata" },
+    { name = "geopandas" },
     { name = "geopy" },
+    { name = "hozint-apiclient" },
+    { name = "polars" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "pyyaml" },
     { name = "requests" },
     { name = "rich" },
+    { name = "scipy" },
     { name = "shapely" },
     { name = "tqdm" },
-]
-
-[package.optional-dependencies]
-all = [
-    { name = "cdsapi" },
-    { name = "cfgrib" },
-    { name = "copernicusmarine" },
-    { name = "damast" },
-    { name = "eccodeslib" },
-    { name = "ecmwf-opendata" },
-    { name = "geopandas" },
-    { name = "hozint-apiclient" },
-    { name = "polars" },
-    { name = "scipy" },
     { name = "xarray" },
-]
-cmems = [
-    { name = "copernicusmarine" },
-]
-ecmwf = [
-    { name = "cfgrib" },
-    { name = "eccodeslib" },
-    { name = "ecmwf-opendata" },
-]
-era5 = [
-    { name = "cdsapi" },
-]
-features = [
-    { name = "damast" },
-    { name = "geopandas" },
-    { name = "polars" },
-]
-gridded = [
-    { name = "cfgrib" },
-    { name = "eccodeslib" },
-    { name = "scipy" },
-    { name = "xarray" },
-]
-hozint = [
-    { name = "hozint-apiclient" },
 ]
 
 [package.dev-dependencies]
@@ -633,30 +604,26 @@ test = [
 
 [package.metadata]
 requires-dist = [
-    { name = "cdsapi", marker = "extra == 'era5'", specifier = ">=0.7.7" },
-    { name = "cfgrib", marker = "extra == 'ecmwf'", specifier = ">=0.9.15.1" },
-    { name = "cfgrib", marker = "extra == 'gridded'", specifier = ">=0.9.15.1" },
-    { name = "collekt", extras = ["gridded", "features", "cmems", "era5", "ecmwf", "hozint"], marker = "extra == 'all'" },
-    { name = "copernicusmarine", marker = "extra == 'cmems'", specifier = ">=2.4.1" },
-    { name = "damast", marker = "extra == 'features'" },
-    { name = "eccodeslib", marker = "extra == 'ecmwf'", specifier = ">=2.47.3.21" },
-    { name = "eccodeslib", marker = "extra == 'gridded'", specifier = ">=2.47.3.21" },
-    { name = "ecmwf-opendata", marker = "extra == 'ecmwf'", specifier = ">=0.3.30" },
-    { name = "geopandas", marker = "extra == 'features'" },
+    { name = "cdsapi", specifier = ">=0.7.7" },
+    { name = "cfgrib", specifier = ">=0.9.15.1" },
+    { name = "copernicusmarine", specifier = ">=2.4.1" },
+    { name = "damast" },
+    { name = "eccodeslib", specifier = ">=2.47.3.21" },
+    { name = "ecmwf-opendata", specifier = ">=0.3.30" },
+    { name = "geopandas" },
     { name = "geopy" },
-    { name = "hozint-apiclient", marker = "extra == 'hozint'" },
-    { name = "polars", marker = "extra == 'features'" },
+    { name = "hozint-apiclient" },
+    { name = "polars" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "pyyaml" },
     { name = "requests" },
     { name = "rich" },
-    { name = "scipy", marker = "extra == 'gridded'", specifier = ">=1.18.0" },
+    { name = "scipy", specifier = ">=1.18.0" },
     { name = "shapely" },
     { name = "tqdm" },
-    { name = "xarray", marker = "extra == 'gridded'", specifier = ">=2026.4.0" },
+    { name = "xarray", specifier = ">=2026.4.0" },
 ]
-provides-extras = ["gridded", "features", "cmems", "era5", "ecmwf", "hozint", "all"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -1887,6 +1854,7 @@ wheels = [
 name = "llvmlite"
 version = "0.48.0"
 source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/dc/a0/acc8ffcd5bdc63df0097e22c719bfcd61b604358343089313a8aebbb24ab/llvmlite-0.48.0.tar.gz", hash = "sha256:543b19f9ef8f3c7c60d1468191e4ee1b1537bf9f8a3d56f64c0ddd98de92edd2", size = 184016, upload-time = "2026-07-02T20:20:05.308Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/9c/23/fe9316d14626b42c73ef0b502e724705a6ee9450afe53759c0a99c37c2d7/llvmlite-0.48.0-cp313-cp313-macosx_12_0_arm64.whl", hash = "sha256:a83a99ef0c05b4ccddf9b6218ed9fe84b653a0caf7c1d9dbe148d6d16c67f518", size = 40480652, upload-time = "2026-07-01T18:41:52.216Z" },
     { url = "https://files.pythonhosted.org/packages/1b/4a/90715fa12006d681270b08d881195b6fab3ec39572e048764a1f7f59fed7/llvmlite-0.48.0-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:8761b9e522f55207e24424fcd98370289eec2710bf8e915c82d1053f642450dc", size = 59890120, upload-time = "2026-07-01T18:42:00.748Z" },

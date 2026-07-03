@@ -14,7 +14,7 @@ what it did in a machine-readable manifest.
 ## Getting started
 
 ```bash
-uv sync --all-groups --all-extras   # or: just install
+uv sync   # or: just install
 ```
 
 ```python

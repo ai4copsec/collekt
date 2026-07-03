@@ -1,4 +1,4 @@
-"""Build analysis-ready outputs from downloaded TB-REA files."""
+"""Build analysis-ready outputs from a downloaded collection."""
 
 from __future__ import annotations
 
@@ -36,9 +36,7 @@ def _require_xarray():
 
 def _require_cfgrib_backend() -> None:
     if find_spec("cfgrib") is None:
-        raise ImportError(
-            "Assembler requires cfgrib to open GRIB2 files. Install the download extra with: uv sync --extra gridded"
-        )
+        raise ImportError("Assembler requires cfgrib to open GRIB2 files; reinstall collekt's dependencies (uv sync).")
     try:
         import eccodes
 
@@ -46,7 +44,7 @@ def _require_cfgrib_backend() -> None:
     except Exception as exc:  # noqa: BLE001 - backend availability varies by platform
         raise ImportError(
             "Assembler requires the ecCodes native library to open GRIB2 files. "
-            "Install the download extra with: uv sync --extra gridded, or install ecCodes for your platform."
+            "Reinstall collekt's dependencies (uv sync), or install ecCodes for your platform."
         ) from exc
 
 
@@ -391,7 +389,7 @@ class Assembler:
 
     @staticmethod
     def _normalize_grib_dataset(dataset):
-        """Normalize cfgrib forecast coordinates for TB-REA assembly."""
+        """Normalize cfgrib forecast coordinates for assembly."""
         ds = dataset
         if "valid_time" in ds.coords and "step" in ds.dims and ds.coords["valid_time"].dims == ("step",):
             ds = ds.swap_dims({"step": "valid_time"})
