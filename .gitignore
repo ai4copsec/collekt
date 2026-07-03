@@ -1,6 +1,7 @@
 .env
 .idea/*
 .tox/*
+.venv/
 artifacts
 .coverage
 log.txt

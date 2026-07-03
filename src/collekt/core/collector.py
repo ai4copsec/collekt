@@ -6,6 +6,7 @@ from pathlib import Path
 from collekt.core.types import Query
 from collekt.datasources.copernicus import CopernicusDataspace
 from collekt.datasources.copernicusmarine import CopernicusMarineDataset
+from collekt.datasources.geonorge import Geonorge
 from collekt.datasources.hozint import Hozint
 from collekt.datasources.skytruth import SkytruthDataset
 
@@ -21,7 +22,8 @@ class Collector:
             # Landsat 8 and Landsat 9 carry two distinct instruments: the OLI (Operational Land Imager) and the TIRS (Thermal Infrared Sensor).
             # Use Level-2 Science Products (landsat-c2-l2), which offer ready-to-use surface reflectance and temperature.
             CopernicusDataspace(collection="landsat-c2-l1-oli-tirs"),
-            SkytruthDataset()
+            SkytruthDataset(),
+            Geonorge(),
     ]
 
     def execute(self,
