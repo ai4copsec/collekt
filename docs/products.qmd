@@ -42,14 +42,36 @@ uses, grouped into catalogs under `collekt/conf/source/`:
 | `skytruth` | `skytruth` |
 | `dataspace` | `copernicus_s1_grd`, `copernicus_s2_l2a`, `copernicus_landsat` |
 
-Select concrete sources by name and select variables from each source's
-`available_variables` allow-list:
+Select concrete datasets with `DatasetConfig`, using provider-specific
+dataclasses whose fields match the YAML preset form:
 
-```bash
-collekt config show                                    # inspect the catalog
-collekt fetch --bbox -6 20 35 45 --start 2023-06-15 \
-  --datasource cmems_duacs_my --use-variables cmems_duacs_my=ugos,vgos
+```python
+config = collekt.DatasetConfig(
+    collekt.CMEMS("cmems_glorys_my", variables=["uo", "vo"], depth=[1.0, 1.1]),
+    collekt.CMEMS("cmems_duacs_my", variables=["ugos", "vgos"]),
+    collekt.SkyTruth(),
+)
 ```
+
+The equivalent YAML is:
+
+```yaml
+datasets:
+  - provider: cmems
+    key: cmems_glorys_my
+    variables: [uo, vo]
+    depth: [1.0, 1.1]
+  - provider: cmems
+    key: cmems_duacs_my
+    variables: [ugos, vgos]
+  - provider: skytruth
+    key: skytruth
+```
+
+`DatasetConfig` resolves each key against the bundled catalog, validates selected
+variables against `available_variables`, and validates required provider
+parameters such as CMEMS depth ranges. `Fetcher` takes the output directory
+separately; it is runtime state, not dataset configuration.
 
 The catalog is **curated, not exhaustive** — dataset IDs drift, so
 `collekt doctor --online` validates the CMEMS entries against the provider
@@ -87,34 +109,17 @@ their latest date moves. When online catalogue access is available, CMEMS
 planning still prefers Copernicus Marine `describe()` and `collekt doctor
 --online` compares declared coverage with the provider catalogue.
 
-## Extending and overriding
+## Presets
 
-Downstream is expected to select a subset and add its own sources. Two ways:
+Presets are plain YAML versions of `DatasetConfig`:
 
-- **Python** — `get_config(overrides=...)` deep-merges on top of the catalog:
+```bash
+collekt fetch --bbox -6 20 35 45 --start 2023-06-15 \
+  --dataset-config westmed.yaml --output-dir data/collections
+```
 
-  ```python
-  cfg = get_config(overrides={"sources": {
-      "cmems_duacs_my": {"use_variables": ["ugos", "vgos"]},
-      "my_source": {
-          "kind": "cmems",
-          "dataset_id": "...",
-          "available_variables": ["thetao"],
-          "use_variables": ["thetao"],
-          "temporal_sampling": "24h",
-      },
-  }})
-  ```
-
-- **A `conf_dir` overlay** — a `default.yaml` whose `source_catalogs` can name the
-  **bundled** catalogs (resolved automatically) alongside its own `source/*.yaml`,
-  and whose `sources:` block adds or overrides individual sources.
-
-Curated **presets** and **variable-group tagging** are deliberately left to
-downstream — they are use-case decisions, not universal ones. Bundled sources
-carry no `variable_groups`, so an untagged source is treated as a wildcard
-(selected by name, never excluded by a request's `--variables`); tag your own
-sources downstream if you want group-based selection.
+They name only desired datasets and provider parameters. The full source catalog
+remains package-maintained metadata under `collekt/conf/source/`.
 
 ## Dependencies
 

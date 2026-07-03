@@ -59,7 +59,7 @@ class SourceConfig:
     and depths to actually fetch is a downstream choice:
 
     - `available_variables` is the harvested allow-list a source can serve.
-      Selection (`use_variables`) is validated against it; the catalog ships no
+      The selected `variables` are validated against it; the catalog ships no
       default selection, so a bundled source must be given a selection downstream.
     - `has_depth` marks a source with a depth dimension. Such a source requires an
       explicit `depth: [min, max]` downstream; the provider validates the range.
@@ -69,13 +69,9 @@ class SourceConfig:
     name: str
     kind: str
     enabled: bool = True
-    variable_groups: tuple[str, ...] = ()
     path: Path = Path(".")
     filename_pattern: str = "{source}_{date:%Y%m%d}_{bbox_hash}.nc"
     available_variables: tuple[str, ...] = ()
-    default_variables: tuple[str, ...] = ()
-    optional_variables: dict[str, tuple[str, ...]] = field(default_factory=dict)
-    use_variables: tuple[str, ...] = ()
     variables: tuple[str, ...] = ()
     has_depth: bool = False
     url: str | None = None
@@ -96,9 +92,6 @@ class Config:
     source_catalogs: tuple[str, ...] = ()
     sources: dict[str, SourceConfig] = field(default_factory=dict)
     raw: dict[str, Any] = field(default_factory=dict)
-
-
-SourceVariableOverrides = Mapping[str, tuple[str, ...] | list[str] | str]
 
 
 def _optional_path(value: Any) -> Path | None:
@@ -135,28 +128,16 @@ def _parse_credentials(raw: Mapping[str, Any] | None) -> CredentialsConfig:
 
 def _parse_source(name: str, raw: Mapping[str, Any]) -> SourceConfig:
     d = dict(raw)
-    default_variables, optional_variables = _parse_variable_catalog(d.get("variables"))
     available_variables = _as_str_tuple(d.get("available_variables"))
-    use_variables = tuple(str(x) for x in _as_tuple(d.get("use_variables", ("default",))))
-    variables = _resolve_variables(
-        source_name=name,
-        default_variables=default_variables,
-        optional_variables=optional_variables,
-        available_variables=available_variables,
-        use_variables=use_variables,
-    )
-    groups = d.get("variable_groups") or ()
+    variables = _as_str_tuple(d.get("variables"))
+    _validate_selected_variables(name, variables, available_variables)
     return SourceConfig(
         name=name,
         kind=str(d.get("kind", name)),
         enabled=_as_bool(d.get("enabled"), True),
-        variable_groups=tuple(str(x) for x in groups),
         path=Path(str(d.get("path", "."))),
         filename_pattern=str(d.get("filename_pattern", f"{name}" + "_{date:%Y%m%d}_{bbox_hash}.nc")),
         available_variables=available_variables,
-        default_variables=default_variables,
-        optional_variables=optional_variables,
-        use_variables=use_variables,
         variables=variables,
         has_depth=_as_bool(d.get("has_depth"), False),
         url=None if d.get("url") is None else str(d["url"]),
@@ -182,69 +163,18 @@ def _as_str_tuple(value: Any) -> tuple[str, ...]:
     return tuple(str(x) for x in _as_tuple(value))
 
 
-def _parse_variable_catalog(raw: Any) -> tuple[tuple[str, ...], dict[str, tuple[str, ...]]]:
-    if isinstance(raw, Mapping):
-        default = _as_str_tuple(raw.get("default", ()))
-        optional_raw = raw.get("optional", {}) or {}
-        if not isinstance(optional_raw, Mapping):
-            raise ValueError("variables.optional must be a mapping")
-        optional = {str(name): _as_str_tuple(values) for name, values in optional_raw.items()}
-        return default, optional
-    default = _as_str_tuple(raw or ())
-    return default, {}
-
-
-def _resolve_variables(
-    *,
+def _validate_selected_variables(
     source_name: str,
-    default_variables: tuple[str, ...],
-    optional_variables: Mapping[str, tuple[str, ...]],
+    variables: tuple[str, ...],
     available_variables: tuple[str, ...],
-    use_variables: tuple[str, ...],
-) -> tuple[str, ...]:
-    selected: list[str] = []
-    known_variables = set(default_variables) | set(available_variables)
-    for values in optional_variables.values():
-        known_variables.update(values)
-    for item in use_variables or ("default",):
-        if item == "default":
-            selected.extend(default_variables)
-        elif item in optional_variables:
-            selected.extend(optional_variables[item])
-        elif item in known_variables:
-            selected.append(item)
-        else:
-            known = ", ".join(["default", *sorted(optional_variables), *sorted(known_variables)])
-            raise ValueError(f"source {source_name!r} requested unknown variable or group {item!r}; known: {known}")
-    return tuple(dict.fromkeys(selected))
-
-
-def apply_source_variable_overrides(config: Config, overrides: SourceVariableOverrides | None) -> Config:
-    """Return a new config with per-source ``use_variables`` overrides applied.
-
-    Args:
-        config: Parsed configuration.
-        overrides: Mapping from source name to a variable/group name or list of
-            variable/group names.
-
-    Returns:
-        Parsed configuration with updated source variable selections.
-
-    Raises:
-        ValueError: If an override names an unknown source or variable/group.
-    """
-    if not overrides:
-        return config
-    raw = dict(config.raw)
-    sources = dict(raw.get("sources", {}) or {})
-    for source_name, use_variables in overrides.items():
-        if source_name not in sources:
-            raise ValueError(f"unknown source {source_name!r} in variable override")
-        source = dict(sources[source_name] or {})
-        source["use_variables"] = list(_as_str_tuple(use_variables))
-        sources[source_name] = source
-    raw["sources"] = sources
-    return parse_config(raw)
+) -> None:
+    if not variables or not available_variables:
+        return
+    unknown = sorted(set(variables) - set(available_variables))
+    if unknown:
+        known = ", ".join(available_variables)
+        missing = ", ".join(unknown)
+        raise ValueError(f"source {source_name!r} requested unknown variables {missing}; known: {known}")
 
 
 def parse_config(raw: Mapping[str, Any] | None) -> Config:
@@ -267,18 +197,16 @@ def parse_config(raw: Mapping[str, Any] | None) -> Config:
 
 def get_config(
     *,
-    preset: str | None = None,
     overrides: Mapping[str, Any] | None = None,
     conf_dir: str | Path | None = None,
 ) -> Config:
     """Load YAML configuration and return typed values.
 
     Args:
-        preset: Optional preset name.
         overrides: Optional mapping merged last.
         conf_dir: Optional configuration directory.
 
     Returns:
         Parsed collekt configuration.
     """
-    return parse_config(load_config(preset=preset, overrides=overrides, conf_dir=conf_dir))
+    return parse_config(load_config(overrides=overrides, conf_dir=conf_dir))

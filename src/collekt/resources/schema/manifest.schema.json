@@ -23,7 +23,7 @@
     "request": {
       "type": "object",
       "additionalProperties": true,
-      "required": ["region", "start", "end", "variables", "preset"],
+      "required": ["region", "start", "end", "sampling"],
       "properties": {
         "region": {
           "type": "object",
@@ -40,11 +40,6 @@
         "start": {"type": "string"},
         "end": {"type": "string"},
         "sampling": {"type": "string"},
-        "variables": {
-          "type": "array",
-          "items": {"type": "string"}
-        },
-        "preset": {"type": ["string", "null"]},
         "metadata": {
           "type": "object",
           "additionalProperties": true
@@ -68,18 +63,12 @@
       "additionalProperties": {
         "type": "object",
         "additionalProperties": true,
-        "required": ["kind", "enabled", "variable_groups", "use_variables", "resolved_variables"],
+        "required": ["kind", "enabled", "variables"],
         "properties": {
           "kind": {"type": "string"},
           "enabled": {"type": "boolean"},
-          "variable_groups": {"type": "array", "items": {"type": "string"}},
-          "use_variables": {"type": "array", "items": {"type": "string"}},
-          "default_variables": {"type": "array", "items": {"type": "string"}},
-          "optional_variables": {
-            "type": "object",
-            "additionalProperties": {"type": "array", "items": {"type": "string"}}
-          },
-          "resolved_variables": {"type": "array", "items": {"type": "string"}},
+          "variables": {"type": "array", "items": {"type": "string"}},
+          "available_variables": {"type": "array", "items": {"type": "string"}},
           "temporal_sampling": {"type": "string"},
           "coverage": {"type": ["object", "null"]}
         }

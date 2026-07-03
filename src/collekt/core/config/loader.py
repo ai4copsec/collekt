@@ -91,7 +91,6 @@ def _load_source_catalogs(config: Mapping[str, Any], conf_dir: Path) -> dict[str
 
 def load_config(
     *,
-    preset: str | None = None,
     overrides: Mapping[str, Any] | None = None,
     conf_dir: str | Path | None = None,
 ) -> dict[str, Any]:
@@ -101,29 +100,24 @@ def load_config(
         ```python
         from collekt.core.config import load_config
 
-        cfg = load_config(preset="drift", overrides={"cache": {"overwrite": True}})
+        cfg = load_config(overrides={"cache": {"overwrite": True}})
         ```
 
     Args:
-        preset: Optional preset name from ``<conf_dir>/preset/<preset>.yaml``.
         overrides: Optional mapping merged last.
         conf_dir: Optional configuration directory. Defaults to the bundled
             ``conf`` directory; a consuming brick can point this at its own
-            catalogs and presets.
+            source catalogs.
 
     Returns:
         The merged, environment-expanded configuration mapping.
 
     Raises:
-        FileNotFoundError: If the base file or requested preset is missing.
+        FileNotFoundError: If the base file or requested source catalog is
+            missing.
     """
     base = Path(conf_dir) if conf_dir is not None else default_conf_dir()
     merged = _read_yaml(base / "default.yaml")
-    if preset is not None:
-        preset_path = base / "preset" / f"{preset}.yaml"
-        if not preset_path.exists():
-            raise FileNotFoundError(f"Unknown preset {preset!r}: {preset_path} not found")
-        merged = _deep_merge(merged, _read_yaml(preset_path))
     if overrides:
         merged = _deep_merge(merged, overrides)
     merged = _load_source_catalogs(merged, base)

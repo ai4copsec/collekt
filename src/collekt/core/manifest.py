@@ -109,11 +109,8 @@ def _source_to_manifest(source: SourceConfig) -> dict[str, Any]:
     return {
         "kind": source.kind,
         "enabled": source.enabled,
-        "variable_groups": list(source.variable_groups),
-        "use_variables": list(source.use_variables),
-        "default_variables": list(source.default_variables),
-        "optional_variables": {name: list(values) for name, values in source.optional_variables.items()},
-        "resolved_variables": list(source.variables),
+        "variables": list(source.variables),
+        "available_variables": list(source.available_variables),
         "temporal_sampling": source.temporal_sampling,
         "coverage": coverage.as_dict() if coverage else None,
     }
@@ -123,7 +120,6 @@ def build_manifest(
     *,
     request,
     config: Config,
-    preset: str | None,
     request_dir: Path,
     results: tuple[SourceResult, ...],
     summary: Summary,
@@ -131,7 +127,7 @@ def build_manifest(
     """Build the manifest mapping for a collection run."""
     return {
         "manifest_schema_version": MANIFEST_SCHEMA_VERSION,
-        "request": request.as_dict() | {"preset": preset},
+        "request": request.as_dict(),
         "summary": summary.as_dict(),
         "sources": {name: _source_to_manifest(source) for name, source in config.sources.items()},
         "files": [
@@ -155,7 +151,6 @@ def write_manifest(
     *,
     request,
     config: Config,
-    preset: str | None,
     request_dir: Path,
     manifest_path: Path,
     results: tuple[SourceResult, ...],
@@ -165,7 +160,6 @@ def write_manifest(
     manifest = build_manifest(
         request=request,
         config=config,
-        preset=preset,
         request_dir=request_dir,
         results=results,
         summary=summary,

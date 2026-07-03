@@ -6,6 +6,15 @@ Public API.
 # Importing the sources package registers the built-in source adapters.
 from collekt import sources  # noqa: F401
 from collekt.assemble import Assembler
+from collekt.core.datasets import (
+    CMEMS,
+    ERA5,
+    CopernicusDataSpace,
+    DatasetConfig,
+    ECMWFOpenData,
+    Eodyn,
+    SkyTruth,
+)
 from collekt.core.doctor import DoctorCheck, run_doctor
 from collekt.core.fetcher import Fetcher
 from collekt.core.request import Region, Request
@@ -15,11 +24,18 @@ from .version import __version__, __version_info__
 
 __all__ = [
     "Assembler",
+    "CMEMS",
+    "CopernicusDataSpace",
+    "DatasetConfig",
     "DoctorCheck",
+    "ECMWFOpenData",
+    "ERA5",
+    "Eodyn",
     "Fetcher",
     "Region",
     "Request",
     "Result",
+    "SkyTruth",
     "run_doctor",
     "__version__",
     "__version_info__",

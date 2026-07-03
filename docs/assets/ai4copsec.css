@@ -1,0 +1,171 @@
+:root {
+  --ai4copsec-navy: #062743;
+  --ai4copsec-blue: #004b89;
+  --ai4copsec-teal: #36a9ad;
+  --ai4copsec-cyan: #47c8e8;
+  --ai4copsec-gold: #f7bd00;
+  --ai4copsec-ink: #15233b;
+  --ai4copsec-muted: #5c6b7c;
+  --ai4copsec-surface: #f5f8fb;
+  --bs-primary: var(--ai4copsec-blue);
+  --bs-link-color: #006fa6;
+  --bs-link-hover-color: #004b89;
+}
+
+body {
+  color: var(--ai4copsec-ink);
+  background:
+    linear-gradient(180deg, rgba(6, 39, 67, 0.035), rgba(255, 255, 255, 0) 20rem),
+    #fff;
+}
+
+.navbar {
+  background: #fff;
+  border-bottom: 1px solid rgba(6, 39, 67, 0.12);
+  box-shadow: 0 10px 28px rgba(6, 39, 67, 0.08);
+}
+
+.navbar-brand {
+  gap: 0.65rem;
+  font-weight: 700;
+}
+
+.navbar-logo {
+  max-height: 2rem;
+  width: auto;
+}
+
+.navbar-title {
+  color: var(--ai4copsec-navy);
+  letter-spacing: 0;
+}
+
+.navbar-nav .nav-link {
+  color: var(--ai4copsec-ink);
+  font-weight: 600;
+}
+
+.navbar-nav .nav-link.active,
+.navbar-nav .nav-link:hover {
+  color: var(--ai4copsec-blue);
+}
+
+.quarto-title-banner {
+  background:
+    linear-gradient(115deg, rgba(0, 75, 137, 0.96), rgba(54, 169, 173, 0.88)),
+    var(--ai4copsec-blue);
+  color: #fff;
+}
+
+.content h2,
+.content h3 {
+  color: var(--ai4copsec-navy);
+}
+
+.content h2 {
+  border-bottom: 1px solid rgba(6, 39, 67, 0.12);
+  padding-bottom: 0.35rem;
+}
+
+a {
+  text-decoration-color: rgba(71, 200, 232, 0.55);
+  text-underline-offset: 0.16em;
+}
+
+a:hover {
+  text-decoration-color: var(--ai4copsec-gold);
+}
+
+code {
+  color: #003e73;
+  background-color: rgba(71, 200, 232, 0.1);
+  border-radius: 4px;
+}
+
+pre code {
+  background-color: transparent;
+}
+
+div.sourceCode,
+.cell-output,
+.quarto-layout-panel,
+table {
+  border-color: rgba(6, 39, 67, 0.14);
+}
+
+thead,
+.table thead {
+  background: var(--ai4copsec-surface);
+  color: var(--ai4copsec-navy);
+}
+
+.sidebar nav[role="doc-toc"] ul > li > a.active,
+.sidebar nav[role="doc-toc"] ul > li > ul > li > a.active {
+  border-left-color: var(--ai4copsec-teal);
+  color: var(--ai4copsec-blue) !important;
+}
+
+.page-footer {
+  background: var(--ai4copsec-navy);
+  color: rgba(255, 255, 255, 0.86);
+}
+
+.page-footer a {
+  color: #fff;
+  text-decoration-color: rgba(247, 189, 0, 0.7);
+}
+
+.ai4copsec-hero {
+  margin: 1rem 0 2.5rem;
+  padding: clamp(2rem, 5vw, 4rem);
+  background:
+    linear-gradient(120deg, rgba(0, 75, 137, 0.96), rgba(54, 169, 173, 0.88)),
+    var(--ai4copsec-blue);
+  color: #fff;
+}
+
+.ai4copsec-hero img {
+  display: block;
+  width: min(320px, 70vw);
+  height: auto;
+  margin-bottom: clamp(1.5rem, 4vw, 2.5rem);
+  padding: 0.75rem 1rem;
+  background: #fff;
+  border-radius: 6px;
+}
+
+.ai4copsec-hero h1 {
+  max-width: 11ch;
+  margin: 0 0 1rem;
+  color: #fff;
+  font-size: clamp(2.4rem, 7vw, 5.2rem);
+  line-height: 0.94;
+  letter-spacing: 0;
+}
+
+.ai4copsec-hero p {
+  max-width: 48rem;
+  margin: 0;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 1.12rem;
+}
+
+.ai4copsec-home-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: 1rem;
+  margin: 2rem 0;
+}
+
+.ai4copsec-home-grid > div {
+  padding: 1.15rem;
+  border: 1px solid rgba(6, 39, 67, 0.14);
+  border-top: 4px solid var(--ai4copsec-teal);
+  border-radius: 6px;
+  background: #fff;
+}
+
+.ai4copsec-home-grid h3 {
+  margin-top: 0;
+  font-size: 1.05rem;
+}

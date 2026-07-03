@@ -2,7 +2,9 @@
 
 import pytest
 
+import collekt.cli.main as cli_main
 from collekt.cli.main import build_parser, run
+from collekt.core.config import get_config
 from collekt.sources.base import (
     SourceAdapter,
     SourceResult,
@@ -38,26 +40,46 @@ def _plan(request, source, config, request_dir):
 register_adapter(SourceAdapter(kind=CLI_KIND, fetch=_fetch, plan=_plan))
 
 
-def _conf_dir(tmp_path, *, sources=("demo",), fail=False):
-    conf = tmp_path / "conf"
-    conf.mkdir()
-    lines = ["sources:"]
+def _config(tmp_path, *, sources=("demo",), fail=False):
+    raw_sources = {}
     for name in sources:
-        lines += [
-            f"  {name}:",
-            f"    kind: {CLI_KIND}",
-            f"    path: {name}",
-            '    filename_pattern: "{source}.dat"',
-            "    variable_groups: [x]",
-        ]
+        source = {
+            "kind": CLI_KIND,
+            "path": name,
+            "filename_pattern": "{source}.dat",
+        }
         if fail:
-            lines.append("    fail: true")
-    (conf / "default.yaml").write_text("\n".join(lines) + "\n", encoding="utf-8")
-    return conf
+            source["fail"] = True
+        raw_sources[name] = source
+    return get_config(
+        overrides={"source_catalogs": [], "output": {"root": str(tmp_path / "out")}, "sources": raw_sources}
+    )
 
 
-def _fetch_argv(conf, out, *extra):
-    return ["fetch", "--bbox", "0", "20", "35", "45", "--conf-dir", str(conf), "--output-dir", str(out), *extra]
+def _dataset_config_file(tmp_path):
+    path = tmp_path / "datasets.yaml"
+    path.write_text("datasets: []\n", encoding="utf-8")
+    return path
+
+
+def _fetch_argv(config_file, out, *extra):
+    return [
+        "fetch",
+        "--bbox",
+        "0",
+        "20",
+        "35",
+        "45",
+        "--dataset-config",
+        str(config_file),
+        "--output-dir",
+        str(out),
+        *extra,
+    ]
+
+
+def _patch_dataset_config(monkeypatch, config):
+    monkeypatch.setattr(cli_main.DatasetConfig, "from_yaml", staticmethod(lambda path: config))
 
 
 def test_build_parser_requires_a_command():
@@ -65,9 +87,9 @@ def test_build_parser_requires_a_command():
         build_parser().parse_args([])
 
 
-def test_fetch_dry_run_prints_plan(tmp_path, capsys):
-    conf = _conf_dir(tmp_path)
-    code = run(_fetch_argv(conf, tmp_path / "out", "--dry-run"))
+def test_fetch_dry_run_prints_plan(tmp_path, capsys, monkeypatch):
+    _patch_dataset_config(monkeypatch, _config(tmp_path))
+    code = run(_fetch_argv(_dataset_config_file(tmp_path), tmp_path / "out", "--dry-run"))
     out = capsys.readouterr().out
 
     assert code == 0
@@ -75,19 +97,19 @@ def test_fetch_dry_run_prints_plan(tmp_path, capsys):
     assert "demo" in out
 
 
-def test_fetch_downloads_and_reports_summary(tmp_path, capsys):
-    conf = _conf_dir(tmp_path)
+def test_fetch_downloads_and_reports_summary(tmp_path, capsys, monkeypatch):
+    _patch_dataset_config(monkeypatch, _config(tmp_path))
     out = tmp_path / "out"
-    code = run(_fetch_argv(conf, out))
+    code = run(_fetch_argv(_dataset_config_file(tmp_path), out))
 
     assert code == 0
     assert "collekt collection complete" in capsys.readouterr().out
     assert list(out.rglob("demo.dat"))
 
 
-def test_fetch_datasource_filter_restricts_sources(tmp_path, capsys):
-    conf = _conf_dir(tmp_path, sources=("demo", "other"))
-    code = run(_fetch_argv(conf, tmp_path / "out", "--datasource", "demo", "--dry-run"))
+def test_fetch_dataset_config_selects_sources(tmp_path, capsys, monkeypatch):
+    _patch_dataset_config(monkeypatch, _config(tmp_path, sources=("demo",)))
+    code = run(_fetch_argv(_dataset_config_file(tmp_path), tmp_path / "out", "--dry-run"))
     out = capsys.readouterr().out
 
     assert code == 0
@@ -95,16 +117,27 @@ def test_fetch_datasource_filter_restricts_sources(tmp_path, capsys):
     assert "other" not in out
 
 
-def test_fetch_strict_failure_returns_error(tmp_path, capsys):
-    conf = _conf_dir(tmp_path, fail=True)
-    code = run(_fetch_argv(conf, tmp_path / "out", "--strict"))
+def test_fetch_strict_failure_returns_error(tmp_path, capsys, monkeypatch):
+    _patch_dataset_config(monkeypatch, _config(tmp_path, fail=True))
+    code = run(_fetch_argv(_dataset_config_file(tmp_path), tmp_path / "out", "--strict"))
 
     assert code == 1
     assert "ERROR" in capsys.readouterr().out
 
 
-def test_fetch_without_a_region_is_an_error(capsys):
-    code = run(["fetch", "--start", "2024-01-30"])
+def test_fetch_without_a_region_is_an_error(tmp_path, capsys, monkeypatch):
+    _patch_dataset_config(monkeypatch, _config(tmp_path))
+    code = run(
+        [
+            "fetch",
+            "--start",
+            "2024-01-30",
+            "--dataset-config",
+            str(_dataset_config_file(tmp_path)),
+            "--output-dir",
+            str(tmp_path / "out"),
+        ]
+    )
 
     assert code == 1
     assert "provide a region" in capsys.readouterr().out

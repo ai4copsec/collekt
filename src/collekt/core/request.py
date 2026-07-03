@@ -157,8 +157,6 @@ class Request:
         region: Geographic region of interest.
         start: Start date or datetime. If omitted, the current UTC day is used.
         end: End date or datetime. If omitted, the start day is used.
-        variables: Broad variable groups such as `currents`, `wind`, or `waves`.
-            Their meaning is defined by the source catalog, not by collekt.
         sampling: Requested temporal sampling interval. Supported values are
             `15min`, `1h`, `3h`, `6h`, and `24h`.
         metadata: Optional caller metadata copied to the manifest.
@@ -167,7 +165,6 @@ class Request:
     region: Region
     start: str | date | datetime | None = None
     end: str | date | datetime | None = None
-    variables: tuple[str, ...] | list[str] = field(default_factory=tuple)
     sampling: str | int | None = "24h"
     metadata: dict[str, Any] = field(default_factory=dict)
 
@@ -180,11 +177,6 @@ class Request:
     def end_datetime(self) -> datetime:
         """End time normalized to UTC."""
         return parse_datetime(self.end if self.end is not None else self.start, end_of_day=True)
-
-    @property
-    def variable_groups(self) -> tuple[str, ...]:
-        """Requested variable groups."""
-        return tuple(str(v) for v in self.variables)
 
     @property
     def sampling_hours(self) -> int:
@@ -221,7 +213,6 @@ class Request:
             "region": self.region.as_dict(),
             "start": self.start_datetime.isoformat().replace("+00:00", "Z"),
             "end": self.end_datetime.isoformat().replace("+00:00", "Z"),
-            "variables": list(self.variable_groups),
             "sampling": self.sampling_label,
             "metadata": dict(self.metadata),
         }

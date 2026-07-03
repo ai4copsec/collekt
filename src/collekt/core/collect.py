@@ -10,14 +10,10 @@ from __future__ import annotations
 
 import shutil
 from dataclasses import replace
-from pathlib import Path
 
 from collekt.core.config import (
     Config,
     SourceConfig,
-    SourceVariableOverrides,
-    apply_source_variable_overrides,
-    get_config,
 )
 from collekt.core.manifest import with_inspection, write_manifest
 from collekt.core.naming import pattern_values, request_directory
@@ -33,20 +29,9 @@ from collekt.sources.base import (
 )
 
 
-def _source_matches_request(source: SourceConfig, request: Request) -> bool:
-    groups = request.variable_groups
-    # An untagged source (no variable_groups) is a wildcard: variable-group
-    # tagging is a downstream concern, so a request's groups never exclude it.
-    if not groups or not source.variable_groups:
-        return True
-    return bool(set(source.variable_groups).intersection(groups))
-
-
-def _selected_sources(cfg: Config, request: Request, use_datasources: list[str] | None):
+def _selected_sources(cfg: Config):
     for source in cfg.sources.values():
-        if not source.enabled or not _source_matches_request(source, request):
-            continue
-        if use_datasources is not None and source.name.lower() not in use_datasources:
+        if not source.enabled:
             continue
         yield source
 
@@ -61,7 +46,7 @@ def _selection_error(source: SourceConfig) -> str | None:
     """
     if source.available_variables and not source.variables:
         return (
-            f"source {source.name!r} requires a variable selection; set 'use_variables' to a "
+            f"source {source.name!r} requires a variable selection; set 'variables' to a "
             f"subset of its available_variables: {', '.join(source.available_variables)}"
         )
     if source.has_depth and source.raw.get("depth") is None:
@@ -72,12 +57,8 @@ def _selection_error(source: SourceConfig) -> str | None:
 def run_collection(
     request: Request,
     *,
-    preset: str | None = None,
-    config: Config | None = None,
-    conf_dir: str | Path | None = None,
+    config: Config,
     strict: bool | None = None,
-    source_variable_overrides: SourceVariableOverrides | None = None,
-    use_datasources: list[str] | None = None,
     use_cache: bool = True,
     dry_run: bool = False,
     progress: ProgressCallback = null_progress,
@@ -85,14 +66,10 @@ def run_collection(
     """Run collection orchestration for a request.
 
     Args:
-        request: Region, time window, and requested variable groups.
-        preset: Optional configuration preset.
-        config: Optional preloaded configuration.
-        conf_dir: Optional configuration directory.
+        request: Region, time window, metadata, and sampling.
+        config: Resolved internal source configuration.
         strict: Override config strict mode. If true, warnings become a final
             `RuntimeError` after the manifest is written.
-        source_variable_overrides: Optional per-source ``use_variables`` overrides.
-        use_datasources: Optional lower-cased source names to restrict the run to.
         use_cache: If true, reuse files already staged for this exact request
             (same region and time range). If false, delete the request directory
             and download everything again.
@@ -106,8 +83,7 @@ def run_collection(
     Raises:
         RuntimeError: If strict mode is enabled and any source was skipped or failed.
     """
-    cfg = config or get_config(preset=preset, conf_dir=conf_dir)
-    cfg = apply_source_variable_overrides(cfg, source_variable_overrides)
+    cfg = config
     if not use_cache:
         cfg = replace(cfg, cache=replace(cfg.cache, reuse_existing=False, overwrite=True))
 
@@ -125,7 +101,7 @@ def run_collection(
     if not dry_run:
         request_dir.mkdir(parents=True, exist_ok=True)
 
-    selected = list(_selected_sources(cfg, request, use_datasources))
+    selected = list(_selected_sources(cfg))
     errors = [message for source in selected if (message := _selection_error(source))]
     if errors:
         raise ValueError("; ".join(errors))
@@ -154,7 +130,6 @@ def run_collection(
         write_manifest(
             request=request,
             config=cfg,
-            preset=preset,
             request_dir=request_dir,
             manifest_path=manifest_path,
             results=result_tuple,

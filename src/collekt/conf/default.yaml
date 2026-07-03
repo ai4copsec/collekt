@@ -1,10 +1,8 @@
 # collekt base configuration.
 #
-# Output/cache defaults plus the curated source catalogs collekt ships. Downstream
-# users select from these sources (by name, e.g. `--datasource cmems_duacs_my`) and
-# extend or override them via a `conf_dir` overlay or `get_config(overrides=...)`.
-# Curated presets and variable-group tagging are left to downstream. See
-# docs/products.qmd.
+# Runtime defaults plus the curated source catalogs collekt ships. Public
+# DatasetConfig objects select from these catalog keys and provide provider
+# parameters such as variables and depth. See docs/products.qmd.
 
 output:
   root: "data/collections"

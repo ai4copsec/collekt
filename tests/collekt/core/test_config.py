@@ -1,8 +1,7 @@
 """Tests for the YAML configuration mechanism.
 
-collekt ships a curated source catalog plus the loading mechanism; presets and
-variable-group tagging are left to downstream. A downstream `conf_dir` can select
-the bundled catalogs by name and extend or override individual sources.
+collekt ships curated source catalogs as capability metadata. Public presets are
+`DatasetConfig` YAML files that select source keys and provider parameters.
 """
 
 import textwrap
@@ -65,6 +64,46 @@ def test_default_config_loads_the_bundled_catalog():
     assert cfg.output.manifest_name == "manifest.json"
 
 
+def test_dataset_config_resolves_selected_catalog_entries(tmp_path):
+    config = collekt.DatasetConfig(
+        collekt.CMEMS("cmems_glorys_my", variables=["uo", "vo"], depth=[1.0, 1.1]),
+        collekt.CMEMS("cmems_duacs_my", variables=["ugos", "vgos"]),
+    )
+
+    resolved = config.resolve()
+
+    assert tuple(resolved.sources) == ("cmems_glorys_my", "cmems_duacs_my")
+    assert resolved.sources["cmems_glorys_my"].variables == ("uo", "vo")
+    assert resolved.sources["cmems_glorys_my"].raw["depth"] == [1.0, 1.1]
+    assert resolved.sources["cmems_duacs_my"].variables == ("ugos", "vgos")
+
+    preset = tmp_path / "datasets.yaml"
+    preset.write_text(
+        textwrap.dedent(
+            """
+            datasets:
+              - provider: cmems
+                key: cmems_duacs_my
+                variables: [ugos, vgos]
+            """
+        ),
+        encoding="utf-8",
+    )
+
+    loaded = collekt.DatasetConfig.from_yaml(preset)
+    assert loaded.as_dict() == {
+        "datasets": [{"provider": "cmems", "key": "cmems_duacs_my", "variables": ["ugos", "vgos"]}]
+    }
+
+
+def test_dataset_config_validates_variables_and_depth():
+    with pytest.raises(ValueError, match="unknown variable"):
+        collekt.DatasetConfig(collekt.CMEMS("cmems_duacs_my", variables=["imaginary"])).resolve()
+
+    with pytest.raises(ValueError, match="has a depth dimension"):
+        collekt.DatasetConfig(collekt.CMEMS("cmems_glorys_my", variables=["uo"])).resolve()
+
+
 def test_available_variables_gate_the_selection(tmp_path):
     conf = tmp_path / "conf"
     conf.mkdir()
@@ -82,10 +121,10 @@ def test_available_variables_gate_the_selection(tmp_path):
     # No selection resolves to nothing (a bundled source ships no default selection).
     assert get_config(conf_dir=conf).sources["grid"].variables == ()
     # A subset of available_variables resolves; an unknown name is rejected.
-    picked = get_config(conf_dir=conf, overrides={"sources": {"grid": {"use_variables": ["uo", "vo"]}}})
+    picked = get_config(conf_dir=conf, overrides={"sources": {"grid": {"variables": ["uo", "vo"]}}})
     assert picked.sources["grid"].variables == ("uo", "vo")
-    with pytest.raises(ValueError, match="unknown variable or group"):
-        get_config(conf_dir=conf, overrides={"sources": {"grid": {"use_variables": ["nope"]}}})
+    with pytest.raises(ValueError, match="unknown variables"):
+        get_config(conf_dir=conf, overrides={"sources": {"grid": {"variables": ["nope"]}}})
 
 
 def test_conf_dir_selects_bundled_catalogs_by_name(tmp_path):
@@ -123,11 +162,6 @@ def test_conf_dir_extends_and_overrides_bundled_sources(tmp_path):
     assert cfg.sources["my_source"].variables == ("x",)  # added
 
 
-def test_unknown_preset_raises():
-    with pytest.raises(FileNotFoundError, match="Unknown preset"):
-        load_config(preset="missing")
-
-
 def test_unknown_source_catalog_raises(tmp_path):
     conf = tmp_path / "conf"
     conf.mkdir()
@@ -149,11 +183,7 @@ def test_custom_conf_dir_and_env_expansion(tmp_path, monkeypatch):
             sources:
               local:
                 kind: cmems
-                variables:
-                  default: [u, v]
-                  optional:
-                    speed: [speed]
-                use_variables: [default, speed]
+                variables: [u, v, speed]
             """
         ),
         encoding="utf-8",
@@ -166,7 +196,7 @@ def test_custom_conf_dir_and_env_expansion(tmp_path, monkeypatch):
     assert cfg.sources["local"].temporal_sampling == "24h"
 
 
-def test_flat_variable_list_is_still_supported(tmp_path):
+def test_flat_variable_list_is_selected_variables(tmp_path):
     conf = tmp_path / "conf"
     conf.mkdir()
     (conf / "default.yaml").write_text(
@@ -183,7 +213,6 @@ def test_flat_variable_list_is_still_supported(tmp_path):
 
     cfg = get_config(conf_dir=conf)
 
-    assert cfg.sources["local"].default_variables == ("u", "v")
     assert cfg.sources["local"].variables == ("u", "v")
 
 
@@ -208,7 +237,7 @@ def test_temporal_config_is_normalized(tmp_path):
     assert cfg.sources["local"].temporal_sampling == "1h"
 
 
-def test_use_variables_expands_optional_groups_and_deduplicates(tmp_path):
+def test_selected_variables_are_validated_against_available_variables(tmp_path):
     conf = tmp_path / "conf"
     conf.mkdir()
     (conf / "default.yaml").write_text(
@@ -217,10 +246,7 @@ def test_use_variables_expands_optional_groups_and_deduplicates(tmp_path):
             sources:
               waves:
                 kind: cmems
-                variables:
-                  default: [VHM0, VTPK]
-                  optional:
-                    stokes: [VSDX, VSDY]
+                available_variables: [VHM0, VTPK, VSDX, VSDY]
             """
         ),
         encoding="utf-8",
@@ -228,12 +254,12 @@ def test_use_variables_expands_optional_groups_and_deduplicates(tmp_path):
 
     cfg = get_config(
         conf_dir=conf,
-        overrides={"sources": {"waves": {"use_variables": ["default", "stokes", "VHM0"]}}},
+        overrides={"sources": {"waves": {"variables": ["VHM0", "VSDX"]}}},
     )
-    assert cfg.sources["waves"].variables == ("VHM0", "VTPK", "VSDX", "VSDY")
+    assert cfg.sources["waves"].variables == ("VHM0", "VSDX")
 
 
-def test_unknown_requested_variable_or_group_raises(tmp_path):
+def test_unknown_selected_variable_raises(tmp_path):
     conf = tmp_path / "conf"
     conf.mkdir()
     (conf / "default.yaml").write_text(
@@ -242,12 +268,11 @@ def test_unknown_requested_variable_or_group_raises(tmp_path):
             sources:
               waves:
                 kind: cmems
-                variables:
-                  default: [VHM0]
+                available_variables: [VHM0]
             """
         ),
         encoding="utf-8",
     )
 
-    with pytest.raises(ValueError, match="unknown variable or group"):
-        get_config(conf_dir=conf, overrides={"sources": {"waves": {"use_variables": ["default", "imaginary"]}}})
+    with pytest.raises(ValueError, match="unknown variables"):
+        get_config(conf_dir=conf, overrides={"sources": {"waves": {"variables": ["VHM0", "imaginary"]}}})

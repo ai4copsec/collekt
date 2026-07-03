@@ -10,31 +10,12 @@ from rich.console import Console
 from rich.table import Table
 
 from collekt.core.config import LOG_DATE_FORMAT, LOG_FORMAT, LOG_STYLE, load_config
+from collekt.core.datasets import DatasetConfig
 from collekt.core.doctor import run_doctor
 from collekt.core.fetcher import Fetcher
 from collekt.core.reporting import CliReporter
 from collekt.core.request import Region, Request
 from collekt.sources.base import SourceResult
-
-
-def _parse_variables(value: str | None) -> tuple[str, ...]:
-    if not value:
-        return ()
-    return tuple(part.strip() for part in value.split(",") if part.strip())
-
-
-def _parse_source_variable_overrides(values: list[str] | None) -> dict[str, tuple[str, ...]]:
-    overrides: dict[str, tuple[str, ...]] = {}
-    for value in values or []:
-        if "=" not in value:
-            raise ValueError("source variable overrides must use SOURCE=default,group,var")
-        source, raw_variables = value.split("=", 1)
-        source = source.strip()
-        variables = _parse_variables(raw_variables)
-        if not source or not variables:
-            raise ValueError("source variable overrides must use SOURCE=default,group,var")
-        overrides[source] = variables
-    return overrides
 
 
 def _build_region(args: argparse.Namespace) -> Region:
@@ -74,8 +55,8 @@ def _render_plan(console: Console, results: tuple[SourceResult, ...]) -> None:
     console.print(table)
 
 
-def _render_doctor(console: Console, preset: str | None, conf_dir: Path | None, *, online: bool = False) -> int:
-    checks = run_doctor(preset=preset, conf_dir=conf_dir, online=online)
+def _render_doctor(console: Console, conf_dir: Path | None, *, online: bool = False) -> int:
+    checks = run_doctor(conf_dir=conf_dir, online=online)
     table = Table(title="collekt doctor")
     table.add_column("Status")
     table.add_column("Check")
@@ -103,30 +84,24 @@ def build_parser() -> argparse.ArgumentParser:
     fetch.add_argument(
         "--sampling", choices=("15min", "1h", "3h", "6h", "24h"), default="24h", help="Temporal sampling"
     )
-    fetch.add_argument("--variables", help="Comma-separated variable groups, e.g. currents,wind")
     fetch.add_argument(
-        "--use-variables",
-        action="append",
-        metavar="SOURCE=VARS",
-        help="Select a source's variables (a subset of its available_variables), e.g. cmems_duacs_my=ugos,vgos",
+        "--dataset-config",
+        type=Path,
+        required=True,
+        help="YAML file containing a DatasetConfig datasets list",
     )
-    fetch.add_argument("--datasource", nargs="+", metavar="NAME", help="Restrict the run to these source names")
-    fetch.add_argument("--preset", default=None, help="Configuration preset (from --conf-dir)")
-    fetch.add_argument("--conf-dir", type=Path, help="Configuration directory (a brick's catalogs/presets)")
-    fetch.add_argument("--output-dir", type=Path, help="Staging root for downloaded files")
+    fetch.add_argument("--output-dir", type=Path, required=True, help="Staging root for downloaded files")
     fetch.add_argument("--strict", action="store_true", help="Fail if any requested source is skipped")
     fetch.add_argument("--no-cache", action="store_true", help="Ignore cached files and download again")
     fetch.add_argument("--dry-run", action="store_true", help="Plan provider requests without downloading")
 
     doctor = subparsers.add_parser("doctor", help="Check the local environment and source configuration")
-    doctor.add_argument("--preset", default=None)
     doctor.add_argument("--conf-dir", type=Path)
     doctor.add_argument("--online", action="store_true", help="Validate CMEMS datasets and variables online")
 
     config = subparsers.add_parser("config", help="Inspect configuration")
     config_subparsers = config.add_subparsers(dest="config_command", required=True)
     show = config_subparsers.add_parser("show", help="Print merged configuration")
-    show.add_argument("--preset", default=None)
     show.add_argument("--conf-dir", type=Path)
 
     return parser
@@ -142,11 +117,11 @@ def run(argv: list[str] | None = None) -> int:
     if args.command == "config" and args.config_command == "show":
         import yaml
 
-        console.print(yaml.safe_dump(load_config(preset=args.preset, conf_dir=args.conf_dir), sort_keys=False))
+        console.print(yaml.safe_dump(load_config(conf_dir=args.conf_dir), sort_keys=False))
         return 0
 
     if args.command == "doctor":
-        return _render_doctor(console, args.preset, args.conf_dir, online=args.online)
+        return _render_doctor(console, args.conf_dir, online=args.online)
 
     if args.command == "fetch":
         reporter = CliReporter(console)
@@ -155,17 +130,13 @@ def run(argv: list[str] | None = None) -> int:
                 region=_build_region(args),
                 start=args.start,
                 end=args.end,
-                variables=_parse_variables(args.variables),
                 sampling=args.sampling,
             )
             fetcher = Fetcher(
-                request,
-                preset=args.preset,
-                conf_dir=args.conf_dir,
+                request=request,
+                config=DatasetConfig.from_yaml(args.dataset_config),
+                output_dir=args.output_dir,
                 strict=args.strict,
-                source_variable_overrides=_parse_source_variable_overrides(args.use_variables),
-                use_datasources=[name.lower() for name in args.datasource] if args.datasource else None,
-                staging_root=args.output_dir,
                 progress=reporter.progress,
             )
             result = fetcher.plan() if args.dry_run else fetcher.download(use_cache=not args.no_cache)

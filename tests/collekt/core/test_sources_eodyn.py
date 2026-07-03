@@ -17,7 +17,6 @@ def _config(tmp_path, archive_root, **override):
     source = {
         "kind": "eodyn",
         "enabled": True,
-        "variable_groups": ["currents"],
         "path": "eodyn/osmose",
         "filename_pattern": "osmose_{dataset_id}_{date:%Y%m%d}_{bbox_hash}.nc",
         "dataset_id": "EODYN-OS-VELOCITY-L4",
@@ -32,7 +31,7 @@ def _config(tmp_path, archive_root, **override):
             "start": "2023-04-01",
             "end": "2023-08-31",
         },
-        "variables": {"default": ["totalewct", "totalnsct"], "optional": {"geostrophic": ["ewct", "nsct"]}},
+        "variables": ["totalewct", "totalnsct"],
         "temporal_sampling": "24h",
     }
     source.update(override)
@@ -46,7 +45,7 @@ def _config(tmp_path, archive_root, **override):
 
 
 def _request(bbox=(0, 8, 38, 42), start="2023-06-15", end=None):
-    return Request(region=Region.from_bbox(bbox), start=start, end=end, variables=("currents",))
+    return Request(region=Region.from_bbox(bbox), start=start, end=end)
 
 
 def _write_archive(archive_root, day="20230615"):
@@ -71,7 +70,7 @@ def _write_archive(archive_root, day="20230615"):
 
 def test_eodyn_skips_out_of_region(tmp_path):
     cfg = _config(tmp_path, tmp_path / "archive")
-    result = Fetcher(_request(bbox=(-40, -30, 40, 45)), config=cfg, preset=None).download()
+    result = Fetcher(_request(bbox=(-40, -30, 40, 45)), config=cfg).download()
 
     assert result.summary.downloaded == 0
     assert result.summary.skipped == 1
@@ -80,7 +79,7 @@ def test_eodyn_skips_out_of_region(tmp_path):
 
 def test_eodyn_skips_out_of_date_range(tmp_path):
     cfg = _config(tmp_path, tmp_path / "archive")
-    result = Fetcher(_request(start="2024-01-15"), config=cfg, preset=None).download()
+    result = Fetcher(_request(start="2024-01-15"), config=cfg).download()
 
     assert result.summary.skipped == 1
     assert "outside the OSmose preview archive" in result.results[0].message
@@ -89,7 +88,7 @@ def test_eodyn_skips_out_of_date_range(tmp_path):
 def test_eodyn_skips_missing_archive_file(tmp_path):
     archive = tmp_path / "archive"
     archive.mkdir()
-    result = Fetcher(_request(), config=_config(tmp_path, archive), preset=None).download()
+    result = Fetcher(_request(), config=_config(tmp_path, archive)).download()
 
     assert result.summary.skipped == 1
     assert "archive file not found" in result.results[0].message
@@ -97,7 +96,7 @@ def test_eodyn_skips_missing_archive_file(tmp_path):
 
 def test_eodyn_api_mode_is_not_available_yet(tmp_path):
     cfg = _config(tmp_path, tmp_path / "archive", mode="api")
-    result = Fetcher(_request(), config=cfg, preset=None).download()
+    result = Fetcher(_request(), config=cfg).download()
 
     assert result.summary.skipped == 1
     assert "API is not available yet" in result.results[0].message
@@ -106,7 +105,7 @@ def test_eodyn_api_mode_is_not_available_yet(tmp_path):
 def test_eodyn_dry_run_plans_days_and_skips_outside_coverage(tmp_path):
     cfg = _config(tmp_path, tmp_path / "archive")
     request = _request(start="2023-08-30", end="2023-09-02")
-    result = Fetcher(request, config=cfg, preset=None).plan()
+    result = Fetcher(request, config=cfg).plan()
 
     assert result.summary.planned == 2
     assert result.summary.skipped == 2
@@ -126,7 +125,7 @@ def test_eodyn_reads_archive_and_subsets(tmp_path):
     cfg = _config(tmp_path, archive)
 
     with pytest.warns(EodynArchiveWarning):
-        result = Fetcher(_request(), config=cfg, preset=None).download()
+        result = Fetcher(_request(), config=cfg).download()
 
     assert result.summary.downloaded == 1
     with xr.open_dataset(result.files[0]) as ds:

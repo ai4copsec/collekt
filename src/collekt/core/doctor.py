@@ -196,7 +196,6 @@ def _cmems_online_checks(config: Config) -> list[DoctorCheck]:
 
 def run_doctor(
     *,
-    preset: str | None = None,
     conf_dir: str | Path | None = None,
     online: bool = False,
     config: Config | None = None,
@@ -204,17 +203,16 @@ def run_doctor(
     """Run environment and configuration checks.
 
     Args:
-        preset: Optional configuration preset.
         conf_dir: Optional configuration directory.
         online: If true, query provider catalogues for configured CMEMS datasets
             and variables.
         config: Optional preloaded configuration to check instead of loading from
-            preset and conf_dir.
+            conf_dir.
 
     Returns:
         Ordered diagnostic check results.
     """
-    config = config or get_config(preset=preset, conf_dir=conf_dir)
+    config = config or get_config(conf_dir=conf_dir)
     checks = [
         _package_check("copernicusmarine package", "copernicusmarine"),
         _package_check("cdsapi package", "cdsapi"),

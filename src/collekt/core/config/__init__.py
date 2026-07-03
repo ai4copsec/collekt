@@ -7,8 +7,6 @@ from collekt.core.config.schema import (
     CredentialsConfig,
     OutputConfig,
     SourceConfig,
-    SourceVariableOverrides,
-    apply_source_variable_overrides,
     get_config,
     parse_config,
 )
@@ -27,8 +25,6 @@ __all__ = [
     "CredentialsConfig",
     "OutputConfig",
     "SourceConfig",
-    "SourceVariableOverrides",
-    "apply_source_variable_overrides",
     "default_conf_dir",
     "get_config",
     "load_config",

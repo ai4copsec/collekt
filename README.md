@@ -3,8 +3,9 @@
 A library to facilitate spatio-temporal data collection across arbitrary
 datasources.
 
-A single request — a region of interest, a time window, an optional sampling and
-set of variable groups — is fanned out to a set of pluggable source adapters.
+A dataset config names the products to fetch, and a request supplies the region,
+time window, sampling, and metadata. The selected products are fanned out to
+pluggable source adapters.
 Each adapter fetches source-native files (NetCDF, GRIB2, Parquet, product
 archives) and records what it did in a machine-readable manifest. Gridded results
 can then be assembled onto a common grid and time axis.
@@ -29,17 +30,17 @@ collekt stays fast.
 
 ```python
 import collekt
-from collekt.core.config import get_config
 
+config = collekt.DatasetConfig(
+    collekt.CMEMS("cmems_duacs_my", variables=["ugos", "vgos"]),
+)
 request = collekt.Request(
     region=collekt.Region.from_bbox((-6.0, 20.0, 35.0, 45.0)),
     start="2023-06-15",
     sampling="24h",
 )
 
-# Pick a source from the bundled catalog and select variables from its allow-list.
-config = get_config(overrides={"sources": {"cmems_duacs_my": {"use_variables": ["ugos", "vgos"]}}})
-fetcher = collekt.Fetcher(request, config=config, use_datasources=["cmems_duacs_my"])
+fetcher = collekt.Fetcher(request=request, config=config, output_dir="data/collections")
 result = fetcher.download()
 print(result.manifest_path)
 
@@ -58,11 +59,15 @@ dataset = assembler.to_xarray(grid="lowest_resolution", time="lowest_resolution"
 collekt config show       # inspect the bundled catalog
 collekt doctor            # check the environment and configuration
 
-collekt fetch --bbox -6 20 35 45 --start 2023-06-15 \
-  --datasource cmems_duacs_my --use-variables cmems_duacs_my=ugos,vgos
+cat > datasets.yaml <<'YAML'
+datasets:
+  - provider: cmems
+    key: cmems_duacs_my
+    variables: [ugos, vgos]
+YAML
 
-collekt fetch --at-lat 13.3 --at-lon 42.9 --radius 50 --start 2024-01-30 \
-  --datasource skytruth --dry-run
+collekt fetch --bbox -6 20 35 45 --start 2023-06-15 \
+  --dataset-config datasets.yaml --output-dir data/collections
 ```
 
 Use `--dry-run` to plan provider requests without downloading, and `--strict` to
@@ -72,10 +77,8 @@ fail if any requested source is skipped.
 
 collekt ships a **curated catalog** of datasets (CMEMS global + Mediterranean,
 ECMWF Open Data, ERA5, Skytruth, Copernicus Data Space, eOdyn). Select concrete
-source names (`--datasource`), choose variables with `--use-variables` or config
-overrides, and extend or override sources via
-`get_config(overrides=...)` or a `--conf-dir` overlay. Presets and variable-group
-tagging are left to downstream. See
+dataset keys with `DatasetConfig` or its YAML form, and put provider parameters
+such as variable names and depth ranges directly on each selected dataset. See
 [Products](https://ai4copsec.github.io/collekt/products.html) and
 [Credentials](https://ai4copsec.github.io/collekt/credentials.html).
 

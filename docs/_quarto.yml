@@ -7,8 +7,11 @@ website:
   description: "A library to facilitate spatio-temporal data collection across arbitrary datasources"
   page-navigation: true
   bread-crumbs: false
+  favicon: assets/ai4copsec-favicon.png
 
   navbar:
+    logo: assets/ai4copsec-logo.png
+    logo-alt: "AI4COPSEC"
     left:
       - text: "Home"
         href: index.qmd
@@ -18,10 +21,6 @@ website:
         href: credentials.qmd
       - text: "Manifest"
         href: manifest.qmd
-      - text: "Repository layout"
-        href: modulemap.qmd
-      - text: "Plan"
-        href: plan.qmd
       - text: "API reference"
         href: api/index.qmd
     right:
@@ -29,12 +28,17 @@ website:
         href: https://github.com/ai4copsec/collekt
 
   page-footer:
+    left: |
+      Part of [AI4COPSEC](https://ai4copsec.eu/).
     center: |
       Built with [Quarto](https://quarto.org).
+    right: |
+      [GitHub](https://github.com/ai4copsec/collekt)
 
 format:
   html:
     theme: cosmo
+    css: assets/ai4copsec.css
     toc: true
     toc-depth: 3
     number-sections: false
@@ -55,6 +59,13 @@ quartodoc:
         - __version__
         - Request
         - Region
+        - DatasetConfig
+        - CMEMS
+        - ECMWFOpenData
+        - ERA5
+        - Eodyn
+        - SkyTruth
+        - CopernicusDataSpace
         - Fetcher
         - Result
         - Assembler

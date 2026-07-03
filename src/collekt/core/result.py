@@ -18,3 +18,24 @@ class Result:
     files: tuple[Path, ...]
     results: tuple[SourceResult, ...]
     summary: Summary
+
+    def __str__(self) -> str:
+        """Return a compact human-readable rendering."""
+        lines = [str(self.summary), f"manifest: {self.manifest_path}"]
+        for item in self.results:
+            target = item.path if item.path is not None else item.message
+            lines.append(f"  {item.source}: {item.status.value} -> {target}")
+        return "\n".join(lines)
+
+    __repr__ = __str__
+
+    def render(self) -> None:
+        """Print the result summary and per-source statuses.
+
+        Example:
+            ```python
+            result = fetcher.plan()
+            result.render()
+            ```
+        """
+        print(self)

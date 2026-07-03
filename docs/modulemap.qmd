@@ -21,6 +21,7 @@ src/collekt/
     fetcher.py             # Fetcher workflow (check / plan / download / export)
     result.py              # Result
     manifest.py            # manifest builder + post-fetch inspection
+    datasets.py            # DatasetConfig + provider selection dataclasses
     reporting.py           # Summary, summarize, CliReporter
     availability.py        # coverage checks (declarative + online describe)
     doctor.py              # environment / configuration diagnostics
@@ -28,7 +29,7 @@ src/collekt/
     geo.py                 # bbox maths (geopy) + GeoJSON -> WKT (shapely)
     credentials.py         # environment credential resolution
     config/
-      loader.py            # layered YAML load, preset merge, env expansion
+      loader.py            # bundled source-catalog load + env expansion
       schema.py            # typed Config / SourceConfig / ... + variable resolution
 
   sources/
@@ -47,7 +48,7 @@ src/collekt/
     gridded.py             # Assembler: regrid + time-align -> xarray/NetCDF/Zarr/NumPy
 
   conf/
-    default.yaml           # output/cache/credential defaults + source_catalogs
+    default.yaml           # runtime defaults + source_catalogs
     source/                # curated dataset catalogs: cmems_global, cmems_med,
                            #   cmems_ibi, cmems_nws, ecmwf, eodyn,
                            #   skytruth, dataspace
@@ -60,7 +61,7 @@ src/collekt/
     main.py                # `collekt fetch` / `doctor` / `config show`
 ```
 
-collekt ships a curated catalog under `conf/source/`. Downstream users select
-from it by name and extend or override it via `get_config(overrides=...)` or a
-`--conf-dir` overlay (whose `source_catalogs` may reference the bundled catalogs).
-Curated presets and variable-group tagging are left to downstream.
+collekt ships a curated catalog under `conf/source/`. Public code selects from it
+with `DatasetConfig` provider dataclasses (or their YAML form); the lower-level
+`Config` / `SourceConfig` objects remain the adapter-facing representation after
+catalog resolution.

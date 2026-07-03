@@ -1,8 +1,8 @@
 # Copernicus Data Space — Sentinel / Landsat product downloads.
 #
 # Credential-gated (COPERNICUS_DATASPACE_USERNAME / _PASSWORD). Each source
-# downloads full product files (no variable selection), so restrict a run to the
-# collection(s) you need (e.g. `--datasource copernicus_s1_grd`).
+# downloads full product files (no variable selection), so select the collection
+# key(s) you need in DatasetConfig.
 
 sources:
   copernicus_s1_grd:

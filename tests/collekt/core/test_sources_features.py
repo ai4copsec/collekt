@@ -33,7 +33,6 @@ def _request(**kwargs):
 SKYTRUTH = {
     "kind": "skytruth",
     "enabled": True,
-    "variable_groups": ["oil_slick"],
     "path": "skytruth",
     "filename_pattern": "skytruth_{start:%Y%m%d}_{bbox_hash}.parquet",
     "limit": 1000,
@@ -61,7 +60,7 @@ def test_skytruth_query_parameters_use_geometry_filter():
 
 
 def test_skytruth_plan_reports_query_without_network(tmp_path):
-    result = Fetcher(_request(), config=_cfg(tmp_path, skytruth_slicks=SKYTRUTH), preset=None).plan()
+    result = Fetcher(_request(), config=_cfg(tmp_path, skytruth_slicks=SKYTRUTH)).plan()
 
     assert result.summary.planned == 1
     assert result.results[0].details["provider"] == "skytruth"
@@ -70,7 +69,7 @@ def test_skytruth_plan_reports_query_without_network(tmp_path):
 
 def test_skytruth_zero_features_is_a_warning(tmp_path, monkeypatch):
     monkeypatch.setattr(skytruth, "_fetch_pages", lambda url, parameters: ([], "http://cerulean/items"))
-    result = Fetcher(_request(), config=_cfg(tmp_path, skytruth_slicks=SKYTRUTH), preset=None).download()
+    result = Fetcher(_request(), config=_cfg(tmp_path, skytruth_slicks=SKYTRUTH)).download()
 
     assert result.summary.skipped == 1
     assert "0 features" in result.results[0].message
@@ -82,7 +81,7 @@ def test_skytruth_reuses_existing_parquet(tmp_path, monkeypatch):
 
     monkeypatch.setattr(skytruth, "_fetch_pages", _must_not_query)
     cfg = _cfg(tmp_path, skytruth_slicks=SKYTRUTH)
-    fetcher = Fetcher(_request(), config=cfg, preset=None)
+    fetcher = Fetcher(_request(), config=cfg)
     # Pre-create the exact output file the adapter would write.
     target = fetcher.plan().results[0].path
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -181,7 +180,7 @@ def _hozint_run_writing(returncode=0, filename="hozint-reports.parquet"):
 
 def test_hozint_downloads_reports(tmp_path, monkeypatch):
     monkeypatch.setattr(hozint, "_run", _hozint_run_writing())
-    result = Fetcher(_request(), config=_cfg(tmp_path, hozint=HOZINT), preset=None).download()
+    result = Fetcher(_request(), config=_cfg(tmp_path, hozint=HOZINT)).download()
 
     assert result.summary.downloaded == 1
     assert result.files[0].name == "hozint-reports.parquet"
@@ -190,7 +189,7 @@ def test_hozint_downloads_reports(tmp_path, monkeypatch):
 
 def test_hozint_nonzero_exit_is_a_failure(tmp_path, monkeypatch):
     monkeypatch.setattr(hozint, "_run", _hozint_run_writing(returncode=2))
-    result = Fetcher(_request(), config=_cfg(tmp_path, hozint=HOZINT), preset=None).download()
+    result = Fetcher(_request(), config=_cfg(tmp_path, hozint=HOZINT)).download()
 
     assert result.summary.failed == 1
     assert "exited with 2" in result.results[0].message
@@ -201,7 +200,7 @@ def test_hozint_missing_tool_is_a_warning(tmp_path, monkeypatch):
         raise FileNotFoundError("hozint-apiclient")
 
     monkeypatch.setattr(hozint, "_run", _raise)
-    result = Fetcher(_request(), config=_cfg(tmp_path, hozint=HOZINT), preset=None).download()
+    result = Fetcher(_request(), config=_cfg(tmp_path, hozint=HOZINT)).download()
 
     assert result.summary.skipped == 1
     assert "not available" in result.results[0].message
@@ -210,15 +209,15 @@ def test_hozint_missing_tool_is_a_warning(tmp_path, monkeypatch):
 def test_hozint_reuses_cached_reports(tmp_path, monkeypatch):
     monkeypatch.setattr(hozint, "_run", _hozint_run_writing())
     cfg = _cfg(tmp_path, hozint=HOZINT)
-    first = Fetcher(_request(), config=cfg, preset=None).download()
-    second = Fetcher(_request(), config=cfg, preset=None).download()
+    first = Fetcher(_request(), config=cfg).download()
+    second = Fetcher(_request(), config=cfg).download()
 
     assert first.summary.downloaded == 1
     assert second.summary.reused == 1
 
 
 def test_hozint_plan_reports_command(tmp_path):
-    result = Fetcher(_request(), config=_cfg(tmp_path, hozint=HOZINT), preset=None).plan()
+    result = Fetcher(_request(), config=_cfg(tmp_path, hozint=HOZINT)).plan()
 
     assert result.summary.planned == 1
     command = result.results[0].details["request"]["command"]
@@ -249,7 +248,7 @@ def _stub_dataspace(monkeypatch, features):
 def test_dataspace_downloads_products(tmp_path, monkeypatch):
     feature = {"id": "S1A", "assets": {"Product": {"href": "https://x/prod", "file:local_path": "S1A_prod.SAFE.zip"}}}
     _stub_dataspace(monkeypatch, [feature])
-    result = Fetcher(_request(), config=_cfg(tmp_path, dataspace=DATASPACE), preset=None).download()
+    result = Fetcher(_request(), config=_cfg(tmp_path, dataspace=DATASPACE)).download()
 
     assert result.summary.downloaded == 1
     assert result.files[0].name == "S1A_prod.SAFE.zip"
@@ -258,7 +257,7 @@ def test_dataspace_downloads_products(tmp_path, monkeypatch):
 
 def test_dataspace_no_products_is_a_warning(tmp_path, monkeypatch):
     _stub_dataspace(monkeypatch, [])
-    result = Fetcher(_request(), config=_cfg(tmp_path, dataspace=DATASPACE), preset=None).download()
+    result = Fetcher(_request(), config=_cfg(tmp_path, dataspace=DATASPACE)).download()
 
     assert result.summary.skipped == 1
     assert "no products" in result.results[0].message
@@ -266,7 +265,7 @@ def test_dataspace_no_products_is_a_warning(tmp_path, monkeypatch):
 
 def test_dataspace_without_collection_is_skipped(tmp_path):
     cfg = _cfg(tmp_path, dataspace={"kind": "copernicus_dataspace", "enabled": True, "path": "dataspace"})
-    result = Fetcher(_request(), config=cfg, preset=None).download()
+    result = Fetcher(_request(), config=cfg).download()
 
     assert result.summary.skipped == 1
     assert "no collection configured" in result.results[0].message
@@ -279,14 +278,14 @@ def test_dataspace_login_failure_is_a_warning(tmp_path, monkeypatch):
         raise RuntimeError("bad credentials")
 
     monkeypatch.setattr(copernicus_dataspace, "_login", _raise)
-    result = Fetcher(_request(), config=_cfg(tmp_path, dataspace=DATASPACE), preset=None).download()
+    result = Fetcher(_request(), config=_cfg(tmp_path, dataspace=DATASPACE)).download()
 
     assert result.summary.skipped == 1
     assert "login failed" in result.results[0].message
 
 
 def test_dataspace_plan_reports_search_without_network(tmp_path):
-    result = Fetcher(_request(), config=_cfg(tmp_path, dataspace=DATASPACE), preset=None).plan()
+    result = Fetcher(_request(), config=_cfg(tmp_path, dataspace=DATASPACE)).plan()
 
     assert result.summary.planned == 1
     assert result.results[0].details["request"]["collections"] == "sentinel-1-grd"

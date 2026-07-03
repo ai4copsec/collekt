@@ -94,7 +94,7 @@ def _request():
 
 
 def test_download_writes_manifest_with_relative_paths(tmp_path):
-    result = Fetcher(_request(), config=_config(tmp_path), preset=None).download()
+    result = Fetcher(_request(), config=_config(tmp_path)).download()
 
     assert result.summary.downloaded == 1
     assert result.summary.skipped == 0
@@ -111,14 +111,14 @@ def test_download_writes_manifest_with_relative_paths(tmp_path):
     }
     assert manifest["manifest_schema_version"] == "0.1"
     assert manifest["request"]["sampling"] == "24h"
-    assert manifest["request"]["preset"] is None
+    assert "preset" not in manifest["request"]
     assert manifest["files"][0]["status"] == "downloaded"
     assert not Path(manifest["files"][0]["path"]).is_absolute()
     assert manifest["files"][0]["inspection"]["size_bytes"] > 0
 
 
 def test_dry_run_plans_without_downloading(tmp_path):
-    result = Fetcher(_request(), config=_config(tmp_path), preset=None).plan()
+    result = Fetcher(_request(), config=_config(tmp_path)).plan()
 
     assert result.summary.planned == 1
     assert result.summary.downloaded == 0
@@ -126,10 +126,8 @@ def test_dry_run_plans_without_downloading(tmp_path):
     assert not result.output_dir.exists()
 
 
-def test_untagged_source_matches_a_variable_request(tmp_path):
-    # The fake source has no variable_groups, so a request naming groups still runs it.
-    request = Request(region=Region.from_bbox((-6, 20, 35, 45)), start="2026-06-25", variables=("currents",))
-    result = Fetcher(request, config=_config(tmp_path), preset=None).download()
+def test_selected_source_runs_from_config_selection(tmp_path):
+    result = Fetcher(_request(), config=_config(tmp_path)).download()
 
     assert result.summary.downloaded == 1
 
@@ -137,24 +135,24 @@ def test_untagged_source_matches_a_variable_request(tmp_path):
 def test_source_with_available_variables_requires_a_selection(tmp_path):
     cfg = _config(tmp_path, available_variables=["uo", "vo"])
     with pytest.raises(ValueError, match="requires a variable selection"):
-        Fetcher(_request(), config=cfg, preset=None).download()
+        Fetcher(_request(), config=cfg).download()
     # Selecting a subset of available_variables clears the error.
-    ok = _config(tmp_path, available_variables=["uo", "vo"], use_variables=["uo"])
-    assert Fetcher(_request(), config=ok, preset=None).download().summary.downloaded == 1
+    ok = _config(tmp_path, available_variables=["uo", "vo"], variables=["uo"])
+    assert Fetcher(_request(), config=ok).download().summary.downloaded == 1
 
 
 def test_depth_source_requires_a_depth_selection(tmp_path):
-    cfg = _config(tmp_path, available_variables=["uo"], use_variables=["uo"], has_depth=True)
+    cfg = _config(tmp_path, available_variables=["uo"], variables=["uo"], has_depth=True)
     with pytest.raises(ValueError, match="has a depth dimension"):
-        Fetcher(_request(), config=cfg, preset=None).download()
-    ok = _config(tmp_path, available_variables=["uo"], use_variables=["uo"], has_depth=True, depth=[0.0, 1.0])
-    assert Fetcher(_request(), config=ok, preset=None).download().summary.downloaded == 1
+        Fetcher(_request(), config=cfg).download()
+    ok = _config(tmp_path, available_variables=["uo"], variables=["uo"], has_depth=True, depth=[0.0, 1.0])
+    assert Fetcher(_request(), config=ok).download().summary.downloaded == 1
 
 
 def test_cache_reuse_on_second_download(tmp_path):
     cfg = _config(tmp_path)
-    first = Fetcher(_request(), config=cfg, preset=None).download()
-    second = Fetcher(_request(), config=cfg, preset=None).download()
+    first = Fetcher(_request(), config=cfg).download()
+    second = Fetcher(_request(), config=cfg).download()
 
     assert first.summary.downloaded == 1
     assert second.summary.reused == 1
@@ -162,11 +160,11 @@ def test_cache_reuse_on_second_download(tmp_path):
 
 def test_use_cache_false_deletes_and_redownloads(tmp_path):
     cfg = _config(tmp_path)
-    first = Fetcher(_request(), config=cfg, preset=None).download()
+    first = Fetcher(_request(), config=cfg).download()
     stale = first.output_dir / "stale.txt"
     stale.write_text("old", encoding="utf-8")
 
-    second = Fetcher(_request(), config=cfg, preset=None).download(use_cache=False)
+    second = Fetcher(_request(), config=cfg).download(use_cache=False)
 
     assert second.summary.downloaded == 1
     assert second.summary.reused == 0
@@ -181,7 +179,7 @@ def test_unknown_source_kind_is_skipped(tmp_path):
             "sources": {"s": {"kind": "nope", "enabled": True}},
         }
     )
-    result = Fetcher(_request(), config=cfg, preset=None).download()
+    result = Fetcher(_request(), config=cfg).download()
 
     assert result.summary.skipped == 1
     assert "unknown source kind" in result.results[0].message
@@ -189,11 +187,11 @@ def test_unknown_source_kind_is_skipped(tmp_path):
 
 def test_strict_mode_raises_on_warning(tmp_path):
     cfg = _config(tmp_path, fail=True)
-    result = Fetcher(_request(), config=cfg, preset=None).download()
+    result = Fetcher(_request(), config=cfg).download()
     assert result.summary.skipped == 1
 
     with pytest.raises(RuntimeError, match="collection completed with warnings"):
-        Fetcher(_request(), config=cfg, preset=None, strict=True).download()
+        Fetcher(_request(), config=cfg, strict=True).download()
 
 
 def test_shipped_manifest_schema_is_valid_draft_2020_12():
@@ -204,7 +202,7 @@ def test_shipped_manifest_schema_is_valid_draft_2020_12():
 def test_fetcher_exports_directory_and_zip(tmp_path):
     import zipfile
 
-    fetcher = Fetcher(_request(), config=_config(tmp_path / "stage"), preset=None)
+    fetcher = Fetcher(_request(), config=_config(tmp_path / "stage"))
     result = fetcher.download()
     directory = fetcher.export_directory(tmp_path / "exported")
     archive = fetcher.export_zip(tmp_path / "exported.zip")

@@ -1,15 +1,47 @@
 ---
-title: "collekt"
+title: ""
 page-layout: full
 toc: false
 number-sections: false
+title-block-banner: false
 ---
 
-**collekt** is a library to facilitate spatio-temporal data collection across
-arbitrary datasources. A single request — a region of interest, a time window,
-an optional sampling and set of variable groups — is fanned out to a set of
-pluggable source adapters, each of which fetches source-native files and records
-what it did in a machine-readable manifest.
+::: {.ai4copsec-hero}
+<img src="assets/ai4copsec-logo.png" alt="AI4COPSEC">
+
+# collekt
+
+A library to facilitate spatio-temporal data collection across arbitrary
+datasources for Copernicus security and maritime monitoring workflows.
+:::
+
+**collekt** fans out a single request — a region of interest, a time window, an
+optional sampling and set of variable groups — to pluggable source adapters, each
+of which fetches source-native files and records what it did in a machine-readable
+manifest.
+
+::: {.ai4copsec-home-grid}
+:::{}
+### Source-native collection
+
+Fetch CMEMS, ECMWF, SkyTruth, Copernicus Data Space, eOdyn, and other provider
+outputs without flattening their useful metadata away.
+:::
+
+:::{}
+### Reproducible manifests
+
+Every run writes a relocatable manifest describing requests, files, variables,
+coverage, and provider details.
+:::
+
+:::{}
+### Assembly workflow
+
+Gridded outputs can be regridded and aligned onto a common grid and time axis
+when downstream analysis needs a single dataset.
+:::
+:::
 
 ## Getting started
 
@@ -19,17 +51,17 @@ uv sync   # or: just install
 
 ```python
 import collekt
-from collekt.core.config import get_config
 
+config = collekt.DatasetConfig(
+    collekt.CMEMS("cmems_duacs_my", variables=["ugos", "vgos"]),
+)
 request = collekt.Request(
     region=collekt.Region.from_bbox((-6.0, 20.0, 35.0, 45.0)),
     start="2023-06-15",
     sampling="24h",
 )
 
-# Pick a source from the bundled catalog and select variables from its allow-list.
-config = get_config(overrides={"sources": {"cmems_duacs_my": {"use_variables": ["ugos", "vgos"]}}})
-fetcher = collekt.Fetcher(request, config=config, use_datasources=["cmems_duacs_my"])
+fetcher = collekt.Fetcher(request=request, config=config, output_dir="data/collections")
 result = fetcher.download()
 print(result.manifest_path)
 ```
@@ -44,8 +76,15 @@ dataset = assembler.to_xarray(grid="lowest_resolution", time="lowest_resolution"
 The same workflow is available from the command line:
 
 ```bash
+cat > datasets.yaml <<'YAML'
+datasets:
+  - provider: cmems
+    key: cmems_duacs_my
+    variables: [ugos, vgos]
+YAML
+
 collekt fetch --bbox -6 20 35 45 --start 2023-06-15 \
-  --datasource cmems_duacs_my --use-variables cmems_duacs_my=ugos,vgos
+  --dataset-config datasets.yaml --output-dir data/collections
 collekt doctor
 ```
 

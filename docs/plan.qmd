@@ -1,25 +1,24 @@
 ---
-title: "Integrating the tb-rea core into collekt"
-subtitle: "Implementation plan"
+title: "collekt architecture and roadmap"
+subtitle: "Current state after the tb-rea core port"
 toc: true
 number-sections: true
 ---
 
 ## Goal
 
-Grow **collekt** into a general, reusable engine for spatio-temporal data
-collection by porting the proven core of the near-real-time ocean-conditions
-package **tb-rea** into it, together with tb-rea's engineering practices (uv,
-Ruff, Quarto docs, a versioned manifest, cache-aware orchestration, offline
-tests).
+**collekt** is now the reusable engine for spatio-temporal data collection that
+was originally planned as a port of the near-real-time ocean-conditions package
+**tb-rea**. It keeps tb-rea's useful engineering practices (uv, Ruff, Quarto
+docs, a versioned manifest, cache-aware orchestration, offline tests), but the
+public interface has been simplified around explicit dataset selections.
 
-After this work collekt should:
+The current design is:
 
-- Accept a rich request (region of interest, time window, temporal sampling,
-  requested variables) through a typed `Request`/`Region` model.
-- Resolve sources declaratively from YAML **source catalogs** (the mechanism;
-  curated presets and the variable-group vocabulary are supplied by the consuming
-  brick, not by collekt).
+- Accept a rich request (region of interest, time window, temporal sampling)
+  through a typed `Request`/`Region` model.
+- Resolve selected datasets from `DatasetConfig` objects or YAML presets, using
+  bundled YAML **source catalogs** as capability metadata.
 - Fetch through a uniform **source-adapter** framework with a status contract,
   cache-first behaviour, non-blocking per-source failures, and a strict mode.
 - Write a versioned, machine-readable **manifest** for every run.
@@ -31,14 +30,14 @@ After this work collekt should:
 
 ## Scope
 
-**In scope:** everything on the collekt side — the core engine, the config
-system, the adapters, the manifest, the two output backends, the CLI, the
-tooling migration, tests, and documentation.
+**In scope:** the collekt engine, source catalogs, adapter contracts, manifest,
+gridded assembler, feature outputs, CLI, docs, tests, and manual catalogue
+maintenance scripts.
 
-**Out of scope (follow-up, tracked separately):** refactoring tb-rea itself into
-a thin "technological-brick" facade over the new collekt core; cloud-native
-deployment, event triggers, and autoscaling; advanced remapping (curvilinear
-grids, conservative interpolation) beyond what tb-rea's `Assembler` already does.
+**Out of scope:** refactoring tb-rea itself into a thin "technological-brick"
+facade over collekt; cloud-native deployment, event triggers, autoscaling; and
+advanced remapping (curvilinear grids, conservative interpolation) beyond what
+the current `Assembler` does.
 
 ## Decisions locked
 
@@ -46,20 +45,14 @@ These were agreed up front and the plan assumes them:
 
 | Decision | Choice |
 |---|---|
-| Minimum Python | **3.13** — match tb-rea; port core code essentially as-is. |
+| Minimum Python | **3.13** — match tb-rea and current scientific Python support. |
 | Request model | **Adopt `Request`/`Region`** as the core model and migrate the CLI. `Query` is retired (collekt is alpha). |
-| Source definition | **YAML source catalogs** (tb-rea's declarative config *mechanism*). Curated **presets** and the broad **variable-group vocabulary** are domain content and live in the brick (tb-rea), not in collekt. |
+| Source definition | **YAML source catalogs** describe available sources. `DatasetConfig` / YAML presets select source keys and provider parameters. |
 | Plan scope | **collekt only.** tb-rea slimming is a noted follow-up. |
 
-## Target architecture
+## Target Architecture
 
-collekt already has the right bones — a pluggable `DataSource` abstraction, a
-`CLIDataSource` for credential-gated external tools (HOZINT), a `Collector` loop
-with per-source failure isolation, and per-run provenance (`query.json`). The
-plan strengthens these into the shared engine and adds the gridded assembly path
-collekt lacks today.
-
-Proposed package layout (illustrative — names and grouping open):
+Current package layout:
 
 ```text
 src/collekt/
@@ -70,7 +63,8 @@ src/collekt/
     request.py               # Region, Request, parse_datetime, sampling
     temporal.py              # SamplingPlan, timestamp planning per source
     naming.py                # filename/request-dir patterns + bbox hashing
-    collector.py             # orchestration: plan / fetch, cache, isolation
+    collect.py               # orchestration: plan / fetch, cache, isolation
+    datasets.py              # DatasetConfig + provider selection dataclasses
     fetcher.py               # public Fetcher workflow (check/plan/download/export)
     result.py                # Result, Summary
     manifest.py              # manifest builder + MANIFEST_SCHEMA_VERSION
@@ -82,8 +76,8 @@ src/collekt/
     credentials.py           # credential resolution (env / provider tools / paths)
     config/
       __init__.py
-      loader.py              # layered YAML load, preset merge, env expansion
-      schema.py              # typed Config / SourceConfig / … + variable resolution
+      loader.py              # layered YAML load, source catalogs, env expansion
+      schema.py              # typed Config / SourceConfig / … + variable validation
 
   sources/
     base.py                  # adapter protocol, SourceResult, SourceStatus, ProgressCallback
@@ -94,6 +88,7 @@ src/collekt/
     skytruth.py              # oil-slick features → Parquet       (open)
     hozint.py                # threat-intel reports → Parquet     (credentials)
     eodyn.py                 # eOdyn ocean-data API               (credentials)
+    planning.py              # shared static-coverage planning helpers
 
   assemble/
     gridded.py               # Assembler: regrid + time-align → xarray/NetCDF/Zarr/NumPy
@@ -102,7 +97,7 @@ src/collekt/
   conf/                      # shipped as package data (mechanism + first-party catalog)
     default.yaml
     source/*.yaml            # first-party source definitions (cmems, ecmwf, skytruth, …)
-    # curated presets + variable-group vocabulary live in the brick, not here
+    # public presets are DatasetConfig YAML files
 
   resources/
     regions/*.geojson
@@ -110,8 +105,6 @@ src/collekt/
 
   cli/
     main.py                  # argument parser + entry point
-    fetch.py                 # `collekt fetch …`
-    doctor.py                # `collekt doctor …`
 ```
 
 ### Module mapping (tb-rea → collekt)
@@ -123,36 +116,35 @@ src/collekt/
 | `naming.py` | `core/naming.py` | As-is (bbox hash, request dir, pattern formatter). |
 | `config/loader.py`, `config/schema.py` | `core/config/` | As-is. |
 | `sources/base.py` | `sources/base.py` | As-is. |
-| `sources/cmems.py` | `sources/cmems.py` | As-is; replaces collekt's `CopernicusMarineDataset`. |
-| `sources/ecmwf_open_data.py` | `sources/ecmwf_open_data.py` | As-is. |
-| `sources/era5.py` | `sources/era5.py` | As-is. |
+| `sources/cmems.py` | `sources/cmems.py` | General CMEMS adapter using catalog-defined dataset IDs. |
+| `sources/ecmwf_open_data.py` | `sources/ecmwf_open_data.py` | ECMWF Open Data forecast adapter. |
+| `sources/era5.py` | `sources/era5.py` | ERA5/CDS adapter. |
 | `sources/osmose.py` | `sources/eodyn.py` | **Renamed.** Archive-backed impl is an interim mode behind the eOdyn name (see §9.3). |
-| `collect.py` | `core/collector.py` + `core/manifest.py` + `core/result.py` | Split orchestration / manifest / result types. |
+| `collect.py` | `core/collect.py` + `core/manifest.py` + `core/result.py` | Split orchestration / manifest / result types. |
 | `rea.py` (`Fetcher`) | `core/fetcher.py` | Generalised; drop ocean-specific defaults. |
-| `availability.py` | `core/availability.py` | As-is. |
-| `reporting.py` | `core/reporting.py` | As-is. |
-| `doctor.py` | `core/doctor.py` | As-is. |
-| `exporting.py` | `core/exporting.py` | As-is. |
-| `assembler.py` | `assemble/gridded.py` | As-is. (No tabular assembler for now — feature sources write Parquet directly.) |
+| `availability.py` | `core/availability.py` | Online CMEMS describe + declarative coverage checks. |
+| `reporting.py` | `core/reporting.py` | CLI reporting and summary counts. |
+| `doctor.py` | `core/doctor.py` | Environment, catalog, and optional online CMEMS diagnostics. |
+| `exporting.py` | `core/exporting.py` | Directory and zip handoff helpers. |
+| `assembler.py` | `assemble/gridded.py` | Gridded assembler. No tabular assembler for now — feature sources write Parquet directly. |
 | — | `sources/skytruth.py`, `hozint.py`, `copernicus_dataspace.py` | collekt's existing sources, adapted to the new adapter contract. |
 
-## Tooling & project baseline
+## Tooling & Project Baseline
 
-Port tb-rea's practices before touching behaviour, so the rest of the work lands
-on the modern baseline.
+The project uses the tb-rea tooling baseline.
 
 ### uv + packaging
 
 - Switch the build backend to **`uv_build`**; manage the environment and
   dependencies with **uv** (`uv sync`, `uv add`, `uv run`). Never `pip install`.
 - `requires-python = ">=3.13"`.
-- Rework `pyproject.toml`:
-  - `dependencies` = the light engine only (see §12).
-  - `optional-dependencies` = feature/provider extras (`gridded`, `features`,
-    `cmems`, `era5`, `ecmwf`, `eodyn`, `dataspace`, `all`).
-  - `dependency-groups` = `dev` (Ruff, commitizen), `test`
-    (pytest, pytest-cov, pytest-timeout, jsonschema), `docs` (quartodoc),
-    `notebook`.
+- `pyproject.toml` currently uses a batteries-included runtime dependency set:
+  provider clients, gridded dependencies, and feature dependencies are installed
+  by default. Imports remain lazy at provider boundaries so `import collekt`
+  stays usable even when a provider package is absent in a trimmed environment.
+- `dependency-groups` hold development-only tooling: `dev` (Ruff, commitizen),
+  `test` (pytest, pytest-cov, pytest-timeout, jsonschema), `docs`
+  (quartodoc), and `notebook`.
 - Keep the `collekt` console script; entry point moves to
   `collekt.cli.main:run`.
 - Commit `uv.lock`.
@@ -181,12 +173,12 @@ Google-style, quartodoc-compatible: order description → `Example:` → `Args:`
 `Returns:` → `Raises:`; fenced ```` ```python ```` blocks; register every public
 class/function in `docs/_quarto.yml`. Record these rules in `CLAUDE.md`.
 
-### CI (GitHub Actions, collekt lives on GitHub)
+### CI (GitHub Actions)
 
-- `ci.yml`: `uv sync --all-extras`, `ruff check`, `ruff format --check`,
-  `pytest`.
-- `docs.yml`: build Quarto docs and deploy to **GitHub Pages**
-  (`ai4copsec.github.io/collekt`).
+- `.github/workflows/ci.yml` runs formatting, Ruff, pytest with coverage, docs
+  rendering, and distribution builds.
+- Docs are rendered and uploaded as a CI artifact. Publishing to GitHub Pages is
+  still a remaining release/deployment task.
 
 ## The request model
 
@@ -200,33 +192,34 @@ collekt's point+radius and GeoJSON conventions.
   - `Region.from_geojson(path)` — bbox of the geometry, **plus** the geometry
     itself retained as optional WKT for sources that support polygon filters
     (Skytruth CQL, Data Space `OData…Intersects`).
-- `Request` gains `sampling` (`15min`/`1h`/`3h`/`6h`/`24h`), an optional `variables`
-  field, optional `metadata`, and the `iter_days` / `*_datetime` /
-  `sampling_label` helpers. The **meaning** of a variable group (e.g. what
-  `currents` selects) is domain vocabulary supplied by the brick's catalog, not
-  hard-coded in the core; the core only performs generic group matching.
+- `Request` carries only region, time window, sampling
+  (`15min`/`1h`/`3h`/`6h`/`24h`), optional `metadata`, and the `iter_days` /
+  `*_datetime` / `sampling_label` helpers. Dataset selection is a separate
+  `DatasetConfig` concern.
 - `Request.as_dict()` becomes the request block embedded in the manifest.
 
 ## Configuration system
 
-Port tb-rea's layered config **mechanism** into the core, but keep curated
-content (presets, group vocabulary) in the domain brick.
-
-- `core/config/loader.py` — layered YAML load (`default.yaml` → source catalogs →
-  optional preset → runtime overrides), env-var expansion, preset merge. The
-  loader accepts an external `conf_dir`, so a brick supplies its own catalogs and
-  presets without collekt shipping them.
+- `core/datasets.py` — public `DatasetConfig` and provider dataclasses
+  (`CMEMS`, `SkyTruth`, etc.). YAML presets are 1-to-1 serializations of this
+  object.
+- `core/config/loader.py` — internal bundled source-catalog load and env-var
+  expansion.
 - `core/config/schema.py` — typed `Config`, `SourceConfig`, `OutputConfig`,
-  `CacheConfig`, `CredentialsConfig`; per-source temporal sampling and variable
-  resolution (`default` / `optional` groups / `use_variables`);
-  `apply_source_variable_overrides`.
-- **What collekt ships:** the config machinery plus a minimal catalog defining
-  its own first-party sources (CMEMS, ECMWF, ERA5, Skytruth, HOZINT, Data Space,
-  eOdyn) with their datasets and per-source variables.
-- **What lives in the brick (tb-rea), not collekt:** curated **presets**
-  (e.g. `drift`, `historical`) and the broad **variable-group vocabulary** —
-  what `currents`/`wind`/`waves` mean and which sources they select. collekt
-  provides only the generic group-matching mechanism; the vocabulary is data.
+  `CacheConfig`, `CredentialsConfig`; adapter-facing catalog metadata after
+  `DatasetConfig` resolution.
+- **What collekt ships:** the public dataset-selection object plus a curated
+  catalog defining first-party sources (CMEMS Global/MED/IBI/NWS, ECMWF Open
+  Data, ERA5, Skytruth, HOZINT, Copernicus Data Space, eOdyn) with their
+  provider metadata.
+- Source catalogs declare provider capabilities (`available_variables`,
+  `has_depth`, `temporal_sampling`, coverage, URL/DOI), not a default variable
+  selection. `DatasetConfig` declares the selected variables and provider
+  parameters such as CMEMS depth ranges.
+- CMEMS coverage declarations are static hints for offline planning. Refresh them
+  manually with `uv run python scripts/update_cmems_coverage.py`; do not automate
+  this, because NRT temporal coverage shifts continually and the catalog should
+  move only when deliberately refreshed.
 - Ship collekt's `conf/` as package data (tb-rea learned this the hard way — see
   its "ship conf as package data" fix).
 - **Credentials by reference only.** `CredentialsConfig` holds path hints
@@ -252,28 +245,30 @@ emit **one file per day** (gridded sources) **or one file per request** (feature
 sources return a single result with `day=None`). Expected availability problems
 become `skipped` warnings, never exceptions.
 
-### Gridded adapters (port as-is)
+### Gridded adapters
 
-`cmems`, `ecmwf_open_data`, `era5` port directly. `cmems` replaces collekt's
-25-line `CopernicusMarineDataset`, bringing NRT↔reanalysis dataset selection by
-date, depth/time kwargs, cache reuse, and availability `describe`.
+`cmems`, `ecmwf_open_data`, and `era5` are first-class adapters. `cmems` uses
+Copernicus Marine dataset IDs from the catalog, supports separate NRT/MY source
+keys, multiple native cadences (including MED 15-minute and hourly currents),
+depth/time kwargs, cache reuse, and availability checks through `describe()` with
+declared coverage as an offline fallback.
 
-### Existing collekt sources (adapt to the contract)
+### Feature/file sources
 
 - **skytruth** — keep the STAC-style paginated query and the `damast`
   annotated-Parquet output (`skytruth.spec.yaml`); wrap it as a per-request
   feature adapter returning `format="parquet"`. Reuse `Region`'s WKT for the CQL
   spatial filter.
-- **hozint** — keep as a `CLIDataSource`-style adapter shelling out to
-  `hozint-apiclient` (`--output-format parquet`); map `Request` → its flags.
+- **hozint** — shell out to `hozint-apiclient` (`--output-format parquet`) and
+  map `Request` → its flags.
 - **copernicus_dataspace** — keep the OAuth STAC search + product-file download;
   record downloaded products as `SourceResult`s (`format` per product).
 
 ### eOdyn adapter (first-class, credential-gated)
 
-Add `sources/eodyn.py` as a peer to CMEMS, guarded by credentials exactly as
-HOZINT is, so any collekt user reaches eOdyn currents/drifters with the same
-request they use for Copernicus.
+`sources/eodyn.py` is a peer to CMEMS, guarded by credentials exactly as HOZINT
+is, so any collekt user reaches eOdyn currents/drifters with the same request
+they use for Copernicus.
 
 - Public surface is the future eOdyn ocean-data **API**.
 - The current on-disk archive (tb-rea's `osmose.py`) becomes an **interim
@@ -284,8 +279,8 @@ request they use for Copernicus.
 
 ## Orchestration
 
-Port `collect._run_collection` into `core/collector.py` (+ `core/fetcher.py` for
-the public workflow):
+`core/collect.py` handles adapter orchestration; `core/fetcher.py` is the public
+workflow:
 
 - `plan()` (dry-run) produces `PLANNED` results with an `availability` block and
   the exact provider request, without touching the network or disk.
@@ -295,20 +290,21 @@ the public workflow):
   manifest is written).
 - `check()` runs `doctor` diagnostics then `plan()`.
 - `export_directory()` / `export_zip()` for staged handoff.
+- `Result.__str__`, `Result.__repr__`, and `Result.render()` provide a compact
+  plain-text summary for scripts and notebooks.
 
 ## The manifest (central)
 
-The manifest is the contract downstream consumers rely on and **replaces
-`query.json`** (the request is embedded in it). Port it faithfully and extend it
-for feature data.
+The manifest is the contract downstream consumers rely on. It replaces the old
+`query.json` provenance file: the request is embedded directly in the manifest.
 
 - `core/manifest.py` writes the tb-rea structure: `manifest_schema_version`,
-  `request` (+ `preset`), `summary`, `sources` (resolved config per source),
+  `request`, `summary`, `sources` (resolved config per source),
   `files`, `planned`, `warnings`, `failures`. Paths are **relative** to the
   request directory so a directory or zip is relocatable.
 - Keep post-fetch **inspection**: for NetCDF/GRIB record data variables, sizes,
-  coordinates; **extend** `_inspect_path` to inspect Parquet (columns, row
-  count, size) so feature outputs are described too.
+  coordinates; for Parquet record columns, row count, and size so feature
+  outputs are described too.
 - **Keep the manifest flexible through alpha.** Fields may change freely until a
   1.0 contract is agreed. Ship a permissive draft schema at
   `resources/schema/manifest.schema.json` for reference only — do **not** enforce
@@ -322,8 +318,8 @@ for feature data.
 collekt keeps two output shapes, but only the gridded one gets an assembler for
 now.
 
-- **Gridded — `assemble/gridded.py`** — port tb-rea's `Assembler` unchanged: open
-  NetCDF/GRIB2, source-prefixed variable names, common-grid regridding
+- **Gridded — `assemble/gridded.py`** — open NetCDF/GRIB2, source-prefixed
+  variable names, common-grid regridding
   (`native`/`lowest`/`highest`/`custom`, `linear`/`nearest`), temporal alignment
   (`nearest`/`linear`/`mean`/`max`/`min` with tolerance), export to
   xarray/NetCDF/Zarr/NumPy.
@@ -340,22 +336,20 @@ removed outright — no backward-compatible alias.
 
 - **`collekt fetch`** — args: region as `--bbox W E S N` **or**
   `--at-lat/--at-lon/--radius` **or** `--region <geojson>`; `--start/--end`;
-  `--sampling`; `--variables`; optional `--preset` and `--conf-dir` (to load a
-  brick's catalogs/presets); repeatable `--use-variables SOURCE=group,var`;
-  `--datasource` (filter, kept from today); `--output-dir`; `--dry-run`;
-  `--strict`. Builds a `Request`, runs the workflow, writes the manifest.
+  `--sampling`; `--dataset-config <yaml>`; `--output-dir`; `--dry-run`;
+  `--strict`. Builds a `Request`, loads `DatasetConfig`, runs the workflow, and
+  writes the manifest.
 - **`collekt doctor`** — environment + planned-call diagnostics, `--online` to
-  query catalogues, optional `--preset`/`--conf-dir`.
-- Rich reporting: concise per-source/day status lines, quiet cached reuse, red
-  non-blocking warnings, and a final summary banner (counts also available on the
-  `Result`).
+  query catalogues, optional `--conf-dir` for source-catalog diagnostics.
+- CLI reporting uses Rich for tables, warnings, and summary banners. The Python
+  `Result` object intentionally renders with plain text.
 
 ## Testing strategy
 
-Port tb-rea's offline suite and add coverage for collekt's own sources (untested
-today).
+The suite is offline by default and covers the engine through stubbed clients and
+synthetic datasets.
 
-- Config loading, preset merge, env expansion, variable resolution.
+- Config loading, source-catalog merge, env expansion, variable validation.
 - Filename-pattern formatting and unknown-placeholder errors; bbox hashing.
 - `Request` normalisation (date-only vs datetime; point+radius vs bbox vs
   GeoJSON).
@@ -377,100 +371,75 @@ default pytest.
 
 - Replace jupyter-book/sphinx with **Quarto + quartodoc**: `docs/_quarto.yml`,
   `docs/index.qmd`, `docs/api/` (public classes: `Request`, `Region`, `Fetcher`,
-  `Result`, `Assembler`, `run_doctor`, `DoctorCheck`), `docs/credentials.qmd`,
-  `docs/products.qmd` (source catalog), `docs/modulemap.qmd`, and the manifest
-  schema page. This file (`docs/plan.qmd`) lives alongside them.
+  `DatasetConfig`, provider dataclasses, `Result`, `Assembler`, `run_doctor`,
+  `DoctorCheck`), `docs/credentials.qmd`, `docs/products.qmd` (source catalog),
+  `docs/modulemap.qmd`, and the manifest schema page. This file
+  (`docs/plan.qmd`) lives alongside them.
 - Rewrite `README.md` with the new Python + CLI examples.
 - Keep `docs/modulemap.qmd` current after any structural change.
 
-## Phased delivery plan
+## Current Status
 
-Each phase is independently reviewable and leaves `just lint` + `just test`
-green.
+Implemented:
 
-### Phase 0 — Tooling baseline
-Migrate to uv + Ruff + commitizen + justfile; rework `pyproject.toml` (3.13,
-extras, groups); add GitHub Actions CI; stand up the Quarto docs skeleton.
-**No behaviour change.**
-*Done when:* `uv sync`, `just lint`, `just test` (existing tests), and
-`just docs` all pass in CI.
+- Tooling baseline: uv, Ruff, commitizen, justfile, changelog, Quarto/quartodoc,
+  CI lint/test/docs/build jobs.
+- Core model: `Request`, `Region`, temporal planning, naming, availability,
+  source catalog loading, credentials, and public `DatasetConfig` selections.
+- Orchestration and manifest: cache-aware plan/download, strict mode, export
+  helpers, relative manifest paths, file inspection, and draft manifest schema.
+- Source adapters: CMEMS, ECMWF Open Data, ERA5, SkyTruth, HOZINT, Copernicus
+  Data Space, and eOdyn archive interim mode.
+- Gridded assembler: source identity, spatial regridding, time alignment and
+  aggregation, NetCDF/Zarr/NumPy export.
+- CLI and notebooks: `collekt fetch`, `collekt doctor`, `collekt config show`,
+  updated example notebooks and docs.
 
-### Phase 1 — Core engine
-Port `request` (+ Region reconciliation), `temporal`, `naming`, `config`,
-`sources/base`, `reporting`, `availability`, `geo`, `credentials`. Pure,
-offline-testable library.
-*Done when:* ported unit tests pass; `import collekt` needs only light deps.
+Remaining or deliberately deferred:
 
-### Phase 2 — Orchestration & manifest
-Port `collector`/`fetcher`, `result`, `manifest` (+ draft schema), `exporting`.
-Replace `query.json` with the manifest.
-*Done when:* a dry-run plan and a stubbed download produce a manifest with the
-expected keys and relative paths (light structural checks, not strict schema
-validation).
+- Publish rendered docs to GitHub Pages instead of only uploading the CI artifact.
+- Decide whether the batteries-included dependency model should stay, or whether
+  provider/gridded/feature extras should be reintroduced before a stable release.
+- Replace eOdyn `mode: archive` with the live eOdyn API client when that API is
+  available.
+- Decide when the manifest schema should become strict and versioned as a stable
+  downstream contract.
+- Decide whether a tabular assembler is useful once multiple feature sources need
+  merging/alignment.
 
-### Phase 3 — Source adapters
-3a: port `cmems`, `ecmwf_open_data`, `era5` (stubbed-client tests).
-3b: adapt `skytruth`, `hozint`, `copernicus_dataspace` to the contract.
-3c: add `eodyn` (archive interim mode + API seam).
-*Done when:* every adapter yields correct `SourceResult`s and manifest entries
-under mocked clients.
+## Dependency Strategy
 
-### Phase 4 — Gridded assembler
-Port `assemble/gridded.py` (the `Assembler`). Feature sources' Parquet output is
-left as-is (no tabular assembler).
-*Done when:* a synthetic gridded collection assembles with regrid/time-align
-tests passing, and feature Parquet files are correctly referenced in the manifest.
+The current package installs all runtime functionality by default: engine,
+gridded assembler dependencies, feature backend dependencies, and provider
+clients. Heavy imports remain lazy in provider/assembler code paths.
 
-### Phase 5 — CLI & doctor
-Implement `collekt fetch` and `collekt doctor` with rich reporting, strict mode,
-and the summary banner. Remove the old `query` command outright (no alias).
-*Done when:* CLI smoke tests, strict-mode failure, and summary counts pass.
-
-### Phase 6 — Docs & release
-Complete the quartodoc API reference, `credentials`/`products`/`modulemap`
-pages, manifest-schema doc, README rewrite, CHANGELOG; first `just bump`.
-*Done when:* docs render clean and every public symbol is listed.
-
-## Dependency extras
-
-Keep the base install lean; gate heavy libraries behind extras with lazy imports
-(as tb-rea does for `copernicusmarine`, `cdsapi`, `xarray`, `cfgrib`).
-
-| Group | Packages (indicative) | Purpose |
-|---|---|---|
-| base | pydantic, pydantic-settings, pyyaml, requests, shapely, geopy, rich, tqdm | Engine, config, geo, reporting |
-| `gridded` | xarray, scipy, cfgrib, eccodeslib | `Assembler` + GRIB reading |
-| `features` | damast, geopandas, polars | Tabular backend + Skytruth |
-| `cmems` | copernicusmarine | CMEMS downloads |
-| `era5` | cdsapi | ERA5 reanalysis |
-| `ecmwf` | ecmwf-opendata (+ cfgrib/eccodes) | Forecast wind |
-| `dataspace` | (requests only) | Sentinel/Landsat products |
-| `hozint` | hozint-apiclient | Threat-intel reports |
-| `eodyn` | (eOdyn client, TBD) | eOdyn ocean-data API |
-| `all` | union of the above | Convenience |
+This is simpler for research workflows and notebooks, but it means a gridded-only
+or feature-only user still installs more than they strictly need. Reintroducing
+optional extras remains a packaging decision for the first stable release.
 
 ## Risks & mitigations
 
-- **Base import stays light** — enforce lazy imports for all heavy/optional deps;
-  add a test that `import collekt` succeeds with only base deps installed.
+- **Batteries-included install grows heavy** — keep provider and assembler imports
+  lazy, and revisit optional extras before a stable release if installation size
+  becomes a problem.
 - **Two data shapes in one manifest** — the per-file `format` field + Parquet
   inspection keep feature and field outputs uniformly described; only gridded
   files go through the `Assembler`, feature files are passed through untouched.
 - **Region model reconciliation** — cover point+radius, bbox, and GeoJSON
   construction (incl. retained WKT for polygon-capable sources) with explicit
   tests.
-- **Docs hosting move** (GitLab→GitHub Pages) — validate the Actions deploy on a
-  branch before switching the published site.
-- **`damast` in the base-vs-`features` split** — confirm `damast` (and its own
-  deps) belong in `features`, not base, so a gridded-only user stays lean.
+- **Docs hosting move** — rendered docs build in CI, but GitHub Pages deployment
+  still needs to be wired.
+- **Static CMEMS coverage drift** — NRT products move continuously. Keep
+  `describe()` as the preferred online source of truth, treat static coverage as
+  an offline planning hint, and refresh it manually when needed.
 
 ## Open questions for discussion
 
-- The exact boundary for presets and the variable-group vocabulary: this plan
-  keeps them in the brick and out of collekt core — confirm that split holds as
-  the code lands, since it shapes the `conf/` layout.
-- Whether collekt should ship *any* example preset (for docs and tests) even
-  though curated presets live in the brick.
+- Whether collekt should ship additional example DatasetConfig YAML presets for
+  docs and tests, beyond the bundled source catalogs.
+- Whether to keep batteries-included runtime dependencies or reintroduce optional
+  extras for provider/gridded/feature groups.
 - If/when a tabular assembler becomes worthwhile (merging or aligning multiple
   feature sources), versus leaving feature Parquet as-is.
 - Manifest-schema strictness target for the first stable (1.0) contract.
