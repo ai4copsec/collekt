@@ -13,6 +13,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
+from collekt.core.availability import static_coverage
 from collekt.core.config import Config, SourceConfig
 from collekt.core.reporting import Summary
 from collekt.sources.base import SourceResult, SourceStatus
@@ -104,6 +105,7 @@ def _result_to_manifest(result: SourceResult, request_dir: Path) -> dict[str, An
 
 
 def _source_to_manifest(source: SourceConfig) -> dict[str, Any]:
+    coverage = static_coverage(source)
     return {
         "kind": source.kind,
         "enabled": source.enabled,
@@ -112,11 +114,8 @@ def _source_to_manifest(source: SourceConfig) -> dict[str, Any]:
         "default_variables": list(source.default_variables),
         "optional_variables": {name: list(values) for name, values in source.optional_variables.items()},
         "resolved_variables": list(source.variables),
-        "temporal": {
-            "native_sampling": source.temporal.native_sampling,
-            "supported_sampling": list(source.temporal.supported_sampling),
-            "sampling_mode": source.temporal.sampling_mode,
-        },
+        "temporal_sampling": source.temporal_sampling,
+        "coverage": coverage.as_dict() if coverage else None,
     }
 
 

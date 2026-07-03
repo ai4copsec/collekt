@@ -52,17 +52,19 @@ class CredentialsConfig:
 
 
 @dataclass(frozen=True)
-class TemporalConfig:
-    """Temporal capability metadata for one source."""
-
-    native_sampling: str = "24h"
-    supported_sampling: tuple[str, ...] = ("24h",)
-    sampling_mode: str = "instantaneous"
-
-
-@dataclass(frozen=True)
 class SourceConfig:
-    """Configuration for one data-source adapter."""
+    """Configuration for one data-source adapter.
+
+    The bundled catalog describes each dataset's *capabilities*; which variables
+    and depths to actually fetch is a downstream choice:
+
+    - `available_variables` is the harvested allow-list a source can serve.
+      Selection (`use_variables`) is validated against it; the catalog ships no
+      default selection, so a bundled source must be given a selection downstream.
+    - `has_depth` marks a source with a depth dimension. Such a source requires an
+      explicit `depth: [min, max]` downstream; the provider validates the range.
+    - `url` and `doi` are provenance metadata (product page and citation).
+    """
 
     name: str
     kind: str
@@ -70,16 +72,17 @@ class SourceConfig:
     variable_groups: tuple[str, ...] = ()
     path: Path = Path(".")
     filename_pattern: str = "{source}_{date:%Y%m%d}_{bbox_hash}.nc"
+    available_variables: tuple[str, ...] = ()
     default_variables: tuple[str, ...] = ()
     optional_variables: dict[str, tuple[str, ...]] = field(default_factory=dict)
     use_variables: tuple[str, ...] = ()
     variables: tuple[str, ...] = ()
+    has_depth: bool = False
+    url: str | None = None
+    doi: str | None = None
     mode: str = "auto"
     dataset_id: str | None = None
-    dataset_nrt: str | None = None
-    dataset_my: str | None = None
-    nrt_cutoff: str | None = None
-    temporal: TemporalConfig = field(default_factory=TemporalConfig)
+    temporal_sampling: str = "24h"
     raw: dict[str, Any] = field(default_factory=dict)
 
 
@@ -133,11 +136,13 @@ def _parse_credentials(raw: Mapping[str, Any] | None) -> CredentialsConfig:
 def _parse_source(name: str, raw: Mapping[str, Any]) -> SourceConfig:
     d = dict(raw)
     default_variables, optional_variables = _parse_variable_catalog(d.get("variables"))
+    available_variables = _as_str_tuple(d.get("available_variables"))
     use_variables = tuple(str(x) for x in _as_tuple(d.get("use_variables", ("default",))))
     variables = _resolve_variables(
         source_name=name,
         default_variables=default_variables,
         optional_variables=optional_variables,
+        available_variables=available_variables,
         use_variables=use_variables,
     )
     groups = d.get("variable_groups") or ()
@@ -148,16 +153,17 @@ def _parse_source(name: str, raw: Mapping[str, Any]) -> SourceConfig:
         variable_groups=tuple(str(x) for x in groups),
         path=Path(str(d.get("path", "."))),
         filename_pattern=str(d.get("filename_pattern", f"{name}" + "_{date:%Y%m%d}_{bbox_hash}.nc")),
+        available_variables=available_variables,
         default_variables=default_variables,
         optional_variables=optional_variables,
         use_variables=use_variables,
         variables=variables,
+        has_depth=_as_bool(d.get("has_depth"), False),
+        url=None if d.get("url") is None else str(d["url"]),
+        doi=None if d.get("doi") is None else str(d["doi"]),
         mode=str(d.get("mode", "auto")),
         dataset_id=None if d.get("dataset_id") is None else str(d["dataset_id"]),
-        dataset_nrt=None if d.get("dataset_nrt") is None else str(d["dataset_nrt"]),
-        dataset_my=None if d.get("dataset_my") is None else str(d["dataset_my"]),
-        nrt_cutoff=None if d.get("nrt_cutoff") is None else str(d["nrt_cutoff"]),
-        temporal=_parse_temporal(d.get("temporal")),
+        temporal_sampling=format_sampling(d.get("temporal_sampling", "24h")),
         raw=d,
     )
 
@@ -188,29 +194,16 @@ def _parse_variable_catalog(raw: Any) -> tuple[tuple[str, ...], dict[str, tuple[
     return default, {}
 
 
-def _parse_temporal(raw: Mapping[str, Any] | None) -> TemporalConfig:
-    d = dict(raw or {})
-    native = format_sampling(d.get("native_sampling", "24h"))
-    supported_raw = d.get("supported_sampling", (native,))
-    supported = tuple(dict.fromkeys(format_sampling(value) for value in _as_tuple(supported_raw)))
-    if native not in supported:
-        supported = (native, *supported)
-    return TemporalConfig(
-        native_sampling=native,
-        supported_sampling=supported,
-        sampling_mode=str(d.get("sampling_mode", "instantaneous")),
-    )
-
-
 def _resolve_variables(
     *,
     source_name: str,
     default_variables: tuple[str, ...],
     optional_variables: Mapping[str, tuple[str, ...]],
+    available_variables: tuple[str, ...],
     use_variables: tuple[str, ...],
 ) -> tuple[str, ...]:
     selected: list[str] = []
-    known_variables = set(default_variables)
+    known_variables = set(default_variables) | set(available_variables)
     for values in optional_variables.values():
         known_variables.update(values)
     for item in use_variables or ("default",):

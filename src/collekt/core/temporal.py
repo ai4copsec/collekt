@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime, time, timedelta
 
 from collekt.core.config import SourceConfig
-from collekt.core.request import Request, format_sampling, parse_sampling
+from collekt.core.request import Request, format_sampling_minutes, parse_sampling
 
 
 @dataclass(frozen=True)
@@ -17,7 +17,6 @@ class SamplingPlan:
     actual_sampling: str
     requested_timestamps: tuple[datetime, ...]
     source_timestamps: tuple[datetime, ...]
-    warning: str | None = None
 
     def timestamps_for_day(self, day) -> tuple[datetime, ...]:
         """Return source timestamps that fall on a UTC day."""
@@ -31,8 +30,6 @@ class SamplingPlan:
             "requested_timestamps": [_format_datetime(timestamp) for timestamp in self.requested_timestamps],
             "source_timestamps": [_format_datetime(timestamp) for timestamp in self.source_timestamps],
         }
-        if self.warning is not None:
-            data["warning"] = self.warning
         return data
 
     def day_dict(self, day) -> dict[str, object]:
@@ -43,37 +40,29 @@ class SamplingPlan:
 
 
 def sampling_plan(request: Request, source: SourceConfig) -> SamplingPlan:
-    """Resolve the actual source sampling for a request.
+    """Resolve the download sampling for a request/source pair.
 
-    Sources choose the requested sampling when they declare it as supported.
-    Otherwise the planner chooses the finest supported sampling that is not
-    finer than the request. If no coarser option exists, it falls back to the
-    coarsest supported option and records a warning.
+    A source declares the dataset's actual sampling. A request may download at
+    that cadence or any coarser cadence that is an integer multiple of it.
     """
-    requested_hours = request.sampling_hours
-    supported_hours = sorted(parse_sampling(value) for value in source.temporal.supported_sampling)
-    if requested_hours in supported_hours:
-        actual_hours = requested_hours
-        warning = None
-    else:
-        coarser = [hours for hours in supported_hours if hours > requested_hours]
-        actual_hours = min(coarser) if coarser else max(supported_hours)
-        warning = (
-            f"{source.name} does not support {format_sampling(requested_hours)} sampling; "
-            f"using {format_sampling(actual_hours)}"
+    requested_minutes = request.sampling_minutes
+    dataset_minutes = parse_sampling(source.temporal_sampling)
+    if requested_minutes < dataset_minutes or requested_minutes % dataset_minutes:
+        raise ValueError(
+            f"{source.name} has {format_sampling_minutes(dataset_minutes)} dataset sampling; "
+            f"requested sampling {format_sampling_minutes(requested_minutes)} must be an integer multiple of it"
         )
     return SamplingPlan(
-        requested_sampling=format_sampling(requested_hours),
-        actual_sampling=format_sampling(actual_hours),
-        requested_timestamps=tuple(_iter_timestamps(request.start_datetime, request.end_datetime, requested_hours)),
-        source_timestamps=tuple(_iter_timestamps(request.start_datetime, request.end_datetime, actual_hours)),
-        warning=warning,
+        requested_sampling=format_sampling_minutes(requested_minutes),
+        actual_sampling=format_sampling_minutes(requested_minutes),
+        requested_timestamps=tuple(_iter_timestamps(request.start_datetime, request.end_datetime, requested_minutes)),
+        source_timestamps=tuple(_iter_timestamps(request.start_datetime, request.end_datetime, requested_minutes)),
     )
 
 
-def _iter_timestamps(start: datetime, end: datetime, sampling_hours: int):
+def _iter_timestamps(start: datetime, end: datetime, sampling_minutes: int):
     current = start
-    step = timedelta(hours=sampling_hours)
+    step = timedelta(minutes=sampling_minutes)
     while current <= end:
         yield current
         current += step

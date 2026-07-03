@@ -7,7 +7,10 @@ separately when those are installed.
 """
 
 import types
+import warnings
 from pathlib import Path
+
+import pytest
 
 from collekt import Fetcher
 from collekt.core.config import get_config
@@ -16,7 +19,7 @@ from collekt.sources import copernicus_dataspace, hozint, skytruth
 
 
 def _cfg(tmp_path, **sources):
-    return get_config(overrides={"output": {"root": str(tmp_path)}, "sources": sources})
+    return get_config(overrides={"source_catalogs": [], "output": {"root": str(tmp_path)}, "sources": sources})
 
 
 def _request(**kwargs):
@@ -87,6 +90,78 @@ def test_skytruth_reuses_existing_parquet(tmp_path, monkeypatch):
 
     result = fetcher.download()
     assert result.summary.reused == 1
+
+
+def _skytruth_feature(feature_id: int, *, hitl_cls: int | None) -> dict:
+    return {
+        "type": "Feature",
+        "geometry": {
+            "type": "Polygon",
+            "coordinates": [[[0.0, 35.0], [1.0, 35.0], [1.0, 36.0], [0.0, 36.0], [0.0, 35.0]]],
+        },
+        "properties": {
+            "aoi_type_1_ids": [1],
+            "aoi_type_2_ids": [2],
+            "aoi_type_3_ids": [3],
+            "area": 1000.0,
+            "aspect_ratio_factor": 0.4,
+            "centerlines": {
+                "type": "FeatureCollection",
+                "features": [
+                    {
+                        "id": f"centerline-{feature_id}",
+                        "type": "Feature",
+                        "properties": {"area": 1000.0, "length": 50.0},
+                        "geometry": {
+                            "type": "LineString",
+                            "coordinates": [[0.0, 35.0], [1.0, 36.0]],
+                        },
+                    }
+                ],
+            },
+            "cls": 1,
+            "fill_factor": 0.6,
+            "hitl_cls": hitl_cls,
+            "hitl_cls_name": "possible oil",
+            "id": feature_id,
+            "length": 50.0,
+            "linearity": 0.8,
+            "machine_confidence": 0.9,
+            "max_source_collated_score": 0.2,
+            "orchestrator_run": 42,
+            "perimeter": 120.0,
+            "polsby_popper": 0.5,
+            "s1_scene_id": f"S1A_TEST_{feature_id}",
+            "slick_confidence": "0.75",
+            "slick_timestamp": "2024-01-30T12:00:00Z",
+            "slick_url": f"https://cerulean.skytruth.org/slicks/{feature_id}",
+            "source_type_1_ids": ["vessel-1"],
+            "source_type_2_ids": ["infra-1"],
+            "source_type_3_ids": ["dark-1"],
+        },
+    }
+
+
+def test_skytruth_write_parquet_normalizes_damast_types(tmp_path):
+    pl = pytest.importorskip("polars")
+
+    output_path = tmp_path / "skytruth.parquet"
+    features = [
+        _skytruth_feature(1, hitl_cls=None),
+        _skytruth_feature(2, hitl_cls=2),
+    ]
+
+    with warnings.catch_warnings(record=True) as records:
+        warnings.simplefilter("always")
+        skytruth._write_parquet(features, output_path, "https://api.cerulean.skytruth.org/items")
+
+    damast_warnings = [record for record in records if "DataSpecification.apply" in str(record.message)]
+    assert damast_warnings == []
+
+    schema = pl.read_parquet(output_path).schema
+    assert schema["hitl_cls"] == pl.Int64
+    assert schema["slick_confidence"] == pl.Float64
+    assert schema["geometry_geojson"] == pl.String
 
 
 # --- HOZINT -----------------------------------------------------------------

@@ -100,13 +100,15 @@ def build_parser() -> argparse.ArgumentParser:
     fetch.add_argument("--region", type=Path, help="GeoJSON file describing the region")
     fetch.add_argument("--start", help="Start date/datetime; defaults to current UTC day")
     fetch.add_argument("--end", help="End date/datetime; defaults to the start day")
-    fetch.add_argument("--sampling", choices=("1h", "3h", "6h", "24h"), default="24h", help="Temporal sampling")
+    fetch.add_argument(
+        "--sampling", choices=("15min", "1h", "3h", "6h", "24h"), default="24h", help="Temporal sampling"
+    )
     fetch.add_argument("--variables", help="Comma-separated variable groups, e.g. currents,wind")
     fetch.add_argument(
         "--use-variables",
         action="append",
-        metavar="SOURCE=ITEMS",
-        help="Override one source's variables/groups, e.g. cmems_duacs=default,sea_level",
+        metavar="SOURCE=VARS",
+        help="Select a source's variables (a subset of its available_variables), e.g. cmems_duacs_my=ugos,vgos",
     )
     fetch.add_argument("--datasource", nargs="+", metavar="NAME", help="Restrict the run to these source names")
     fetch.add_argument("--preset", default=None, help="Configuration preset (from --conf-dir)")

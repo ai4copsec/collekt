@@ -35,7 +35,38 @@ from collekt.sources.base import (
 
 def _source_matches_request(source: SourceConfig, request: Request) -> bool:
     groups = request.variable_groups
-    return not groups or bool(set(source.variable_groups).intersection(groups))
+    # An untagged source (no variable_groups) is a wildcard: variable-group
+    # tagging is a downstream concern, so a request's groups never exclude it.
+    if not groups or not source.variable_groups:
+        return True
+    return bool(set(source.variable_groups).intersection(groups))
+
+
+def _selected_sources(cfg: Config, request: Request, use_datasources: list[str] | None):
+    for source in cfg.sources.values():
+        if not source.enabled or not _source_matches_request(source, request):
+            continue
+        if use_datasources is not None and source.name.lower() not in use_datasources:
+            continue
+        yield source
+
+
+def _selection_error(source: SourceConfig) -> str | None:
+    """Return why a selected source cannot run yet, or `None` if it is ready.
+
+    The bundled catalog ships capabilities, not choices: a source advertising
+    `available_variables` needs a variable selection, and a `has_depth` source
+    needs a depth. Both are downstream decisions, so a missing one is a usage
+    error the caller must fix rather than a data-availability warning.
+    """
+    if source.available_variables and not source.variables:
+        return (
+            f"source {source.name!r} requires a variable selection; set 'use_variables' to a "
+            f"subset of its available_variables: {', '.join(source.available_variables)}"
+        )
+    if source.has_depth and source.raw.get("depth") is None:
+        return f"source {source.name!r} has a depth dimension; set 'depth: [min, max]' for it"
+    return None
 
 
 def run_collection(
@@ -94,12 +125,13 @@ def run_collection(
     if not dry_run:
         request_dir.mkdir(parents=True, exist_ok=True)
 
+    selected = list(_selected_sources(cfg, request, use_datasources))
+    errors = [message for source in selected if (message := _selection_error(source))]
+    if errors:
+        raise ValueError("; ".join(errors))
+
     results: list[SourceResult] = []
-    for source in cfg.sources.values():
-        if not source.enabled or not _source_matches_request(source, request):
-            continue
-        if use_datasources is not None and source.name.lower() not in use_datasources:
-            continue
+    for source in selected:
         adapter = get_adapter(source.kind)
         if adapter is None:
             results.append(

@@ -1,0 +1,176 @@
+# Copernicus Marine — global products.
+#
+# Near-real-time (`*_nrt`) and reanalysis / multi-year (`*_my`) datasets are
+# separate sources; picking one for a given date is a downstream decision. Each
+# source advertises its `available_variables` (harvested from the Copernicus
+# Marine catalogue); choosing which to fetch — and, for `has_depth` sources, a
+# `depth: [min, max]` — is left to downstream. Refresh the harvested lists with
+# `collekt doctor --online`.
+
+sources:
+  cmems_glorys_nrt:
+    kind: cmems
+    path: "cmems/global/glorys"
+    dataset_id: "cmems_mod_glo_phy-cur_anfc_0.083deg_P1D-m"
+    temporal_sampling: 24h
+    coverage:
+      longitude: [-180, 179.916687]
+      latitude: [-80, 90]
+      temporal:
+        start: "2022-06-01"
+        end: null
+        kind: rolling
+    coordinates_selection_method: inside
+    has_depth: true
+    available_variables: [uo, vo]
+    url: "https://data.marine.copernicus.eu/product/GLOBAL_ANALYSISFORECAST_PHY_001_024/description"
+    doi: "10.48670/moi-00016"
+
+  cmems_glorys_my:
+    kind: cmems
+    path: "cmems/global/glorys"
+    dataset_id: "cmems_mod_glo_phy_my_0.083deg_P1D-m"
+    temporal_sampling: 24h
+    coverage:
+      longitude: [-180, 179.916672]
+      latitude: [-80, 90]
+      temporal:
+        start: "1993-01-01"
+        end: "2026-05-26"
+        kind: archive
+    coordinates_selection_method: inside
+    has_depth: true
+    available_variables: [bottomT, mlotst, siconc, sithick, so, thetao, uo, usi, vo, vsi, zos]
+    url: "https://data.marine.copernicus.eu/product/GLOBAL_MULTIYEAR_PHY_001_030/description"
+    doi: "10.48670/moi-00021"
+
+  cmems_duacs_nrt:
+    kind: cmems
+    path: "cmems/global/duacs"
+    dataset_id: "cmems_obs-sl_glo_phy-ssh_nrt_allsat-l4-duacs-0.125deg_P1D"
+    temporal_sampling: 24h
+    coverage:
+      longitude: [-179.9375, 179.9375]
+      latitude: [-89.9375, 89.9375]
+      temporal:
+        start: "2024-07-01"
+        end: null
+        kind: rolling
+    available_variables: [adt, err_sla, err_ugosa, err_vgosa, flag_ice, sla, ugos, ugosa, vgos, vgosa]
+    url: "https://data.marine.copernicus.eu/product/SEALEVEL_GLO_PHY_L4_NRT_008_046/description"
+    doi: "10.48670/moi-00149"
+
+  cmems_duacs_my:
+    kind: cmems
+    path: "cmems/global/duacs"
+    dataset_id: "cmems_obs-sl_glo_phy-ssh_my_allsat-l4-duacs-0.125deg_P1D"
+    temporal_sampling: 24h
+    coverage:
+      longitude: [-179.9375, 179.9375]
+      latitude: [-89.9375, 89.9375]
+      temporal:
+        start: "1993-01-01"
+        end: "2026-01-16"
+        kind: archive
+    available_variables: [adt, err_sla, err_ugosa, err_vgosa, flag_ice, sla, tpa_correction, ugos, ugosa, vgos, vgosa]
+    url: "https://data.marine.copernicus.eu/product/SEALEVEL_GLO_PHY_L4_MY_008_047/description"
+    doi: "10.48670/moi-00148"
+
+  cmems_global_sst_nrt:
+    kind: cmems
+    path: "cmems/global/sst"
+    dataset_id: "METOFFICE-GLO-SST-L4-NRT-OBS-SST-V2"
+    temporal_sampling: 24h
+    coverage:
+      longitude: [-179.975006, 179.975006]
+      latitude: [-89.974998, 89.974998]
+      temporal:
+        start: "2024-01-17"
+        end: null
+        kind: rolling
+    available_variables: [analysed_sst, analysis_error, mask, sea_ice_fraction]
+    url: "https://data.marine.copernicus.eu/product/SST_GLO_SST_L4_NRT_OBSERVATIONS_010_001/description"
+    doi: "10.48670/moi-00165"
+
+  cmems_global_sst_my:
+    kind: cmems
+    path: "cmems/global/sst"
+    dataset_id: "METOFFICE-GLO-SST-L4-REP-OBS-SST"
+    temporal_sampling: 24h
+    coverage:
+      longitude: [-179.975006, 179.975006]
+      latitude: [-89.974998, 89.974998]
+      temporal:
+        start: "1981-10-01"
+        end: "2025-12-18"
+        kind: archive
+    available_variables: [analysed_sst, analysis_error, mask, sea_ice_fraction]
+    url: "https://data.marine.copernicus.eu/product/SST_GLO_SST_L4_REP_OBSERVATIONS_010_011/description"
+    doi: "10.48670/moi-00168"
+
+  cmems_global_waves:
+    kind: cmems
+    path: "cmems/global/waves"
+    dataset_id: "cmems_mod_glo_wav_anfc_0.083deg_PT3H-i"
+    temporal_sampling: 3h
+    coverage:
+      longitude: [-180, 179.916667]
+      latitude: [-80, 90]
+      temporal:
+        start: "2022-11-01"
+        end: null
+        kind: rolling
+    time_selection: full_day
+    available_variables: [VCMX, VHM0, VHM0_SW1, VHM0_SW2, VHM0_WW, VMDR, VMDR_SW1, VMDR_SW2, VMDR_WW, VMXL, VPED, VSDX, VSDY, VTM01_SW1, VTM01_SW2, VTM01_WW, VTM02, VTM10, VTPK]
+    url: "https://data.marine.copernicus.eu/product/GLOBAL_ANALYSISFORECAST_WAV_001_027/description"
+    doi: "10.48670/moi-00017"
+
+  cmems_global_chl_obs_nrt:
+    kind: cmems
+    path: "cmems/global/ocean_colour"
+    dataset_id: "cmems_obs-oc_glo_bgc-plankton_nrt_l4-gapfree-multi-4km_P1D"
+    temporal_sampling: 24h
+    coverage:
+      longitude: [-179.979172, 179.979172]
+      latitude: [-89.979172, 89.979164]
+      temporal:
+        start: "2026-06-17"
+        end: null
+        kind: rolling
+    available_variables: [CHL, CHL_uncertainty, flags]
+    url: "https://data.marine.copernicus.eu/product/OCEANCOLOUR_GLO_BGC_L4_NRT_009_102/description"
+    doi: "10.48670/moi-00279"
+
+  cmems_global_chl_obs_my:
+    kind: cmems
+    path: "cmems/global/ocean_colour"
+    dataset_id: "cmems_obs-oc_glo_bgc-plankton_my_l3-multi-4km_P1D"
+    temporal_sampling: 24h
+    coverage:
+      longitude: [-179.979172, 179.979172]
+      latitude: [-89.979172, 89.979164]
+      temporal:
+        start: "1997-09-04"
+        end: "2026-06-25"
+        kind: archive
+    available_variables: [CHL, CHL_uncertainty, DIATO, DIATO_uncertainty, DINO, DINO_uncertainty, GREEN, GREEN_uncertainty, HAPTO, HAPTO_uncertainty, MICRO, MICRO_uncertainty, NANO, NANO_uncertainty, PICO, PICO_uncertainty, PROCHLO, PROCHLO_uncertainty, PROKAR, PROKAR_uncertainty, flags]
+    url: "https://data.marine.copernicus.eu/product/OCEANCOLOUR_GLO_BGC_L3_MY_009_103/description"
+    doi: "10.48670/moi-00280"
+
+  cmems_global_bgc_model:
+    kind: cmems
+    path: "cmems/global/bgc"
+    dataset_id: "cmems_mod_glo_bgc-pft_anfc_0.25deg_P1D-m"
+    temporal_sampling: 24h
+    coverage:
+      longitude: [-180, 179.75]
+      latitude: [-80, 90]
+      temporal:
+        start: "2021-11-01"
+        end: null
+        kind: rolling
+    coordinates_selection_method: inside
+    has_depth: true
+    available_variables: [chl, phyc]
+    url: "https://data.marine.copernicus.eu/product/GLOBAL_ANALYSISFORECAST_BGC_001_028/description"
+    doi: "10.48670/moi-00015"

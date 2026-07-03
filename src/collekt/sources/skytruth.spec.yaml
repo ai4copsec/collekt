@@ -45,7 +45,7 @@ columns:
 - name: geometry_geojson
   description: A multipolygon (in geojson) representing a slick on the water's surface.
   is_optional: false
-  representation_type: String
+  representation_type: Utf8
 
 - name: hitl_cls
   description: An integer representing the slick classification provided through internal human review. Corresponds to classes defined in `public.cls`.
@@ -55,7 +55,7 @@ columns:
 - name: hitl_cls_name
   description: The label corresponding to the human reviewed classification of the slick (`hitl_cls`).
   is_optional: false
-  representation_type: String
+  representation_type: Utf8
 
 - name: id
   description: A unique identifier for the slick record.
@@ -100,7 +100,7 @@ columns:
 - name: s1_scene_id
   description: Sentinel-1 Scene identifier associated with the slick detection.
   is_optional: false
-  representation_type: String
+  representation_type: Utf8
 
 - name: slick_confidence
   description: A score based on our Geometric Slick Potential (GSP) model which predicts if a detection is a true vessel slick prior to AIS availability. It is used as an alternative to `max_source_collated_score` when the detection is less than 72hrs old and AIS is unavailable.
@@ -110,12 +110,12 @@ columns:
 - name: slick_timestamp
   description: The timestamp indicating when the slick was detected.
   is_optional: false
-  representation_type: String
+  representation_type: Utf8
 
 - name: slick_url
   description: A URL to quickly view the slick detection in the Cerulean UI.
   is_optional: false
-  representation_type: String
+  representation_type: Utf8
 
 - name: source_type_1_ids
   description: A list of vessels that are proximal to the slick.

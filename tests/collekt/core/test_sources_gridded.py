@@ -1,7 +1,7 @@
 """Offline tests for the gridded source adapters (CMEMS, ERA5, ECMWF Open Data).
 
 Provider clients are stubbed; no network access. Source definitions are supplied
-inline because collekt ships no ocean catalog (that lives in a brick).
+inline to keep these adapter tests independent from the bundled catalog.
 """
 
 import json
@@ -17,6 +17,7 @@ from collekt import Fetcher
 from collekt.core.config import get_config
 from collekt.core.request import Region, Request
 from collekt.sources.base import SourceStatus
+from collekt.sources.cmems import _install_raw_tqdm_auto
 
 GLORYS = {
     "kind": "cmems",
@@ -24,12 +25,9 @@ GLORYS = {
     "variable_groups": ["currents"],
     "path": "cmems/glorys",
     "filename_pattern": "glorys_{dataset_id}_{date:%Y%m%d}_{bbox_hash}.nc",
-    "dataset_nrt": "cmems_mod_glo_phy-cur_anfc_0.083deg_P1D-m",
-    "dataset_my": "cmems_mod_glo_phy_my_0.083deg_P1D-m",
-    "nrt_cutoff": "2024-07-01",
-    "mode": "historical",
+    "dataset_id": "cmems_mod_glo_phy_my_0.083deg_P1D-m",
     "variables": {"default": ["uo", "vo"]},
-    "temporal": {"native_sampling": "24h", "supported_sampling": ["24h"], "sampling_mode": "daily_mean"},
+    "temporal_sampling": "24h",
     "depth": [1.0, 1.1],
     "coordinates_selection_method": "inside",
 }
@@ -42,7 +40,7 @@ WAVES = {
     "filename_pattern": "waves_{dataset_id}_{date:%Y%m%d}_{bbox_hash}.nc",
     "dataset_id": "cmems_mod_glo_wav_anfc_0.083deg_PT3H-i",
     "variables": {"default": ["VHM0"]},
-    "temporal": {"native_sampling": "3h", "supported_sampling": ["3h", "6h", "24h"], "sampling_mode": "instantaneous"},
+    "temporal_sampling": "3h",
     "time_selection": "full_day",
     "coordinates_selection_method": "outside",
 }
@@ -53,10 +51,9 @@ DUACS = {
     "variable_groups": ["currents"],
     "path": "cmems/duacs",
     "filename_pattern": "duacs_{dataset_id}_{date:%Y%m%d}_{bbox_hash}.nc",
-    "dataset_my": "cmems_obs-sl_glo_phy-ssh_my_allsat-l4-duacs-0.125deg_P1D",
-    "mode": "historical",
+    "dataset_id": "cmems_obs-sl_glo_phy-ssh_my_allsat-l4-duacs-0.125deg_P1D",
     "variables": {"default": ["ugos", "vgos"], "optional": {"sea_level": ["sla", "adt"]}},
-    "temporal": {"native_sampling": "24h", "supported_sampling": ["24h"], "sampling_mode": "daily_mean"},
+    "temporal_sampling": "24h",
     "coordinates_selection_method": "outside",
 }
 
@@ -68,7 +65,7 @@ ERA5 = {
     "filename_pattern": "era5_10m_wind_{date:%Y%m%d}_{bbox_hash}.nc",
     "dataset_id": "reanalysis-era5-single-levels",
     "variables": {"default": ["10m_u_component_of_wind", "10m_v_component_of_wind"]},
-    "temporal": {"native_sampling": "1h", "supported_sampling": ["1h", "3h", "6h", "24h"]},
+    "temporal_sampling": "1h",
     "coverage": {"start": "1940-01-01", "end": "now-5d"},
     "pad_deg": 0.5,
 }
@@ -81,7 +78,7 @@ ECMWF = {
     "filename_pattern": "ecmwf_open_data_10m_wind_{date:%Y%m%d}_{time}z_{bbox_hash}.grib2",
     "dataset_id": "ecmwf-open-data-ifs",
     "variables": {"default": ["10u", "10v"]},
-    "temporal": {"native_sampling": "3h", "supported_sampling": ["3h", "6h", "24h"], "sampling_mode": "forecast_step"},
+    "temporal_sampling": "3h",
     "coverage": {"start": "now-4d", "end": "now+10d"},
     "model": "ifs",
     "source": "ecmwf",
@@ -92,7 +89,7 @@ ECMWF = {
 
 
 def _cfg(tmp_path, **sources):
-    return get_config(overrides={"output": {"root": str(tmp_path)}, "sources": sources})
+    return get_config(overrides={"source_catalogs": [], "output": {"root": str(tmp_path)}, "sources": sources})
 
 
 def _request(variables, start="2023-06-15", sampling="24h", end=None):
@@ -111,6 +108,20 @@ def _stub_copernicusmarine(monkeypatch, calls):
 
 
 # --- CMEMS ------------------------------------------------------------------
+
+
+def test_cmems_forces_raw_tqdm_auto(monkeypatch):
+    monkeypatch.delitem(sys.modules, "tqdm.auto", raising=False)
+    monkeypatch.delitem(sys.modules, "tqdm.autonotebook", raising=False)
+
+    _install_raw_tqdm_auto()
+
+    from tqdm import tqdm
+    from tqdm.auto import tqdm as auto_tqdm
+    from tqdm.autonotebook import tqdm as autonotebook_tqdm
+
+    assert auto_tqdm is tqdm
+    assert autonotebook_tqdm is tqdm
 
 
 def test_cmems_downloads_and_writes_manifest(tmp_path, monkeypatch):
@@ -155,16 +166,10 @@ def test_cmems_dry_run_plans_without_downloading(tmp_path, monkeypatch):
     assert not result.output_dir.exists()
 
 
-def test_cmems_records_coarser_sampling_when_finer_requested(tmp_path, monkeypatch):
+def test_cmems_rejects_sampling_finer_than_dataset(tmp_path, monkeypatch):
     monkeypatch.setattr("collekt.core.availability._copernicusmarine_describe", lambda: None)
-    result = Fetcher(
-        _request(("currents",), sampling="6h"), config=_cfg(tmp_path, cmems_glorys=GLORYS), preset=None
-    ).plan()
-    temporal = result.results[0].details["temporal"]
-
-    assert temporal["requested_sampling"] == "6h"
-    assert temporal["actual_sampling"] == "24h"
-    assert "does not support 6h sampling" in temporal["warning"]
+    with pytest.raises(ValueError, match="integer multiple"):
+        Fetcher(_request(("currents",), sampling="6h"), config=_cfg(tmp_path, cmems_glorys=GLORYS), preset=None).plan()
 
 
 def test_cmems_subdaily_source_uses_single_timestamp_for_daily(tmp_path, monkeypatch):
@@ -207,7 +212,7 @@ def test_cmems_applies_source_variable_overrides(tmp_path, monkeypatch):
 def test_cmems_unavailable_is_warning_and_strict_raises(tmp_path, monkeypatch):
     module = types.SimpleNamespace(subset=lambda **_: (_ for _ in ()).throw(RuntimeError("not available yet")))
     monkeypatch.setitem(sys.modules, "copernicusmarine", module)
-    cfg = _cfg(tmp_path, cmems_glorys={**GLORYS, "mode": "nrt"})
+    cfg = _cfg(tmp_path, cmems_glorys=GLORYS)
     request = _request(("currents",), start="2026-06-25")
 
     result = Fetcher(request, config=cfg, preset=None).download()
@@ -304,7 +309,7 @@ def test_ecmwf_downloads_grib_with_stubbed_client(tmp_path, monkeypatch):
     assert calls[1][1]["step"] == [0]
 
 
-def test_ecmwf_uses_supported_subdaily_sampling(tmp_path, monkeypatch):
+def test_ecmwf_uses_requested_subdaily_sampling(tmp_path, monkeypatch):
     calls = []
 
     class FakeClient:
@@ -393,3 +398,22 @@ def test_cmems_plan_marks_unknown_when_describe_unavailable(tmp_path, monkeypatc
 
     assert result.summary.planned == 1
     assert result.results[0].details["availability"]["status"] == "unknown"
+
+
+def test_cmems_plan_falls_back_to_declarative_coverage(tmp_path, monkeypatch):
+    monkeypatch.setattr("collekt.core.availability._copernicusmarine_describe", lambda: None)
+    source = GLORYS | {
+        "coverage": {
+            "longitude": [-180.0, 180.0],
+            "latitude": [-80.0, 90.0],
+            "temporal": {"start": "1993-01-01", "end": None, "kind": "archive"},
+        }
+    }
+
+    result = Fetcher(_request(("currents",)), config=_cfg(tmp_path, cmems_glorys=source), preset=None).plan()
+
+    assert result.summary.planned == 1
+    availability = result.results[0].details["availability"]
+    assert availability["status"] == "available"
+    assert availability["method"] == "coverage"
+    assert availability["coverage"]["kind"] == "archive"

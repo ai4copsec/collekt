@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import sys
 from datetime import date
 from pathlib import Path
+from types import ModuleType
 from typing import Any
 
-from collekt.core.availability import Coverage, describe_coverage, merge_coverages, parse_relative_date
+from collekt.core.availability import Coverage, describe_coverage, merge_coverages, static_coverage
 from collekt.core.config import Config, SourceConfig
 from collekt.core.naming import format_pattern, pattern_values
 from collekt.core.request import Request
@@ -23,6 +25,7 @@ from collekt.sources.planning import plan_source
 
 
 def _copernicusmarine():
+    _install_raw_tqdm_auto()
     try:
         import copernicusmarine
     except ImportError as exc:  # pragma: no cover - exercised only without optional extra
@@ -33,15 +36,25 @@ def _copernicusmarine():
     return copernicusmarine
 
 
+def _install_raw_tqdm_auto() -> None:
+    """Force raw tqdm for dependencies that import ``tqdm.auto`` in notebooks."""
+    try:
+        from tqdm import tqdm, trange
+    except ImportError:  # pragma: no cover - tqdm is a project dependency
+        return
+    module = ModuleType("tqdm.auto")
+    module.tqdm = tqdm
+    module.trange = trange
+    module.__all__ = ["tqdm", "trange"]
+    sys.modules["tqdm.auto"] = module
+    sys.modules["tqdm.autonotebook"] = module
+
+
 def _select_dataset(source: SourceConfig, day: date) -> str:
-    if source.mode == "historical":
-        return source.dataset_my or source.dataset_id or source.name
-    if source.mode == "nrt":
-        return source.dataset_nrt or source.dataset_id or source.name
-    if source.dataset_nrt and source.dataset_my and source.nrt_cutoff:
-        cutoff = parse_relative_date(source.nrt_cutoff)
-        return source.dataset_nrt if cutoff is not None and day >= cutoff else source.dataset_my
-    return source.dataset_id or source.dataset_nrt or source.dataset_my or source.name
+    # Each source maps to a single dataset; near-real-time vs reanalysis is a
+    # downstream choice made by selecting the matching ``*_nrt`` / ``*_my`` source.
+    # ``day`` is kept for the planner's ``dataset_for_day`` interface.
+    return source.dataset_id or source.name
 
 
 def fetch_cmems(
@@ -156,6 +169,9 @@ def _cmems_coverage(request: Request, source: SourceConfig) -> tuple[Coverage | 
     dataset_ids = dict.fromkeys(_select_dataset(source, day) for day in request.iter_days())
     coverages = [coverage for dataset_id in dataset_ids if (coverage := describe_coverage(dataset_id)) is not None]
     if not coverages:
+        coverage = static_coverage(source)
+        if coverage is not None:
+            return coverage, "coverage", True
         return None, "describe", False
     return merge_coverages(coverages), "describe", True
 

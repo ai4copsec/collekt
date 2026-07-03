@@ -171,7 +171,7 @@ class Assembler:
         }
         if len(datasets) == 1:
             return datasets[0].assign_attrs(datasets[0].attrs | attrs)
-        return xr.merge(datasets, compat="override", combine_attrs="drop_conflicts").assign_attrs(attrs)
+        return xr.merge(datasets, compat="override", join="outer", combine_attrs="drop_conflicts").assign_attrs(attrs)
 
     def to_netcdf(
         self,
@@ -564,7 +564,7 @@ class Assembler:
             return inferred
         sampling = str(dataset.attrs.get("collekt_actual_sampling") or "")
         if sampling:
-            return int(np.timedelta64(parse_sampling(sampling), "h").astype("timedelta64[ns]").astype("int64"))
+            return int(np.timedelta64(parse_sampling(sampling), "m").astype("timedelta64[ns]").astype("int64"))
         return int(np.timedelta64(24, "h").astype("timedelta64[ns]").astype("int64"))
 
     @staticmethod

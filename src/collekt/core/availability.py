@@ -43,6 +43,7 @@ class Coverage:
     north: float
     start: date | None
     end: date | None
+    kind: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         """Return a JSON-serializable mapping for manifests."""
@@ -53,6 +54,7 @@ class Coverage:
             "north": self.north,
             "start": self.start.isoformat() if self.start else None,
             "end": self.end.isoformat() if self.end else None,
+            "kind": self.kind,
         }
 
 
@@ -111,16 +113,57 @@ def parse_relative_date(value: Any, *, default: date | None = None) -> date | No
 def parse_coverage(raw: Mapping[str, Any]) -> Coverage:
     """Parse a configured ``coverage`` block into a `Coverage`.
 
-    Spatial bounds default to the whole globe; date bounds default to open.
+    Spatial bounds default to the whole globe; date bounds default to open. The
+    preferred shape is:
+
+    ```yaml
+    coverage:
+      longitude: [west, east]
+      latitude: [south, north]
+      temporal:
+        start: "2020-01-01"
+        end: null
+        kind: rolling
+    ```
+
+    The flat legacy keys (`west`, `east`, `south`, `north`, `start`, `end`) are
+    still accepted.
     """
+    longitude = _range(raw.get("longitude") or raw.get("lon"), raw.get("west"), raw.get("east"))
+    latitude = _range(raw.get("latitude") or raw.get("lat"), raw.get("south"), raw.get("north"))
+    temporal = raw.get("temporal") or {}
+    if not isinstance(temporal, Mapping):
+        raise ValueError("coverage.temporal must be a mapping")
     return Coverage(
-        west=float(raw.get("west", GLOBAL_WEST)),
-        east=float(raw.get("east", GLOBAL_EAST)),
-        south=float(raw.get("south", GLOBAL_SOUTH)),
-        north=float(raw.get("north", GLOBAL_NORTH)),
-        start=parse_relative_date(raw.get("start")),
-        end=parse_relative_date(raw.get("end")),
+        west=float(longitude[0] if longitude else GLOBAL_WEST),
+        east=float(longitude[1] if longitude else GLOBAL_EAST),
+        south=float(latitude[0] if latitude else GLOBAL_SOUTH),
+        north=float(latitude[1] if latitude else GLOBAL_NORTH),
+        start=parse_relative_date(temporal.get("start", raw.get("start"))),
+        end=parse_relative_date(temporal.get("end", raw.get("end"))),
+        kind=_optional_text(temporal.get("kind", raw.get("kind"))),
     )
+
+
+def _range(value: Any, start: Any, end: Any) -> tuple[Any, Any] | None:
+    if value is None:
+        if start is None and end is None:
+            return None
+        return start, end
+    if isinstance(value, Mapping):
+        return value.get("west", value.get("south", value.get("min"))), value.get(
+            "east", value.get("north", value.get("max"))
+        )
+    items = tuple(value)
+    if len(items) != 2:
+        raise ValueError("coverage ranges must contain exactly two values")
+    return items
+
+
+def _optional_text(value: Any) -> str | None:
+    if value in (None, ""):
+        return None
+    return str(value)
 
 
 def static_coverage(source: Any) -> Coverage | None:

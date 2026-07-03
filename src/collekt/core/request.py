@@ -8,7 +8,7 @@ from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
 from typing import Any
 
-VALID_SAMPLING_HOURS = (1, 3, 6, 24)
+VALID_SAMPLING_MINUTES = (15, 60, 180, 360, 1440)
 
 
 @dataclass(frozen=True)
@@ -99,37 +99,54 @@ def parse_datetime(value: str | date | datetime | None, *, end_of_day: bool = Fa
 
 
 def parse_sampling(value: str | int | None) -> int:
-    """Parse a request sampling value as one of the supported hour intervals."""
+    """Parse a request sampling value as one of the valid minute intervals."""
     if value is None:
-        return 24
+        return 1440
     if isinstance(value, int):
-        hours = value
+        minutes = value * 60
     else:
         text = str(value).strip().lower()
-        if text.endswith("hours"):
-            text = text.removesuffix("hours").strip()
-        elif text.endswith("hour"):
-            text = text.removesuffix("hour").strip()
-        elif text.endswith("hrs"):
-            text = text.removesuffix("hrs").strip()
-        elif text.endswith("hr"):
-            text = text.removesuffix("hr").strip()
-        elif text.endswith("h"):
-            text = text.removesuffix("h").strip()
+        multiplier = 60
+        for suffix in ("minutes", "minute", "mins", "min"):
+            if text.endswith(suffix):
+                text = text.removesuffix(suffix).strip()
+                multiplier = 1
+                break
+        else:
+            if text.endswith("m"):
+                text = text.removesuffix("m").strip()
+                multiplier = 1
+            elif text.endswith("hours"):
+                text = text.removesuffix("hours").strip()
+            elif text.endswith("hour"):
+                text = text.removesuffix("hour").strip()
+            elif text.endswith("hrs"):
+                text = text.removesuffix("hrs").strip()
+            elif text.endswith("hr"):
+                text = text.removesuffix("hr").strip()
+            elif text.endswith("h"):
+                text = text.removesuffix("h").strip()
         try:
-            hours = int(text)
+            minutes = int(text) * multiplier
         except ValueError as exc:
-            valid = ", ".join(f"{hour}h" for hour in VALID_SAMPLING_HOURS)
+            valid = ", ".join(format_sampling_minutes(minutes) for minutes in VALID_SAMPLING_MINUTES)
             raise ValueError(f"unsupported sampling {value!r}; expected one of: {valid}") from exc
-    if hours not in VALID_SAMPLING_HOURS:
-        valid = ", ".join(f"{hour}h" for hour in VALID_SAMPLING_HOURS)
+    if minutes not in VALID_SAMPLING_MINUTES:
+        valid = ", ".join(format_sampling_minutes(minutes) for minutes in VALID_SAMPLING_MINUTES)
         raise ValueError(f"unsupported sampling {value!r}; expected one of: {valid}")
-    return hours
+    return minutes
+
+
+def format_sampling_minutes(minutes: int) -> str:
+    """Return a canonical sampling label for an already-parsed minute interval."""
+    if minutes % 60:
+        return f"{minutes}min"
+    return f"{minutes // 60}h"
 
 
 def format_sampling(value: str | int | None) -> str:
-    """Return a canonical sampling label such as ``6h``."""
-    return f"{parse_sampling(value)}h"
+    """Return a canonical sampling label such as ``15min`` or ``6h``."""
+    return format_sampling_minutes(parse_sampling(value))
 
 
 @dataclass(frozen=True)
@@ -143,7 +160,7 @@ class Request:
         variables: Broad variable groups such as `currents`, `wind`, or `waves`.
             Their meaning is defined by the source catalog, not by collekt.
         sampling: Requested temporal sampling interval. Supported values are
-            `1h`, `3h`, `6h`, and `24h`.
+            `15min`, `1h`, `3h`, `6h`, and `24h`.
         metadata: Optional caller metadata copied to the manifest.
     """
 
@@ -172,6 +189,14 @@ class Request:
     @property
     def sampling_hours(self) -> int:
         """Requested sampling interval in hours."""
+        minutes = self.sampling_minutes
+        if minutes % 60:
+            raise ValueError(f"sampling {self.sampling_label!r} is not a whole number of hours")
+        return minutes // 60
+
+    @property
+    def sampling_minutes(self) -> int:
+        """Requested sampling interval in minutes."""
         return parse_sampling(self.sampling)
 
     @property

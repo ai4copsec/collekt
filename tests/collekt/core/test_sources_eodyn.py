@@ -33,11 +33,15 @@ def _config(tmp_path, archive_root, **override):
             "end": "2023-08-31",
         },
         "variables": {"default": ["totalewct", "totalnsct"], "optional": {"geostrophic": ["ewct", "nsct"]}},
-        "temporal": {"native_sampling": "24h", "supported_sampling": ["24h"], "sampling_mode": "daily_mean"},
+        "temporal_sampling": "24h",
     }
     source.update(override)
     return get_config(
-        overrides={"output": {"root": str(tmp_path / "out")}, "sources": {"eodyn_osmose_currents": source}}
+        overrides={
+            "source_catalogs": [],
+            "output": {"root": str(tmp_path / "out")},
+            "sources": {"eodyn_osmose_currents": source},
+        }
     )
 
 

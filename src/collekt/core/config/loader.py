@@ -73,6 +73,12 @@ def _load_source_catalogs(config: Mapping[str, Any], conf_dir: Path) -> dict[str
     for name in _as_list(merged.get("source_catalogs")):
         path = conf_dir / "source" / f"{name}.yaml"
         if not path.exists():
+            # Fall back to the bundled catalogs, so a downstream conf_dir can
+            # select collekt's shipped sources by name (and add its own).
+            bundled = _PACKAGE_CONF_DIR / "source" / f"{name}.yaml"
+            if bundled.exists():
+                path = bundled
+        if not path.exists():
             raise FileNotFoundError(f"Unknown source catalog {name!r}: {path} not found")
         raw = _read_yaml(path)
         sources = raw.get("sources", raw)

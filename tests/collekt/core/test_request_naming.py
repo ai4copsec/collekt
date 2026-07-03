@@ -44,6 +44,7 @@ def test_request_date_only_expands_to_full_day():
     request = Request(region=Region.from_bbox((-6, 20, 35, 45)), start="2026-06-25")
     assert request.start_datetime == datetime(2026, 6, 25, tzinfo=UTC)
     assert request.end_datetime == datetime(2026, 6, 25, 23, 59, 59, 999999, tzinfo=UTC)
+    assert request.sampling_minutes == 1440
     assert request.sampling_hours == 24
     assert request.sampling_label == "24h"
     assert request.iter_days() == [datetime(2026, 6, 25, tzinfo=UTC).date()]
@@ -51,8 +52,14 @@ def test_request_date_only_expands_to_full_day():
 
 def test_request_sampling_is_normalized_and_validated():
     request = Request(region=Region.from_bbox((-6, 20, 35, 45)), sampling="6 hours")
+    assert request.sampling_minutes == 360
     assert request.sampling_hours == 6
     assert request.as_dict()["sampling"] == "6h"
+    minutes = Request(region=Region.from_bbox((-6, 20, 35, 45)), sampling="15 minutes")
+    assert minutes.sampling_minutes == 15
+    assert minutes.sampling_label == "15min"
+    with pytest.raises(ValueError, match="not a whole number of hours"):
+        _ = minutes.sampling_hours
     with pytest.raises(ValueError, match="unsupported sampling"):
         _ = Request(region=Region.from_bbox((-6, 20, 35, 45)), sampling="2h").sampling_hours
 

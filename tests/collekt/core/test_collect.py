@@ -86,7 +86,7 @@ register_adapter(SourceAdapter(kind=FAKE_KIND, fetch=_fake_fetch, plan=_fake_pla
 def _config(tmp_path, **source_override):
     source = {"kind": FAKE_KIND, "enabled": True, "path": "fake", "filename_pattern": "{source}.dat"}
     source.update(source_override)
-    return get_config(overrides={"output": {"root": str(tmp_path)}, "sources": {"s": source}})
+    return get_config(overrides={"source_catalogs": [], "output": {"root": str(tmp_path)}, "sources": {"s": source}})
 
 
 def _request():
@@ -126,6 +126,31 @@ def test_dry_run_plans_without_downloading(tmp_path):
     assert not result.output_dir.exists()
 
 
+def test_untagged_source_matches_a_variable_request(tmp_path):
+    # The fake source has no variable_groups, so a request naming groups still runs it.
+    request = Request(region=Region.from_bbox((-6, 20, 35, 45)), start="2026-06-25", variables=("currents",))
+    result = Fetcher(request, config=_config(tmp_path), preset=None).download()
+
+    assert result.summary.downloaded == 1
+
+
+def test_source_with_available_variables_requires_a_selection(tmp_path):
+    cfg = _config(tmp_path, available_variables=["uo", "vo"])
+    with pytest.raises(ValueError, match="requires a variable selection"):
+        Fetcher(_request(), config=cfg, preset=None).download()
+    # Selecting a subset of available_variables clears the error.
+    ok = _config(tmp_path, available_variables=["uo", "vo"], use_variables=["uo"])
+    assert Fetcher(_request(), config=ok, preset=None).download().summary.downloaded == 1
+
+
+def test_depth_source_requires_a_depth_selection(tmp_path):
+    cfg = _config(tmp_path, available_variables=["uo"], use_variables=["uo"], has_depth=True)
+    with pytest.raises(ValueError, match="has a depth dimension"):
+        Fetcher(_request(), config=cfg, preset=None).download()
+    ok = _config(tmp_path, available_variables=["uo"], use_variables=["uo"], has_depth=True, depth=[0.0, 1.0])
+    assert Fetcher(_request(), config=ok, preset=None).download().summary.downloaded == 1
+
+
 def test_cache_reuse_on_second_download(tmp_path):
     cfg = _config(tmp_path)
     first = Fetcher(_request(), config=cfg, preset=None).download()
@@ -149,7 +174,13 @@ def test_use_cache_false_deletes_and_redownloads(tmp_path):
 
 
 def test_unknown_source_kind_is_skipped(tmp_path):
-    cfg = get_config(overrides={"output": {"root": str(tmp_path)}, "sources": {"s": {"kind": "nope", "enabled": True}}})
+    cfg = get_config(
+        overrides={
+            "source_catalogs": [],
+            "output": {"root": str(tmp_path)},
+            "sources": {"s": {"kind": "nope", "enabled": True}},
+        }
+    )
     result = Fetcher(_request(), config=cfg, preset=None).download()
 
     assert result.summary.skipped == 1

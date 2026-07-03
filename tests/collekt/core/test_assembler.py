@@ -4,6 +4,7 @@ The Assembler needs xarray/numpy (the ``gridded`` extra); the whole module is
 skipped when they are not installed.
 """
 
+import warnings
 from pathlib import Path
 
 import pytest
@@ -77,6 +78,31 @@ def _write_dataset_with_valid_time(
         {variable: (("valid_time", "latitude", "longitude"), values)},
         coords={
             "valid_time": times,
+            "latitude": latitudes,
+            "longitude": longitudes,
+        },
+    )
+    dataset.to_netcdf(path)
+    return path
+
+
+def _write_dataset_with_depth(
+    path: Path,
+    variable: str,
+    values,
+    *,
+    depths: list[float],
+    latitudes: list[float],
+    longitudes: list[float],
+    time: str = "2023-06-15T00:00:00",
+) -> Path:
+    import xarray as xr
+
+    dataset = xr.Dataset(
+        {variable: (("time", "depth", "latitude", "longitude"), values)},
+        coords={
+            "time": [time],
+            "depth": depths,
             "latitude": latitudes,
             "longitude": longitudes,
         },
@@ -204,6 +230,38 @@ def test_assembler_regrids_to_lowest_and_highest_resolution(tmp_path):
     assert list(highest["latitude"].values) == [0.0, 1.0, 2.0]
     assert list(highest["longitude"].values) == [10.0, 11.0, 12.0]
     assert highest.attrs["collekt_grid_policy"] == "highest_resolution"
+
+
+def test_assembler_merge_sets_outer_join_for_mismatched_depths(tmp_path):
+    first = _write_dataset_with_depth(
+        tmp_path / "first.nc",
+        "uo",
+        [[[[1.0, 1.1], [1.2, 1.3]], [[2.0, 2.1], [2.2, 2.3]]]],
+        depths=[0.5, 10.0],
+        latitudes=[42.0, 43.0],
+        longitudes=[5.0, 6.0],
+    )
+    second = _write_dataset_with_depth(
+        tmp_path / "second.nc",
+        "vo",
+        [[[[3.0, 3.1], [3.2, 3.3]]]],
+        depths=[0.5],
+        latitudes=[42.0, 43.0],
+        longitudes=[5.0, 6.0],
+    )
+    result = _collection_result(
+        tmp_path,
+        SourceResult("first", SourceStatus.DOWNLOADED, path=first),
+        SourceResult("second", SourceStatus.DOWNLOADED, path=second),
+    )
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", FutureWarning)
+        dataset = Assembler(result).to_xarray(grid="lowest_resolution")
+
+    assert list(dataset["depth"].values) == [0.5, 10.0]
+    assert "first__uo" in dataset
+    assert "second__vo" in dataset
 
 
 def test_assembler_regrids_to_custom_grid(tmp_path):

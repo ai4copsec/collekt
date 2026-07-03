@@ -80,15 +80,8 @@
             "additionalProperties": {"type": "array", "items": {"type": "string"}}
           },
           "resolved_variables": {"type": "array", "items": {"type": "string"}},
-          "temporal": {
-            "type": "object",
-            "additionalProperties": true,
-            "properties": {
-              "native_sampling": {"type": "string"},
-              "supported_sampling": {"type": "array", "items": {"type": "string"}},
-              "sampling_mode": {"type": "string"}
-            }
-          }
+          "temporal_sampling": {"type": "string"},
+          "coverage": {"type": ["object", "null"]}
         }
       }
     },

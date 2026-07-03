@@ -58,6 +58,21 @@ def test_parse_coverage_defaults_to_global_and_open_dates():
     assert coverage.start is None and coverage.end is None
 
 
+def test_parse_coverage_accepts_nested_ranges_and_temporal_metadata():
+    coverage = av.parse_coverage(
+        {
+            "longitude": [-19.08, 5.08],
+            "latitude": [26.17, 56.08],
+            "temporal": {"start": "2022-11-23", "end": None, "kind": "rolling"},
+        }
+    )
+
+    assert (coverage.west, coverage.east, coverage.south, coverage.north) == (-19.08, 5.08, 26.17, 56.08)
+    assert coverage.start == date(2022, 11, 23)
+    assert coverage.end is None
+    assert coverage.kind == "rolling"
+
+
 def test_region_overlaps_and_day_in_range():
     coverage = av.Coverage(-6.0, 20.0, 35.0, 45.0, date(2023, 4, 1), date(2023, 8, 31))
     assert av.region_overlaps(Region.from_bbox((0, 8, 38, 42)), coverage) is True

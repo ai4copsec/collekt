@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from collekt.core.availability import Coverage, _coverage_from_catalogue, static_coverage
 from collekt.core.config import Config, SourceConfig, get_config
 
 
@@ -72,8 +73,13 @@ def _source_checks(config: Config) -> list[DoctorCheck]:
     for source in config.sources.values():
         if not source.enabled:
             continue
-        variables = ",".join(source.variables) if source.variables else "-"
-        checks.append(DoctorCheck(f"source {source.name}", "ok", f"{source.kind}; variables={variables}"))
+        if source.variables:
+            detail = f"variables={','.join(source.variables)}"
+        elif source.available_variables:
+            detail = f"{len(source.available_variables)} available variables, none selected"
+        else:
+            detail = "no variables"
+        checks.append(DoctorCheck(f"source {source.name}", "ok", f"{source.kind}; {detail}"))
     return checks
 
 
@@ -86,16 +92,7 @@ def _copernicusmarine_describe():
 
 
 def _cmems_dataset_ids(source: SourceConfig) -> tuple[str, ...]:
-    return tuple(dict.fromkeys(x for x in (source.dataset_id, source.dataset_nrt, source.dataset_my) if x))
-
-
-def _declared_cmems_variables(source: SourceConfig) -> tuple[str, ...]:
-    variables = list(source.default_variables)
-    for values in source.optional_variables.values():
-        variables.extend(values)
-    if not variables:
-        variables.extend(source.variables)
-    return tuple(dict.fromkeys(variables))
+    return (source.dataset_id,) if source.dataset_id else ()
 
 
 def _catalogue_variable_names(catalogue: Any, dataset_id: str) -> set[str]:
@@ -114,6 +111,21 @@ def _catalogue_variable_names(catalogue: Any, dataset_id: str) -> set[str]:
     return names
 
 
+def _coverage_mismatches(shipped: Coverage, catalogue: Coverage) -> list[str]:
+    mismatches: list[str] = []
+    tolerance = 1e-5
+    for name in ("west", "east", "south", "north"):
+        expected = getattr(shipped, name)
+        actual = getattr(catalogue, name)
+        if abs(expected - actual) > tolerance:
+            mismatches.append(f"{name}={expected} (catalogue {actual})")
+    if shipped.start is not None and catalogue.start is not None and shipped.start != catalogue.start:
+        mismatches.append(f"start={shipped.start.isoformat()} (catalogue {catalogue.start.isoformat()})")
+    if shipped.end is not None and catalogue.end is not None and shipped.end != catalogue.end:
+        mismatches.append(f"end={shipped.end.isoformat()} (catalogue {catalogue.end.isoformat()})")
+    return mismatches
+
+
 def _cmems_online_checks(config: Config) -> list[DoctorCheck]:
     describe = _copernicusmarine_describe()
     if describe is None:
@@ -124,7 +136,7 @@ def _cmems_online_checks(config: Config) -> list[DoctorCheck]:
     for source in config.sources.values():
         if not source.enabled or source.kind != "cmems":
             continue
-        declared_variables = set(_declared_cmems_variables(source))
+        shipped = set(source.available_variables)
         for dataset_id in _cmems_dataset_ids(source):
             check_name = f"cmems catalogue {source.name}"
             try:
@@ -134,17 +146,51 @@ def _cmems_online_checks(config: Config) -> list[DoctorCheck]:
                 checks.append(DoctorCheck(check_name, "fail", f"{dataset_id}: catalogue lookup failed: {exc}"))
                 continue
 
-            available_variables = _catalogue_variable_names(cache[dataset_id], dataset_id)
-            if not available_variables:
+            catalogue_variables = _catalogue_variable_names(cache[dataset_id], dataset_id)
+            if not catalogue_variables:
                 checks.append(DoctorCheck(check_name, "fail", f"{dataset_id}: dataset not found in catalogue response"))
                 continue
-            missing = sorted(declared_variables - available_variables)
-            if missing:
-                checks.append(DoctorCheck(check_name, "fail", f"{dataset_id}: missing variables {', '.join(missing)}"))
+            stale = sorted(shipped - catalogue_variables)
+            added = sorted(catalogue_variables - shipped)
+            if stale:
+                checks.append(
+                    DoctorCheck(
+                        check_name,
+                        "fail",
+                        f"{dataset_id}: available_variables absent from catalogue: {', '.join(stale)}",
+                    )
+                )
+            elif added:
+                checks.append(
+                    DoctorCheck(
+                        check_name,
+                        "warn",
+                        f"{dataset_id}: catalogue also offers {', '.join(added)}; consider updating available_variables",
+                    )
+                )
             else:
                 checks.append(
-                    DoctorCheck(check_name, "ok", f"{dataset_id}: {len(declared_variables)} configured variables found")
+                    DoctorCheck(
+                        check_name, "ok", f"{dataset_id}: {len(shipped)} available_variables match the catalogue"
+                    )
                 )
+
+            shipped_coverage = static_coverage(source)
+            catalogue_coverage = _coverage_from_catalogue(cache[dataset_id], dataset_id)
+            if shipped_coverage is None or catalogue_coverage is None:
+                continue
+            coverage_name = f"cmems coverage {source.name}"
+            mismatches = _coverage_mismatches(shipped_coverage, catalogue_coverage)
+            if mismatches:
+                checks.append(
+                    DoctorCheck(
+                        coverage_name,
+                        "warn",
+                        f"{dataset_id}: declared coverage differs from catalogue: {', '.join(mismatches)}",
+                    )
+                )
+            else:
+                checks.append(DoctorCheck(coverage_name, "ok", f"{dataset_id}: declared coverage matches catalogue"))
     return checks
 
 

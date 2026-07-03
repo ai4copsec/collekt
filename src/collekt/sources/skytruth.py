@@ -33,6 +33,14 @@ CERULEAN_API_SLICK = "https://api.cerulean.skytruth.org/collections/public.slick
 SPEC_YAML = Path(__file__).parent / "skytruth.spec.yaml"
 DEFAULT_DATASET_ID = "public.slick_plus"
 
+SKYTRUTH_STRING_COLUMNS = (
+    "geometry_geojson",
+    "hitl_cls_name",
+    "s1_scene_id",
+    "slick_timestamp",
+    "slick_url",
+)
+
 
 def _output_path(request: Request, source: SourceConfig, request_dir: Path) -> Path:
     values = pattern_values(
@@ -81,6 +89,56 @@ def _fetch_pages(url: str, parameters: dict[str, Any]) -> tuple[list[dict[str, A
         url = next_url
         parameters = {}  # "next" links already carry their own query string
     return features, last_url
+
+
+def _normalize_centerlines(value: Any) -> Any:
+    """Return centerlines with a stable nested field order for Polars structs."""
+    if not isinstance(value, dict):
+        return value
+
+    features = value.get("features")
+    normalized_features = []
+    if isinstance(features, list):
+        for feature in features:
+            if not isinstance(feature, dict):
+                normalized_features.append(feature)
+                continue
+            geometry = feature.get("geometry")
+            if isinstance(geometry, dict):
+                geometry = {
+                    "coordinates": geometry.get("coordinates"),
+                    "type": geometry.get("type"),
+                }
+            properties = feature.get("properties")
+            if isinstance(properties, dict):
+                properties = {
+                    "area": properties.get("area"),
+                    "length": properties.get("length"),
+                }
+            normalized_features.append(
+                {
+                    "geometry": geometry,
+                    "id": feature.get("id"),
+                    "properties": properties,
+                    "type": feature.get("type"),
+                }
+            )
+
+    return {
+        "features": normalized_features,
+        "type": value.get("type"),
+    }
+
+
+def _normalize_dataframe(df: Any) -> Any:
+    import polars as pl
+
+    casts = [pl.col(column).cast(pl.String).alias(column) for column in SKYTRUTH_STRING_COLUMNS if column in df.columns]
+    if "hitl_cls" in df.columns:
+        casts.append(pl.col("hitl_cls").cast(pl.Int64, strict=False))
+    if "slick_confidence" in df.columns:
+        casts.append(pl.col("slick_confidence").cast(pl.Float64, strict=False))
+    return df.with_columns(casts) if casts else df
 
 
 def fetch_skytruth(
@@ -158,10 +216,12 @@ def _write_parquet(features: list[dict[str, Any]], output_path: Path, request_ur
     import shapely.geometry
 
     gdf = gpd.GeoDataFrame.from_features(features, crs="EPSG:4326")
+    if "centerlines" in gdf.columns:
+        gdf["centerlines"] = gdf["centerlines"].map(_normalize_centerlines)
     gdf["geometry_geojson"] = gdf["geometry"].apply(
         lambda geom: json.dumps(shapely.geometry.mapping(geom)) if geom else None
     )
-    df = pl.from_pandas(gdf.drop(columns=["geometry"]))
+    df = _normalize_dataframe(pl.from_pandas(gdf.drop(columns=["geometry"])))
     metadata = damast.core.MetaData.load_yaml(SPEC_YAML)
     metadata.add_annotation(
         damast.core.Annotation(name=damast.core.Annotation.Key.Comment, value=f"Created from request: {request_url}")

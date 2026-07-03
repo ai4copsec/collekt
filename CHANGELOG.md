@@ -7,6 +7,10 @@ under `[main]`; `just bump` copies them under the new version.
 
 ### Added
 
+- Bundled source catalogs for CMEMS, ECMWF, eOdyn, SkyTruth, and Copernicus Data
+  Space, including CMEMS Global/MED/IBI/NWS metadata and coverage declarations.
+- Manual `scripts/update_cmems_coverage.py` helper to refresh declared CMEMS
+  coverage from the Copernicus catalogue.
 - Project tooling: uv + `uv_build`, Ruff, commitizen, a `justfile`, GitHub
   Actions CI, and a Quarto + quartodoc documentation site.
 - Typed request model: `Request` and `Region` (from bounding box, point+radius,
@@ -27,5 +31,17 @@ under `[main]`; `just bump` copies them under the new version.
 
 ### Removed
 
+- Vestigial `supported_sampling` source metadata; datasets now declare only their
+  native `temporal_sampling`.
 - Legacy `collekt query` CLI, `Collector`, `Query`, the `DataSource` base classes,
   and the old `datasources/` package (superseded by the adapter framework).
+
+### Changed
+
+- Source collection now validates explicit variable/depth selections for bundled
+  catalogs and only allows request sampling at dataset cadence or coarser
+  integer multiples.
+- CMEMS diagnostics and planning use declared coverage metadata as an offline
+  fallback, with rolling NRT coverage handled separately from archive products.
+- Example notebooks and source documentation were refreshed for the bundled
+  catalogs and native-resolution CMEMS inspection workflow.

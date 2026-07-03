@@ -1,9 +1,10 @@
 # collekt base configuration.
 #
-# This file holds output defaults and cache policy only. Source catalogs and
-# curated presets are supplied by the consuming brick through its own conf/
-# directory (passed as `conf_dir`); collekt ships the loading mechanism plus,
-# in later phases, minimal first-party source definitions. See docs/plan.qmd.
+# Output/cache defaults plus the curated source catalogs collekt ships. Downstream
+# users select from these sources (by name, e.g. `--datasource cmems_duacs_my`) and
+# extend or override them via a `conf_dir` overlay or `get_config(overrides=...)`.
+# Curated presets and variable-group tagging are left to downstream. See
+# docs/products.qmd.
 
 output:
   root: "data/collections"
@@ -18,3 +19,5 @@ cache:
 credentials:
   cdsapi_rc: "$HOME/.cdsapirc"
   copernicusmarine_credentials_file: null
+
+source_catalogs: [cmems_global, cmems_med, cmems_ibi, cmems_nws, ecmwf, eodyn, skytruth, dataspace]
