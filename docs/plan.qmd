@@ -15,8 +15,8 @@ public interface has been simplified around explicit dataset selections.
 
 The current design is:
 
-- Accept a rich request (region of interest, time window, temporal sampling)
-  through a typed `Request`/`Region` model.
+- Accept a rich request (region of interest, time window) through a typed
+  `Request`/`Region` model.
 - Resolve selected datasets from `DatasetConfig` objects or YAML presets, using
   bundled YAML **source catalogs** as capability metadata.
 - Fetch through a uniform **source-adapter** framework with a status contract,
@@ -60,7 +60,7 @@ src/collekt/
   version.py                 # single version source (bumped by commitizen)
 
   core/
-    request.py               # Region, Request, parse_datetime, sampling
+    request.py               # Region, Request, parse_datetime
     temporal.py              # SamplingPlan, timestamp planning per source
     naming.py                # filename/request-dir patterns + bbox hashing
     collect.py               # orchestration: plan / fetch, cache, isolation
@@ -192,9 +192,10 @@ collekt's point+radius and GeoJSON conventions.
   - `Region.from_geojson(path)` — bbox of the geometry, **plus** the geometry
     itself retained as optional WKT for sources that support polygon filters
     (Skytruth CQL, Data Space `OData…Intersects`).
-- `Request` carries only region, time window, sampling
-  (`15min`/`1h`/`3h`/`6h`/`24h`), optional `metadata`, and the `iter_days` /
-  `*_datetime` / `sampling_label` helpers. Dataset selection is a separate
+- `Request` carries only region, time window, optional `metadata`, and the
+  `iter_days` / `*_datetime` helpers. It has no sampling of its own: each dataset
+  is fetched at its native `temporal_sampling`, and thinning/aligning to a common
+  axis is a downstream `Assembler` concern. Dataset selection is a separate
   `DatasetConfig` concern.
 - `Request.as_dict()` becomes the request block embedded in the manifest.
 
@@ -284,8 +285,8 @@ workflow:
 
 - `plan()` (dry-run) produces `PLANNED` results with an `availability` block and
   the exact provider request, without touching the network or disk.
-- `download()` fetches, reusing cached files keyed by region + time range +
-  sampling (`request_pattern` directory), isolating per-source failures, and
+- `download()` fetches, reusing cached files keyed by region + time range
+  (`request_pattern` directory), isolating per-source failures, and
   supporting `--strict` (warnings become a final `RuntimeError` after the
   manifest is written).
 - `check()` runs `doctor` diagnostics then `plan()`.
@@ -336,7 +337,7 @@ removed outright — no backward-compatible alias.
 
 - **`collekt fetch`** — args: region as `--bbox W E S N` **or**
   `--at-lat/--at-lon/--radius` **or** `--region <geojson>`; `--start/--end`;
-  `--sampling`; `--dataset-config <yaml>`; `--output-dir`; `--dry-run`;
+  `--dataset-config <yaml>`; `--output-dir`; `--dry-run`;
   `--strict`. Builds a `Request`, loads `DatasetConfig`, runs the workflow, and
   writes the manifest.
 - **`collekt doctor`** — environment + planned-call diagnostics, `--online` to

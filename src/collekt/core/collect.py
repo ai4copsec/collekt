@@ -66,7 +66,7 @@ def run_collection(
     """Run collection orchestration for a request.
 
     Args:
-        request: Region, time window, metadata, and sampling.
+        request: Region, time window, and metadata.
         config: Resolved internal source configuration.
         strict: Override config strict mode. If true, warnings become a final
             `RuntimeError` after the manifest is written.
@@ -93,7 +93,6 @@ def run_collection(
         region=request.region,
         start=request.start_datetime,
         end=request.end_datetime,
-        sampling=request.sampling_label,
     )
     request_dir = request_directory(cfg.output.root, cfg.output.request_pattern, values)
     if not dry_run and not use_cache and request_dir.exists() and request_dir != cfg.output.root:

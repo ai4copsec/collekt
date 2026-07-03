@@ -15,10 +15,11 @@ A library to facilitate spatio-temporal data collection across arbitrary
 datasources for Copernicus security and maritime monitoring workflows.
 :::
 
-**collekt** fans out a single request — a region of interest, a time window, an
-optional sampling and set of variable groups — to pluggable source adapters, each
-of which fetches source-native files and records what it did in a machine-readable
-manifest.
+**collekt** fans out a single request — a region of interest and a time window —
+across the datasets named in a `DatasetConfig`, each fetched by a pluggable source
+adapter that records what it did in a machine-readable manifest. Every dataset is
+fetched at its native cadence; aligning to a common time axis is a downstream
+assembly step.
 
 ::: {.ai4copsec-home-grid}
 :::{}
@@ -58,7 +59,6 @@ config = collekt.DatasetConfig(
 request = collekt.Request(
     region=collekt.Region.from_bbox((-6.0, 20.0, 35.0, 45.0)),
     start="2023-06-15",
-    sampling="24h",
 )
 
 fetcher = collekt.Fetcher(request=request, config=config, output_dir="data/collections")

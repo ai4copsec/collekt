@@ -82,9 +82,6 @@ def build_parser() -> argparse.ArgumentParser:
     fetch.add_argument("--start", help="Start date/datetime; defaults to current UTC day")
     fetch.add_argument("--end", help="End date/datetime; defaults to the start day")
     fetch.add_argument(
-        "--sampling", choices=("15min", "1h", "3h", "6h", "24h"), default="24h", help="Temporal sampling"
-    )
-    fetch.add_argument(
         "--dataset-config",
         type=Path,
         required=True,
@@ -130,7 +127,6 @@ def run(argv: list[str] | None = None) -> int:
                 region=_build_region(args),
                 start=args.start,
                 end=args.end,
-                sampling=args.sampling,
             )
             fetcher = Fetcher(
                 request=request,

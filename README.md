@@ -4,7 +4,7 @@ A library to facilitate spatio-temporal data collection across arbitrary
 datasources.
 
 A dataset config names the products to fetch, and a request supplies the region,
-time window, sampling, and metadata. The selected products are fanned out to
+time window, and metadata. The selected products are fanned out to
 pluggable source adapters.
 Each adapter fetches source-native files (NetCDF, GRIB2, Parquet, product
 archives) and records what it did in a machine-readable manifest. Gridded results
@@ -37,7 +37,6 @@ config = collekt.DatasetConfig(
 request = collekt.Request(
     region=collekt.Region.from_bbox((-6.0, 20.0, 35.0, 45.0)),
     start="2023-06-15",
-    sampling="24h",
 )
 
 fetcher = collekt.Fetcher(request=request, config=config, output_dir="data/collections")

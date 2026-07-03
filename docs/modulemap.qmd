@@ -14,8 +14,8 @@ src/collekt/
   version.py               # single version source (bumped by commitizen)
 
   core/
-    request.py             # Region, Request, datetime/sampling parsing
-    temporal.py            # SamplingPlan + per-source timestamp planning
+    request.py             # Region, Request, datetime parsing
+    temporal.py            # SamplingPlan + per-source native-cadence timestamps
     naming.py              # filename/request-dir patterns + bbox hashing
     collect.py             # run_collection orchestration (adapter dispatch)
     fetcher.py             # Fetcher workflow (check / plan / download / export)

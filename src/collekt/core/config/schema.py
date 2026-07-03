@@ -26,7 +26,7 @@ class OutputConfig:
     """Output directory and naming configuration."""
 
     root: Path = Path("data/collections")
-    request_pattern: str = "{start:%Y%m%d}_{end:%Y%m%d}_{sampling}_{bbox_hash}"
+    request_pattern: str = "{start:%Y%m%d}_{end:%Y%m%d}_{bbox_hash}"
     manifest_name: str = "manifest.json"
 
 
@@ -104,7 +104,7 @@ def _parse_output(raw: Mapping[str, Any] | None) -> OutputConfig:
     d = dict(raw or {})
     return OutputConfig(
         root=Path(str(d.get("root", "data/collections"))).expanduser(),
-        request_pattern=str(d.get("request_pattern", "{start:%Y%m%d}_{end:%Y%m%d}_{sampling}_{bbox_hash}")),
+        request_pattern=str(d.get("request_pattern", "{start:%Y%m%d}_{end:%Y%m%d}_{bbox_hash}")),
         manifest_name=str(d.get("manifest_name", "manifest.json")),
     )
 

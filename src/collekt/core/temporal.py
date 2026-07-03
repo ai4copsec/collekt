@@ -40,23 +40,20 @@ class SamplingPlan:
 
 
 def sampling_plan(request: Request, source: SourceConfig) -> SamplingPlan:
-    """Resolve the download sampling for a request/source pair.
+    """Resolve the download timestamps for a request/source pair.
 
-    A source declares the dataset's actual sampling. A request may download at
-    that cadence or any coarser cadence that is an integer multiple of it.
+    A dataset is fetched at its native cadence (`temporal_sampling`); thinning or
+    aligning to a coarser common axis is a downstream `Assembler` concern, so the
+    plan simply enumerates native timestamps across the request window.
     """
-    requested_minutes = request.sampling_minutes
     dataset_minutes = parse_sampling(source.temporal_sampling)
-    if requested_minutes < dataset_minutes or requested_minutes % dataset_minutes:
-        raise ValueError(
-            f"{source.name} has {format_sampling_minutes(dataset_minutes)} dataset sampling; "
-            f"requested sampling {format_sampling_minutes(requested_minutes)} must be an integer multiple of it"
-        )
+    label = format_sampling_minutes(dataset_minutes)
+    timestamps = tuple(_iter_timestamps(request.start_datetime, request.end_datetime, dataset_minutes))
     return SamplingPlan(
-        requested_sampling=format_sampling_minutes(requested_minutes),
-        actual_sampling=format_sampling_minutes(requested_minutes),
-        requested_timestamps=tuple(_iter_timestamps(request.start_datetime, request.end_datetime, requested_minutes)),
-        source_timestamps=tuple(_iter_timestamps(request.start_datetime, request.end_datetime, requested_minutes)),
+        requested_sampling=label,
+        actual_sampling=label,
+        requested_timestamps=timestamps,
+        source_timestamps=timestamps,
     )
 
 

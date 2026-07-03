@@ -87,8 +87,8 @@ def _cfg(tmp_path, **sources):
     return get_config(overrides={"source_catalogs": [], "output": {"root": str(tmp_path)}, "sources": sources})
 
 
-def _request(start="2023-06-15", sampling="24h", end=None):
-    return Request(region=Region.from_bbox((-6, 20, 35, 45)), start=start, end=end, sampling=sampling)
+def _request(start="2023-06-15", end=None):
+    return Request(region=Region.from_bbox((-6, 20, 35, 45)), start=start, end=end)
 
 
 def _stub_copernicusmarine(monkeypatch, calls):
@@ -159,26 +159,22 @@ def test_cmems_dry_run_plans_without_downloading(tmp_path, monkeypatch):
     assert not result.output_dir.exists()
 
 
-def test_cmems_rejects_sampling_finer_than_dataset(tmp_path, monkeypatch):
-    monkeypatch.setattr("collekt.core.availability._copernicusmarine_describe", lambda: None)
-    with pytest.raises(ValueError, match="integer multiple"):
-        Fetcher(_request(sampling="6h"), config=_cfg(tmp_path, cmems_glorys=GLORYS)).plan()
-
-
-def test_cmems_subdaily_source_uses_single_timestamp_for_daily(tmp_path, monkeypatch):
+def test_cmems_daily_source_uses_a_single_timestamp(tmp_path, monkeypatch):
+    # A 24h dataset fetches one timestamp per day (covered by GLORYS above too).
     calls = []
     _stub_copernicusmarine(monkeypatch, calls)
-    result = Fetcher(_request(), config=_cfg(tmp_path, cmems_waves=WAVES)).download()
+    result = Fetcher(_request(), config=_cfg(tmp_path, cmems_glorys=GLORYS)).download()
 
     assert result.summary.downloaded == 1
     assert calls[0]["start_datetime"] == "2023-06-15T00:00:00"
     assert calls[0]["end_datetime"] == "2023-06-15T00:00:00"
 
 
-def test_cmems_subdaily_source_uses_time_range_for_subdaily(tmp_path, monkeypatch):
+def test_cmems_subdaily_source_uses_a_full_day_time_range(tmp_path, monkeypatch):
+    # A subdaily dataset (time_selection full_day) is fetched over the whole day.
     calls = []
     _stub_copernicusmarine(monkeypatch, calls)
-    result = Fetcher(_request(sampling="6h"), config=_cfg(tmp_path, cmems_waves=WAVES)).download()
+    result = Fetcher(_request(), config=_cfg(tmp_path, cmems_waves=WAVES)).download()
 
     assert result.summary.downloaded == 1
     assert calls[0]["start_datetime"] == "2023-06-15T00:00:00"
@@ -231,28 +227,8 @@ def test_era5_downloads_with_stubbed_cdsapi(tmp_path, monkeypatch):
     assert result.summary.downloaded == 1
     assert result.files[0].name.startswith("era5_10m_wind_20260625_")
     assert calls[0]["area"] == [45.5, -6.5, 34.5, 20.5]
-    assert calls[0]["time"] == ["00:00"]
-
-
-def test_era5_uses_requested_subdaily_sampling(tmp_path, monkeypatch):
-    calls = []
-
-    class FakeRetrieval:
-        def download(self, path):
-            Path(path).write_text("netcdf", encoding="utf-8")
-
-    class FakeClient:
-        def retrieve(self, _dataset_id, request):
-            calls.append(request)
-            return FakeRetrieval()
-
-    monkeypatch.setitem(sys.modules, "cdsapi", types.SimpleNamespace(Client=FakeClient))
-    result = Fetcher(
-        _request(start="2026-06-25", sampling="6h"), config=_cfg(tmp_path, era5_reanalysis=ERA5)
-    ).download()
-
-    assert result.summary.downloaded == 1
-    assert calls[0]["time"] == ["00:00", "06:00", "12:00", "18:00"]
+    # ERA5 is hourly; with no request sampling it fetches every native hour.
+    assert calls[0]["time"] == [f"{hour:02d}:00" for hour in range(24)]
 
 
 def test_era5_plan_skips_dates_outside_declarative_coverage(tmp_path):
@@ -287,28 +263,8 @@ def test_ecmwf_downloads_grib_with_stubbed_client(tmp_path, monkeypatch):
     assert result.files[0].name.startswith("ecmwf_open_data_10m_wind_20260625_00z_")
     assert calls[0] == ("init", {"source": "ecmwf", "model": "ifs", "resol": "0p25"})
     assert calls[1][1]["param"] == ["10u", "10v"]
-    assert calls[1][1]["step"] == [0]
-
-
-def test_ecmwf_uses_requested_subdaily_sampling(tmp_path, monkeypatch):
-    calls = []
-
-    class FakeClient:
-        def __init__(self, **_kwargs):
-            pass
-
-        def retrieve(self, request, target):
-            calls.append(request)
-            Path(target).write_text("grib", encoding="utf-8")
-
-    monkeypatch.setattr("collekt.sources.ecmwf_open_data._client_class", lambda: FakeClient)
-    result = Fetcher(
-        _request(start="2026-06-25", sampling="6h"),
-        config=_cfg(tmp_path, ecmwf_open_data_forecast=ECMWF),
-    ).download()
-
-    assert result.summary.downloaded == 1
-    assert calls[0]["step"] == [0, 6, 12, 18]
+    # 3h native cadence over the day -> steps every 3 hours.
+    assert calls[1][1]["step"] == [0, 3, 6, 9, 12, 15, 18, 21]
 
 
 def test_ecmwf_plan_available_within_rolling_window(tmp_path):

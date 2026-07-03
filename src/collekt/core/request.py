@@ -153,19 +153,20 @@ def format_sampling(value: str | int | None) -> str:
 class Request:
     """A request to collect data.
 
+    Each selected dataset is fetched at its native cadence (`temporal_sampling`);
+    thinning or aligning to a common time axis is a downstream `Assembler` concern,
+    so a request carries no sampling of its own.
+
     Args:
         region: Geographic region of interest.
         start: Start date or datetime. If omitted, the current UTC day is used.
         end: End date or datetime. If omitted, the start day is used.
-        sampling: Requested temporal sampling interval. Supported values are
-            `15min`, `1h`, `3h`, `6h`, and `24h`.
         metadata: Optional caller metadata copied to the manifest.
     """
 
     region: Region
     start: str | date | datetime | None = None
     end: str | date | datetime | None = None
-    sampling: str | int | None = "24h"
     metadata: dict[str, Any] = field(default_factory=dict)
 
     @property
@@ -177,24 +178,6 @@ class Request:
     def end_datetime(self) -> datetime:
         """End time normalized to UTC."""
         return parse_datetime(self.end if self.end is not None else self.start, end_of_day=True)
-
-    @property
-    def sampling_hours(self) -> int:
-        """Requested sampling interval in hours."""
-        minutes = self.sampling_minutes
-        if minutes % 60:
-            raise ValueError(f"sampling {self.sampling_label!r} is not a whole number of hours")
-        return minutes // 60
-
-    @property
-    def sampling_minutes(self) -> int:
-        """Requested sampling interval in minutes."""
-        return parse_sampling(self.sampling)
-
-    @property
-    def sampling_label(self) -> str:
-        """Requested sampling interval as a canonical label."""
-        return format_sampling(self.sampling)
 
     def iter_days(self) -> list[date]:
         """Return UTC calendar days touched by this request."""
@@ -213,6 +196,5 @@ class Request:
             "region": self.region.as_dict(),
             "start": self.start_datetime.isoformat().replace("+00:00", "Z"),
             "end": self.end_datetime.isoformat().replace("+00:00", "Z"),
-            "sampling": self.sampling_label,
             "metadata": dict(self.metadata),
         }

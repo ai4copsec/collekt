@@ -49,7 +49,6 @@ def _output_path(request: Request, source: SourceConfig, request_dir: Path) -> P
         region=request.region,
         start=request.start_datetime,
         end=request.end_datetime,
-        sampling=request.sampling_label,
     )
     return request_dir / source.path / format_pattern(source.filename_pattern, values)
 

@@ -78,14 +78,14 @@ The catalog is **curated, not exhaustive** — dataset IDs drift, so
 catalogue.
 
 Each gridded source declares one temporal field: `temporal_sampling`, the
-native cadence of that dataset (`15min`, `1h`, `3h`, `6h`, or `24h`). A request's
-`--sampling` can be that cadence or a coarser integer multiple of it; for example,
-a `15min` dataset can be downloaded at `15min`, `1h`, `3h`, `6h`, or `24h`, but a
-daily dataset can only satisfy `24h` requests. When a provider offers multiple
-cadences or dimensionalities, model them as separate source entries (for example
-`cmems_med_currents_nrt_15min`, `cmems_med_currents_nrt_2d_hourly`, and
-`cmems_med_currents_nrt`) so each source maps to one provider dataset and one
-actual cadence.
+native cadence of that dataset (`15min`, `1h`, `3h`, `6h`, or `24h`). Datasets are
+always fetched at that cadence — a request carries no sampling of its own, so
+thinning or aligning to a coarser common axis is a downstream `Assembler` step.
+When a provider offers multiple cadences or dimensionalities, model them as
+separate source entries (for example `cmems_med_currents_nrt_15min`,
+`cmems_med_currents_nrt_2d_hourly`, and `cmems_med_currents_nrt`) so each source
+maps to one provider dataset and one cadence, and the caller picks the cadence by
+picking the dataset.
 
 Regional Atlantic products use the CMEMS regional names: IBI (`cmems_ibi`) and
 European North-West Shelf (`cmems_nws`) are separate catalogs. Basin-level

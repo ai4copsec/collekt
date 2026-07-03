@@ -14,7 +14,9 @@ under `[main]`; `just bump` copies them under the new version.
 - Project tooling: uv + `uv_build`, Ruff, commitizen, a `justfile`, GitHub
   Actions CI, and a Quarto + quartodoc documentation site.
 - Typed request model: `Request` and `Region` (from bounding box, point+radius,
-  or GeoJSON), with temporal sampling (`1h`/`3h`/`6h`/`24h`).
+  or GeoJSON). Each dataset is fetched at its native cadence (`temporal_sampling`);
+  there is no request-level sampling — thinning/aligning is a downstream
+  `Assembler` step.
 - Layered YAML configuration mechanism (`conf_dir`, source catalogs) plus
   public `DatasetConfig` YAML presets for selecting dataset keys and provider
   parameters.

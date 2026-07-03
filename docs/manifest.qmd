@@ -17,7 +17,6 @@ skipped, and it is the contract downstream consumers rely on.
     "region": {"west": -6.0, "east": 20.0, "south": 35.0, "north": 45.0},
     "start": "2023-06-15T00:00:00Z",
     "end": "2023-06-15T23:59:59Z",
-    "sampling": "24h",
     "metadata": {}
   },
   "summary": {"planned": 0, "downloaded": 1, "reused": 0, "skipped": 0, "failed": 0},

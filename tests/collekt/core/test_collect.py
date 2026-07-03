@@ -59,7 +59,7 @@ def _fake_fetch(request, source, config, request_dir, *, progress=null_progress)
             dataset_id=source.dataset_id or source.name,
             variables=source.variables,
             format="grib2",
-            details={"temporal": {"actual_sampling": request.sampling_label}},
+            details={"temporal": {"actual_sampling": source.temporal_sampling}},
         )
     ]
 
@@ -110,7 +110,7 @@ def test_download_writes_manifest_with_relative_paths(tmp_path):
         "failures",
     }
     assert manifest["manifest_schema_version"] == "0.1"
-    assert manifest["request"]["sampling"] == "24h"
+    assert "sampling" not in manifest["request"]
     assert "preset" not in manifest["request"]
     assert manifest["files"][0]["status"] == "downloaded"
     assert not Path(manifest["files"][0]["path"]).is_absolute()

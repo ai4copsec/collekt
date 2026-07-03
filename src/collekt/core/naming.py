@@ -41,7 +41,6 @@ def pattern_values(
     start: datetime,
     end: datetime,
     day: date | None = None,
-    sampling: str = "24h",
 ) -> dict[str, Any]:
     """Return the standard placeholder mapping for output patterns."""
     return {
@@ -50,7 +49,6 @@ def pattern_values(
         "date": day or start.date(),
         "start": start,
         "end": end,
-        "sampling": sampling,
         "bbox_hash": bbox_hash(region),
         "west": region.west,
         "east": region.east,

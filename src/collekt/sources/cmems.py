@@ -90,7 +90,6 @@ def fetch_cmems(
             start=request.start_datetime,
             end=request.end_datetime,
             day=day,
-            sampling=request.sampling_label,
         )
         output_path = out_dir / format_pattern(source.filename_pattern, values)
         if output_path.exists() and config.cache.reuse_existing and not config.cache.overwrite:

@@ -47,7 +47,7 @@ class Fetcher:
         ```
 
     Args:
-        request: Region, time window, metadata, and sampling.
+        request: Region, time window, and metadata.
         config: Selected datasets and provider parameters.
         output_dir: Root directory for staged downloads.
         strict: Override config strict mode. If true, warnings become a final

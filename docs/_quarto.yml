@@ -53,12 +53,20 @@ quartodoc:
   package: collekt
   dir: api
   sections:
-    - title: "collekt"
-      desc: "Public API for collekt."
+    - title: "Core"
+      desc: "Request a region and time window, fetch, and inspect the result."
       contents:
         - __version__
         - Request
         - Region
+        - Fetcher
+        - Result
+        - Assembler
+        - run_doctor
+        - DoctorCheck
+    - title: "Datasets"
+      desc: "Select datasets from the bundled catalog and set their provider parameters."
+      contents:
         - DatasetConfig
         - CMEMS
         - ECMWFOpenData
@@ -66,8 +74,3 @@ quartodoc:
         - Eodyn
         - SkyTruth
         - CopernicusDataSpace
-        - Fetcher
-        - Result
-        - Assembler
-        - run_doctor
-        - DoctorCheck

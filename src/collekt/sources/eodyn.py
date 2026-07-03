@@ -196,7 +196,6 @@ def fetch_eodyn(
             start=request.start_datetime,
             end=request.end_datetime,
             day=day,
-            sampling=request.sampling_label,
         )
         output_path = out_dir / format_pattern(source.filename_pattern, values)
         archive_path = _archive_path(source, day)

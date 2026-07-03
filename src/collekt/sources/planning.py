@@ -43,7 +43,6 @@ def output_path(request: Request, source: SourceConfig, request_dir: Path, datas
             start=request.start_datetime,
             end=request.end_datetime,
             day=day,
-            sampling=request.sampling_label,
         )
         | extra
     )
