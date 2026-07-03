@@ -164,10 +164,31 @@ class CopernicusDataSpace(DatasetSelection):
         return data
 
 
-DatasetLike = CMEMS | ECMWFOpenData | ERA5 | Eodyn | SkyTruth | CopernicusDataSpace
+@dataclass(frozen=True, init=False)
+class Hozint(DatasetSelection):
+    """HOZINT threat-intelligence report selection.
+
+    A credential-gated feature source with no variable selection; the
+    `hozint-apiclient` tool resolves its own credentials and writes Parquet.
+    """
+
+    provider: ClassVar[str] = "hozint"
+    kind: ClassVar[str] = "hozint"
+
+    def __init__(self, key: str = "hozint") -> None:
+        super().__init__(key, ())
+
+    def source_overrides(self) -> dict[str, Any]:
+        return {}
+
+    def as_dict(self) -> dict[str, Any]:
+        return {"provider": self.provider, "key": self.key}
+
+
+DatasetLike = CMEMS | ECMWFOpenData | ERA5 | Eodyn | SkyTruth | CopernicusDataSpace | Hozint
 
 _PROVIDERS: dict[str, type[DatasetLike]] = {
-    cls.provider: cls for cls in (CMEMS, ECMWFOpenData, ERA5, Eodyn, SkyTruth, CopernicusDataSpace)
+    cls.provider: cls for cls in (CMEMS, ECMWFOpenData, ERA5, Eodyn, SkyTruth, CopernicusDataSpace, Hozint)
 }
 
 

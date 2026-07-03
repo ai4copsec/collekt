@@ -13,6 +13,7 @@ from collekt.core.datasets import (
     DatasetConfig,
     ECMWFOpenData,
     Eodyn,
+    Hozint,
     SkyTruth,
 )
 from collekt.core.doctor import DoctorCheck, run_doctor
@@ -32,6 +33,7 @@ __all__ = [
     "ERA5",
     "Eodyn",
     "Fetcher",
+    "Hozint",
     "Region",
     "Request",
     "Result",

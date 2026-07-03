@@ -131,6 +131,14 @@ def test_dataset_config_validates_variables_and_depth():
         collekt.DatasetConfig(collekt.CMEMS("cmems_glorys_my", variables=["uo"])).resolve()
 
 
+def test_dataset_config_resolves_a_feature_source():
+    # HOZINT is a first-class feature source: no variables, selected by key.
+    resolved = collekt.DatasetConfig(collekt.Hozint()).resolve()
+    assert tuple(resolved.sources) == ("hozint",)
+    assert resolved.sources["hozint"].kind == "hozint"
+    assert resolved.sources["hozint"].variables == ()
+
+
 def test_available_variables_gate_the_selection(tmp_path):
     conf = tmp_path / "conf"
     conf.mkdir()

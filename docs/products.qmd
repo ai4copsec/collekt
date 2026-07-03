@@ -40,6 +40,7 @@ uses, grouped into catalogs under `collekt/conf/source/`:
 | `ecmwf` | `ecmwf_open_data_forecast`, `era5_reanalysis` |
 | `eodyn` | `eodyn_osmose_currents` |
 | `skytruth` | `skytruth` |
+| `hozint` | `hozint` |
 | `dataspace` | `copernicus_s1_grd`, `copernicus_s2_l2a`, `copernicus_landsat` |
 
 Select concrete datasets with `DatasetConfig`, using provider-specific

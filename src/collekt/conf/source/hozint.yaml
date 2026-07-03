@@ -1,0 +1,11 @@
+# HOZINT threat-intelligence reports — a credential-gated feature source.
+#
+# Wraps the `hozint-apiclient` CLI, which resolves its own credentials from the
+# environment and writes Parquet reports. It takes no variable selection, and the
+# tool names its own output files.
+
+sources:
+  hozint:
+    kind: hozint
+    path: "hozint"
+    url: "https://hozint.com"

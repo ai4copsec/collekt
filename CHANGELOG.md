@@ -7,8 +7,11 @@ under `[main]`; `just bump` copies them under the new version.
 
 ### Added
 
-- Bundled source catalogs for CMEMS, ECMWF, eOdyn, SkyTruth, and Copernicus Data
-  Space, including CMEMS Global/MED/IBI/NWS metadata and coverage declarations.
+- Bundled source catalogs for CMEMS, ECMWF, eOdyn, SkyTruth, HOZINT, and
+  Copernicus Data Space, including CMEMS Global/MED/IBI/NWS metadata and coverage
+  declarations. Every first-class provider has a `DatasetConfig` dataclass
+  (`CMEMS`, `ERA5`, `ECMWFOpenData`, `Eodyn`, `SkyTruth`, `Hozint`,
+  `CopernicusDataSpace`).
 - Manual `scripts/update_cmems_coverage.py` helper to refresh declared CMEMS
   coverage from the Copernicus catalogue.
 - Downstream catalog extension: a `conf_dir` overlays the bundled configuration
