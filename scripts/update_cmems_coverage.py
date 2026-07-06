@@ -14,6 +14,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import logging
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
@@ -21,9 +22,12 @@ from typing import Any
 import yaml
 
 from collekt.core.availability import Coverage, _coverage_from_catalogue
+from collekt.core.config import LOG_DATE_FORMAT, LOG_FORMAT, LOG_STYLE
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SOURCE_DIR = REPO_ROOT / "src" / "collekt" / "conf" / "source"
+
+logger = logging.getLogger("update_cmems_coverage")
 
 
 def _copernicusmarine_describe():
@@ -48,11 +52,11 @@ def _coverage_for_dataset(describe, dataset_id: str) -> Coverage | None:
     try:
         catalogue = describe(dataset_id=dataset_id, disable_progress_bar=True, raise_on_error=True)
     except Exception as exc:  # noqa: BLE001 - this is a manual maintenance script; keep going.
-        print(f"WARN {dataset_id}: describe failed: {exc}")
+        logger.warning("%s: describe failed: %s", dataset_id, exc)
         return None
     coverage = _coverage_from_catalogue(catalogue, dataset_id)
     if coverage is None:
-        print(f"WARN {dataset_id}: dataset not found in catalogue response")
+        logger.warning("%s: dataset not found in catalogue response", dataset_id)
     return coverage
 
 
@@ -136,7 +140,7 @@ def update_catalogue(path: Path, *, describe, dry_run: bool) -> list[str]:
         if coverage is None:
             continue
         if name not in ranges:
-            print(f"WARN {path.name}:{name}: source block not found in YAML text")
+            logger.warning("%s:%s: source block not found in YAML text", path.name, name)
             continue
         if _replace_coverage(lines, _coverage_block(name, coverage), ranges[name]):
             ranges = _source_ranges(lines, sources)
@@ -151,6 +155,7 @@ def main() -> int:
     parser.add_argument("--source-dir", type=Path, default=SOURCE_DIR, help="Directory containing cmems_*.yaml files.")
     parser.add_argument("--dry-run", action="store_true", help="Fetch and report updates without writing files.")
     args = parser.parse_args()
+    logging.basicConfig(format=LOG_FORMAT, style=LOG_STYLE, datefmt=LOG_DATE_FORMAT, level=logging.INFO)
 
     describe = _copernicusmarine_describe()
     total = 0
