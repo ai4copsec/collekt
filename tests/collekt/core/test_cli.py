@@ -1,5 +1,7 @@
 """Tests for the collekt command-line interface."""
 
+import logging
+
 import pytest
 
 import collekt.cli.main as cli_main
@@ -117,30 +119,32 @@ def test_fetch_dataset_config_selects_sources(tmp_path, capsys, monkeypatch):
     assert "other" not in out
 
 
-def test_fetch_strict_failure_returns_error(tmp_path, capsys, monkeypatch):
+def test_fetch_strict_failure_returns_error(tmp_path, caplog, monkeypatch):
     _patch_dataset_config(monkeypatch, _config(tmp_path, fail=True))
-    code = run(_fetch_argv(_dataset_config_file(tmp_path), tmp_path / "out", "--strict"))
+    with caplog.at_level(logging.ERROR):
+        code = run(_fetch_argv(_dataset_config_file(tmp_path), tmp_path / "out", "--strict"))
 
     assert code == 1
-    assert "ERROR" in capsys.readouterr().out
+    assert "collection completed with warnings" in caplog.text
 
 
-def test_fetch_without_a_region_is_an_error(tmp_path, capsys, monkeypatch):
+def test_fetch_without_a_region_is_an_error(tmp_path, caplog, monkeypatch):
     _patch_dataset_config(monkeypatch, _config(tmp_path))
-    code = run(
-        [
-            "fetch",
-            "--start",
-            "2024-01-30",
-            "--dataset-config",
-            str(_dataset_config_file(tmp_path)),
-            "--output-dir",
-            str(tmp_path / "out"),
-        ]
-    )
+    with caplog.at_level(logging.ERROR):
+        code = run(
+            [
+                "fetch",
+                "--start",
+                "2024-01-30",
+                "--dataset-config",
+                str(_dataset_config_file(tmp_path)),
+                "--output-dir",
+                str(tmp_path / "out"),
+            ]
+        )
 
     assert code == 1
-    assert "provide a region" in capsys.readouterr().out
+    assert "provide a region" in caplog.text
 
 
 def test_doctor_returns_zero_for_default_config(capsys):

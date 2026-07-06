@@ -17,6 +17,8 @@ from collekt.core.reporting import CliReporter
 from collekt.core.request import Region, Request
 from collekt.sources.base import SourceResult
 
+logger = logging.getLogger(__name__)
+
 
 def _build_region(args: argparse.Namespace) -> Region:
     if args.bbox:
@@ -116,18 +118,18 @@ def run(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     console = Console()
 
-    if args.command == "config" and args.config_command == "show":
-        import yaml
+    try:
+        if args.command == "config" and args.config_command == "show":
+            import yaml
 
-        console.print(yaml.safe_dump(load_config(conf_dir=args.conf_dir), sort_keys=False))
-        return 0
+            console.print(yaml.safe_dump(load_config(conf_dir=args.conf_dir), sort_keys=False))
+            return 0
 
-    if args.command == "doctor":
-        return _render_doctor(console, args.conf_dir, online=args.online)
+        if args.command == "doctor":
+            return _render_doctor(console, args.conf_dir, online=args.online)
 
-    if args.command == "fetch":
-        reporter = CliReporter(console)
-        try:
+        if args.command == "fetch":
+            reporter = CliReporter(console)
             request = Request(
                 region=_build_region(args),
                 start=args.start,
@@ -142,22 +144,25 @@ def run(argv: list[str] | None = None) -> int:
                 progress=reporter.progress,
             )
             result = fetcher.plan() if args.dry_run else fetcher.download(use_cache=not args.no_cache)
-        except (RuntimeError, ValueError) as exc:
-            console.print(f"ERROR {exc}", style="red")
-            return 1
-        if args.dry_run:
-            _render_plan(console, result.results)
-            reporter.summary(
-                result.summary,
-                result.output_dir,
-                result.manifest_path,
-                title="collekt dry run complete",
-                manifest_written=False,
-            )
+            if args.dry_run:
+                _render_plan(console, result.results)
+                reporter.summary(
+                    result.summary,
+                    result.output_dir,
+                    result.manifest_path,
+                    title="collekt dry run complete",
+                    manifest_written=False,
+                )
+                return 0
+            reporter.warnings(result.results)
+            reporter.summary(result.summary, result.output_dir, result.manifest_path)
             return 0
-        reporter.warnings(result.results)
-        reporter.summary(result.summary, result.output_dir, result.manifest_path)
-        return 0
+    except (FileNotFoundError, RuntimeError, ValueError) as exc:
+        # Expected fatal errors (missing/invalid config, region, or dataset, or a
+        # strict-mode failure) become a logged error and a non-zero exit, never a
+        # traceback.
+        logger.error("%s", exc)
+        return 1
 
     parser.error(f"unknown command {args.command!r}")
     return 2
