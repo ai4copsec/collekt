@@ -24,7 +24,8 @@ src/collekt/
     datasets.py            # DatasetConfig + provider selection dataclasses
     reporting.py           # Summary, summarize, CliReporter
     availability.py        # coverage checks (declarative + online describe)
-    doctor.py              # environment / configuration diagnostics
+    diagnostics.py         # DoctorCheck + shared diagnostic helpers
+    doctor.py              # generic orchestrator over source diagnose hooks
     exporting.py           # directory / zip exports
     geo.py                 # bbox maths (geopy) + GeoJSON -> WKT (shapely)
     credentials.py         # environment credential resolution

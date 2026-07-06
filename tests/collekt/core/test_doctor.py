@@ -32,7 +32,7 @@ def test_run_doctor_online_flags_stale_available_variables(monkeypatch):
         )
         return SimpleNamespace(products=[SimpleNamespace(datasets=[dataset])])
 
-    monkeypatch.setattr("collekt.core.doctor._copernicusmarine_describe", lambda: describe)
+    monkeypatch.setattr("collekt.sources.cmems._copernicusmarine_describe", lambda: describe)
     checks = run_doctor(config=cfg, online=True)
 
     cmems = next(check for check in checks if check.name == "cmems catalogue s")
@@ -82,7 +82,7 @@ def test_run_doctor_online_checks_declared_coverage(monkeypatch):
         )
         return SimpleNamespace(products=[SimpleNamespace(datasets=[dataset])])
 
-    monkeypatch.setattr("collekt.core.doctor._copernicusmarine_describe", lambda: describe)
+    monkeypatch.setattr("collekt.sources.cmems._copernicusmarine_describe", lambda: describe)
     checks = run_doctor(config=cfg, online=True)
 
     coverage = next(check for check in checks if check.name == "cmems coverage s")

@@ -7,11 +7,13 @@ directory. Credentials are resolved by the tool itself from the environment.
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 from pathlib import Path
 
 from collekt.core.availability import Availability, AvailabilityMethod, AvailabilityStatus
 from collekt.core.config import Config, SourceConfig
+from collekt.core.diagnostics import DoctorCheck, DoctorStatus
 from collekt.core.request import Request
 from collekt.sources.base import (
     ProgressCallback,
@@ -110,4 +112,17 @@ def plan_hozint(request: Request, source: SourceConfig, config: Config, request_
     ]
 
 
-register_adapter(SourceAdapter(kind="hozint", fetch=fetch_hozint, plan=plan_hozint))
+def diagnose(config: Config, online: bool) -> list[DoctorCheck]:
+    """Return HOZINT command-line tool diagnostics."""
+    if shutil.which("hozint-apiclient"):
+        return [DoctorCheck("hozint-apiclient tool", DoctorStatus.OK, "hozint-apiclient is on PATH")]
+    return [
+        DoctorCheck(
+            "hozint-apiclient tool",
+            DoctorStatus.WARN,
+            "hozint-apiclient not found on PATH; HOZINT reports will be skipped",
+        )
+    ]
+
+
+register_adapter(SourceAdapter(kind="hozint", fetch=fetch_hozint, plan=plan_hozint, diagnose=diagnose))

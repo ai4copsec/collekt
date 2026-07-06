@@ -9,6 +9,7 @@ from typing import Any
 
 from collekt.core.availability import Coverage
 from collekt.core.config import Config, SourceConfig
+from collekt.core.diagnostics import DoctorCheck, DoctorStatus, package_check, path_exists
 from collekt.core.naming import format_pattern, pattern_values
 from collekt.core.request import Request
 from collekt.core.temporal import SamplingPlan, sampling_plan
@@ -177,4 +178,16 @@ def plan_era5(request: Request, source: SourceConfig, config: Config, request_di
     )
 
 
-register_adapter(SourceAdapter(kind="era5", fetch=fetch_era5, plan=plan_era5))
+def diagnose(config: Config, online: bool) -> list[DoctorCheck]:
+    """Return ERA5 package and credential diagnostics."""
+    checks = [package_check("cdsapi package", "cdsapi")]
+    if path_exists(config.credentials.cdsapi_rc):
+        checks.append(DoctorCheck("cds credentials", DoctorStatus.OK, f"found {config.credentials.cdsapi_rc}"))
+    else:
+        checks.append(
+            DoctorCheck("cds credentials", DoctorStatus.WARN, "CDS rc file not found; ERA5 downloads may fail")
+        )
+    return checks
+
+
+register_adapter(SourceAdapter(kind="era5", fetch=fetch_era5, plan=plan_era5, diagnose=diagnose))

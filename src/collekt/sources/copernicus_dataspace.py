@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +19,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from collekt.core.availability import Availability, AvailabilityMethod, AvailabilityStatus
 from collekt.core.config import Config, SourceConfig
+from collekt.core.diagnostics import DoctorCheck, DoctorStatus
 from collekt.core.request import Request
 from collekt.sources.base import (
     ProgressCallback,
@@ -193,6 +195,33 @@ def plan_copernicus_dataspace(
     ]
 
 
+def diagnose(config: Config, online: bool) -> list[DoctorCheck]:
+    """Return Copernicus Data Space credential diagnostics."""
+    has_credentials = bool(
+        os.environ.get("COPERNICUS_DATASPACE_USERNAME") and os.environ.get("COPERNICUS_DATASPACE_PASSWORD")
+    )
+    if has_credentials:
+        return [
+            DoctorCheck(
+                "copernicus dataspace credentials",
+                DoctorStatus.OK,
+                "found COPERNICUS_DATASPACE_USERNAME/PASSWORD",
+            )
+        ]
+    return [
+        DoctorCheck(
+            "copernicus dataspace credentials",
+            DoctorStatus.WARN,
+            "no COPERNICUS_DATASPACE_USERNAME/PASSWORD found; Data Space downloads may fail",
+        )
+    ]
+
+
 register_adapter(
-    SourceAdapter(kind="copernicus_dataspace", fetch=fetch_copernicus_dataspace, plan=plan_copernicus_dataspace)
+    SourceAdapter(
+        kind="copernicus_dataspace",
+        fetch=fetch_copernicus_dataspace,
+        plan=plan_copernicus_dataspace,
+        diagnose=diagnose,
+    )
 )

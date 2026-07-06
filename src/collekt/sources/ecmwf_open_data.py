@@ -8,6 +8,7 @@ from typing import Any
 
 from collekt.core.availability import Coverage
 from collekt.core.config import Config, SourceConfig
+from collekt.core.diagnostics import DoctorCheck, package_check
 from collekt.core.naming import format_pattern, pattern_values
 from collekt.core.request import Request
 from collekt.core.temporal import SamplingPlan, sampling_plan
@@ -194,4 +195,11 @@ def plan_ecmwf_open_data(
     )
 
 
-register_adapter(SourceAdapter(kind="ecmwf_open_data", fetch=fetch_ecmwf_open_data, plan=plan_ecmwf_open_data))
+def diagnose(config: Config, online: bool) -> list[DoctorCheck]:
+    """Return ECMWF Open Data package diagnostics."""
+    return [package_check("ecmwf-opendata package", "ecmwf.opendata")]
+
+
+register_adapter(
+    SourceAdapter(kind="ecmwf_open_data", fetch=fetch_ecmwf_open_data, plan=plan_ecmwf_open_data, diagnose=diagnose)
+)

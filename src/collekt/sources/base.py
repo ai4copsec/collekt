@@ -6,7 +6,11 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collekt.core.config import Config
+    from collekt.core.diagnostics import DoctorCheck
 
 
 class SourceStatus(StrEnum):
@@ -59,11 +63,14 @@ class SourceAdapter:
         kind: The ``kind`` value that selects this adapter in source config.
         fetch: ``(request, source, config, request_dir, *, progress) -> list[SourceResult]``.
         plan: ``(request, source, config, request_dir) -> list[SourceResult]``.
+        diagnose: Optional ``(config, online) -> list[DoctorCheck]`` hook for
+            package, credential, and provider-catalogue diagnostics.
     """
 
     kind: str
     fetch: Callable[..., list[SourceResult]]
     plan: Callable[..., list[SourceResult]]
+    diagnose: Callable[[Config, bool], list[DoctorCheck]] | None = None
 
 
 _ADAPTERS: dict[str, SourceAdapter] = {}
