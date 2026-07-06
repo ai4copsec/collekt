@@ -58,7 +58,11 @@ src/collekt/
     regions/                      # example region GeoJSON files
 
   cli/
-    main.py                # `collekt fetch` / `doctor` / `config show`
+    main.py                # thin entry point: build parser from commands, dispatch
+    commands/              # one module per subcommand (register + execute)
+      fetch.py             #   `collekt fetch`
+      doctor.py            #   `collekt doctor`
+      config.py            #   `collekt config show`
 ```
 
 collekt ships a curated catalog under `conf/source/`. Public code selects from it

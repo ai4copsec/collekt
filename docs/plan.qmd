@@ -104,7 +104,8 @@ src/collekt/
     schema/manifest.schema.json   # draft, permissive; not enforced during alpha
 
   cli/
-    main.py                  # argument parser + entry point
+    main.py                  # thin entry point: registers commands, dispatches
+    commands/                # one module per subcommand (register + execute)
 ```
 
 ### Module mapping (tb-rea → collekt)

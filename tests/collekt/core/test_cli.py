@@ -4,9 +4,9 @@ import logging
 
 import pytest
 
-import collekt.cli.main as cli_main
 from collekt.cli.main import build_parser, run
 from collekt.core.config import get_config
+from collekt.core.datasets import DatasetConfig
 from collekt.sources.base import (
     SourceAdapter,
     SourceResult,
@@ -81,7 +81,7 @@ def _fetch_argv(config_file, out, *extra):
 
 
 def _patch_dataset_config(monkeypatch, config):
-    monkeypatch.setattr(cli_main.DatasetConfig, "from_yaml", staticmethod(lambda path: config))
+    monkeypatch.setattr(DatasetConfig, "from_yaml", staticmethod(lambda path: config))
 
 
 def test_build_parser_requires_a_command():
