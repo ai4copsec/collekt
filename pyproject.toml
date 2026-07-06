@@ -50,6 +50,7 @@ dependencies = [
     "cdsapi>=0.7.7",
     "ecmwf-opendata>=0.3.30",
     "hozint-apiclient",
+    "python-dotenv>=1.2.2",
 ]
 
 [project.urls]
