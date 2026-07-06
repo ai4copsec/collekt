@@ -16,6 +16,8 @@ from typing import Any
 
 from collekt.core.availability import (
     Availability,
+    AvailabilityMethod,
+    AvailabilityStatus,
     Coverage,
     day_in_range,
     day_reason,
@@ -49,12 +51,12 @@ def output_path(request: Request, source: SourceConfig, request_dir: Path, datas
     return request_dir / source.path / format_pattern(source.filename_pattern, values)
 
 
-def static_source_coverage(source: SourceConfig) -> tuple[Coverage | None, str, bool]:
+def static_source_coverage(source: SourceConfig) -> tuple[Coverage | None, AvailabilityMethod, bool]:
     """Resolve coverage from a source's declarative ``coverage`` block."""
     coverage = static_coverage(source)
     if coverage is not None:
-        return coverage, "coverage", True
-    return None, "not_checked", False
+        return coverage, AvailabilityMethod.COVERAGE, True
+    return None, AvailabilityMethod.NOT_CHECKED, False
 
 
 def plan_source(
@@ -63,7 +65,7 @@ def plan_source(
     request_dir: Path,
     *,
     coverage: Coverage | None,
-    method: str,
+    method: AvailabilityMethod,
     checked: bool,
     dataset_for_day: DatasetForDay,
     day_details: DayDetails,
@@ -76,7 +78,7 @@ def plan_source(
     """
     if coverage is not None and not region_overlaps(request.region, coverage):
         reason = region_reason(request.region, coverage)
-        availability = Availability("unavailable", method, reason=reason, coverage=coverage.as_dict())
+        availability = Availability(AvailabilityStatus.UNAVAILABLE, method, reason=reason, coverage=coverage.as_dict())
         return [
             SourceResult(
                 source=source.name,
@@ -93,7 +95,9 @@ def plan_source(
     for day in request.iter_days():
         if coverage is not None and not day_in_range(day, coverage):
             reason = day_reason(day, coverage)
-            availability = Availability("unavailable", method, reason=reason, coverage=coverage.as_dict())
+            availability = Availability(
+                AvailabilityStatus.UNAVAILABLE, method, reason=reason, coverage=coverage.as_dict()
+            )
             results.append(
                 SourceResult(
                     source=source.name,
@@ -106,7 +110,12 @@ def plan_source(
                 )
             )
             continue
-        status = "available" if checked else ("not_checked" if method == "not_checked" else "unknown")
+        if checked:
+            status = AvailabilityStatus.AVAILABLE
+        elif method == AvailabilityMethod.NOT_CHECKED:
+            status = AvailabilityStatus.NOT_CHECKED
+        else:
+            status = AvailabilityStatus.UNKNOWN
         availability = Availability(status, method, coverage=coverage.as_dict() if coverage else None)
         dataset_id, details, path_extra = day_details(request, source, day, plan, coverage)
         details["availability"] = availability.as_dict()

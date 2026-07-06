@@ -18,6 +18,7 @@ import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
+from enum import StrEnum
 from typing import Any
 
 GLOBAL_WEST, GLOBAL_EAST, GLOBAL_SOUTH, GLOBAL_NORTH = -180.0, 180.0, -90.0, 90.0
@@ -58,18 +59,40 @@ class Coverage:
         }
 
 
+class AvailabilityStatus(StrEnum):
+    """Whether a source can serve the requested region and dates."""
+
+    AVAILABLE = "available"
+    UNAVAILABLE = "unavailable"
+    UNKNOWN = "unknown"
+    NOT_CHECKED = "not_checked"
+
+
+class AvailabilityMethod(StrEnum):
+    """How a source's availability was determined."""
+
+    DESCRIBE = "describe"
+    COVERAGE = "coverage"
+    NOT_CHECKED = "not_checked"
+
+
 @dataclass(frozen=True)
 class Availability:
     """Availability verdict for one source/day during planning."""
 
-    status: str  # "available" | "unavailable" | "unknown" | "not_checked"
-    method: str  # "describe" | "coverage" | "not_checked"
+    status: AvailabilityStatus
+    method: AvailabilityMethod
     reason: str | None = None
     coverage: dict[str, Any] | None = None
 
     def as_dict(self) -> dict[str, Any]:
         """Return a JSON-serializable mapping for manifests."""
-        return {"status": self.status, "method": self.method, "reason": self.reason, "coverage": self.coverage}
+        return {
+            "status": self.status.value,
+            "method": self.method.value,
+            "reason": self.reason,
+            "coverage": self.coverage,
+        }
 
 
 def parse_relative_date(value: Any, *, default: date | None = None) -> date | None:

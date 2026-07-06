@@ -10,7 +10,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-from collekt.core.availability import Availability
+from collekt.core.availability import Availability, AvailabilityMethod, AvailabilityStatus
 from collekt.core.config import Config, SourceConfig
 from collekt.core.request import Request
 from collekt.sources.base import (
@@ -96,7 +96,7 @@ def plan_hozint(request: Request, source: SourceConfig, config: Config, request_
         "provider": "hozint-apiclient",
         "method": "cli",
         "request": {"command": _command(source, request_dir / source.path, request)},
-        "availability": Availability("not_checked", "not_checked").as_dict(),
+        "availability": Availability(AvailabilityStatus.NOT_CHECKED, AvailabilityMethod.NOT_CHECKED).as_dict(),
     }
     return [
         SourceResult(

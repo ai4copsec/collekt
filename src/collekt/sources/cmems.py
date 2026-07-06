@@ -8,7 +8,13 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any
 
-from collekt.core.availability import Coverage, describe_coverage, merge_coverages, static_coverage
+from collekt.core.availability import (
+    AvailabilityMethod,
+    Coverage,
+    describe_coverage,
+    merge_coverages,
+    static_coverage,
+)
 from collekt.core.config import Config, SourceConfig
 from collekt.core.naming import format_pattern, pattern_values
 from collekt.core.request import Request
@@ -164,15 +170,15 @@ def fetch_cmems(
     return results
 
 
-def _cmems_coverage(request: Request, source: SourceConfig) -> tuple[Coverage | None, str, bool]:
+def _cmems_coverage(request: Request, source: SourceConfig) -> tuple[Coverage | None, AvailabilityMethod, bool]:
     dataset_ids = dict.fromkeys(_select_dataset(source, day) for day in request.iter_days())
     coverages = [coverage for dataset_id in dataset_ids if (coverage := describe_coverage(dataset_id)) is not None]
     if not coverages:
         coverage = static_coverage(source)
         if coverage is not None:
-            return coverage, "coverage", True
-        return None, "describe", False
-    return merge_coverages(coverages), "describe", True
+            return coverage, AvailabilityMethod.COVERAGE, True
+        return None, AvailabilityMethod.DESCRIBE, False
+    return merge_coverages(coverages), AvailabilityMethod.DESCRIBE, True
 
 
 def _cmems_day_details(

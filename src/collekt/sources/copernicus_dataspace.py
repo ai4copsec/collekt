@@ -16,7 +16,7 @@ from typing import Any
 import requests
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from collekt.core.availability import Availability
+from collekt.core.availability import Availability, AvailabilityMethod, AvailabilityStatus
 from collekt.core.config import Config, SourceConfig
 from collekt.core.request import Request
 from collekt.sources.base import (
@@ -179,7 +179,7 @@ def plan_copernicus_dataspace(
         "provider": "copernicus-dataspace",
         "method": "stac-search",
         "request": _search_params(request, source, collection),
-        "availability": Availability("not_checked", "not_checked").as_dict(),
+        "availability": Availability(AvailabilityStatus.NOT_CHECKED, AvailabilityMethod.NOT_CHECKED).as_dict(),
     }
     return [
         SourceResult(
