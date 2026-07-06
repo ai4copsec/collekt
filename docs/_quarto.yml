@@ -17,6 +17,8 @@ website:
         href: index.qmd
       - text: "Products"
         href: products.qmd
+      - text: "CLI"
+        href: cli.qmd
       - text: "Credentials"
         href: credentials.qmd
       - text: "Manifest"
@@ -43,6 +45,7 @@ format:
     toc-depth: 3
     number-sections: false
     smooth-scroll: true
+    page-layout: full
 
 highlight-style: github
 

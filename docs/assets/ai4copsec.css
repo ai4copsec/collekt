@@ -99,6 +99,17 @@ thead,
   color: var(--ai4copsec-navy);
 }
 
+.cmems-catalog table th:nth-child(2),
+.cmems-catalog table td:nth-child(2) {
+  width: 20rem;
+  min-width: 10rem;
+  max-width: 20rem;
+
+.cmems-catalog table td:nth-child(2) code {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 .sidebar nav[role="doc-toc"] ul > li > a.active,
 .sidebar nav[role="doc-toc"] ul > li > ul > li > a.active {
   border-left-color: var(--ai4copsec-teal);

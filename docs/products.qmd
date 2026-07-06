@@ -43,6 +43,66 @@ uses, grouped into catalogs under `collekt/conf/source/`:
 | `hozint` | `hozint` |
 | `dataspace` | `copernicus_s1_grd`, `copernicus_s2_l2a`, `copernicus_landsat` |
 
+## CMEMS Dataset Snapshot
+
+The table below mirrors the bundled `src/collekt/conf/source/cmems_*.yaml`
+catalog files as of 2026-07-06. Temporal coverage is the offline coverage
+declared in the repository on that date; rolling/NRT products intentionally keep
+an open end and can be refreshed manually with `scripts/update_cmems_coverage.py`.
+Resolution is inferred from the CMEMS dataset identifier when the catalog does
+not declare it as a separate field.
+
+::: {.panel-tabset .cmems-catalog}
+
+### Global
+
+| Source key | Dataset ID | Resolution | Native sampling | Spatial coverage | Temporal coverage | Variables | Depth | DOI / product |
+|---|---|---|---|---|---|---|---|---|
+| `cmems_glorys_nrt` | `cmems_mod_glo_phy-cur_anfc_0.083deg_P1D-m` | 0.083 deg | `24h` | -180.0/179.9 -80.0/90.0 | from `2022-06-01` (rolling/open on 2026-07-06) | `uo`, `vo` | yes | [10.48670/moi-00016](https://doi.org/10.48670/moi-00016)<br>[product](https://data.marine.copernicus.eu/product/GLOBAL_ANALYSISFORECAST_PHY_001_024/description) |
+| `cmems_glorys_my` | `cmems_mod_glo_phy_my_0.083deg_P1D-m` | 0.083 deg | `24h` | -180.0/179.9 -80.0/90.0 | `1993-01-01` to `2026-05-26` | `bottomT`, `mlotst`, `siconc`, `sithick`, `so`, `thetao`, `uo`, `usi`, `vo`, `vsi`, `zos` | yes | [10.48670/moi-00021](https://doi.org/10.48670/moi-00021)<br>[product](https://data.marine.copernicus.eu/product/GLOBAL_MULTIYEAR_PHY_001_030/description) |
+| `cmems_duacs_nrt` | `cmems_obs-sl_glo_phy-ssh_nrt_allsat-l4-duacs-0.125deg_P1D` | 0.125 deg | `24h` | -179.9/179.9 -89.9/89.9 | from `2024-07-01` (rolling/open on 2026-07-06) | `adt`, `err_sla`, `err_ugosa`, `err_vgosa`, `flag_ice`, `sla`, `ugos`, `ugosa`, `vgos`, `vgosa` | no | [10.48670/moi-00149](https://doi.org/10.48670/moi-00149)<br>[product](https://data.marine.copernicus.eu/product/SEALEVEL_GLO_PHY_L4_NRT_008_046/description) |
+| `cmems_duacs_my` | `cmems_obs-sl_glo_phy-ssh_my_allsat-l4-duacs-0.125deg_P1D` | 0.125 deg | `24h` | -179.9/179.9 -89.9/89.9 | `1993-01-01` to `2026-01-16` | `adt`, `err_sla`, `err_ugosa`, `err_vgosa`, `flag_ice`, `sla`, `tpa_correction`, `ugos`, `ugosa`, `vgos`, `vgosa` | no | [10.48670/moi-00148](https://doi.org/10.48670/moi-00148)<br>[product](https://data.marine.copernicus.eu/product/SEALEVEL_GLO_PHY_L4_MY_008_047/description) |
+| `cmems_global_sst_nrt` | `METOFFICE-GLO-SST-L4-NRT-OBS-SST-V2` | not declared | `24h` | -180.0/180.0 -90.0/90.0 | from `2024-01-17` (rolling/open on 2026-07-06) | `analysed_sst`, `analysis_error`, `mask`, `sea_ice_fraction` | no | [10.48670/moi-00165](https://doi.org/10.48670/moi-00165)<br>[product](https://data.marine.copernicus.eu/product/SST_GLO_SST_L4_NRT_OBSERVATIONS_010_001/description) |
+| `cmems_global_sst_my` | `METOFFICE-GLO-SST-L4-REP-OBS-SST` | not declared | `24h` | -180.0/180.0 -90.0/90.0 | `1981-10-01` to `2025-12-18` | `analysed_sst`, `analysis_error`, `mask`, `sea_ice_fraction` | no | [10.48670/moi-00168](https://doi.org/10.48670/moi-00168)<br>[product](https://data.marine.copernicus.eu/product/SST_GLO_SST_L4_REP_OBSERVATIONS_010_011/description) |
+| `cmems_global_waves` | `cmems_mod_glo_wav_anfc_0.083deg_PT3H-i` | 0.083 deg | `3h` | -180.0/179.9 -80.0/90.0 | from `2022-11-01` (rolling/open on 2026-07-06) | `VCMX`, `VHM0`, `VHM0_SW1`, `VHM0_SW2`, `VHM0_WW`, `VMDR`, `VMDR_SW1`, `VMDR_SW2`, `VMDR_WW`, `VMXL`, `VPED`, `VSDX`, `VSDY`, `VTM01_SW1`, `VTM01_SW2`, `VTM01_WW`, `VTM02`, `VTM10`, `VTPK` | no | [10.48670/moi-00017](https://doi.org/10.48670/moi-00017)<br>[product](https://data.marine.copernicus.eu/product/GLOBAL_ANALYSISFORECAST_WAV_001_027/description) |
+| `cmems_global_chl_obs_nrt` | `cmems_obs-oc_glo_bgc-plankton_nrt_l4-gapfree-multi-4km_P1D` | 4 km | `24h` | -180.0/180.0 -90.0/90.0 | from `2026-06-17` (rolling/open on 2026-07-06) | `CHL`, `CHL_uncertainty`, `flags` | no | [10.48670/moi-00279](https://doi.org/10.48670/moi-00279)<br>[product](https://data.marine.copernicus.eu/product/OCEANCOLOUR_GLO_BGC_L4_NRT_009_102/description) |
+| `cmems_global_chl_obs_my` | `cmems_obs-oc_glo_bgc-plankton_my_l3-multi-4km_P1D` | 4 km | `24h` | -180.0/180.0 -90.0/90.0 | `1997-09-04` to `2026-06-25` | `CHL`, `CHL_uncertainty`, `DIATO`, `DIATO_uncertainty`, `DINO`, `DINO_uncertainty`, `GREEN`, `GREEN_uncertainty`, `HAPTO`, `HAPTO_uncertainty`, `MICRO`, `MICRO_uncertainty`, `NANO`, `NANO_uncertainty`, `PICO`, `PICO_uncertainty`, `PROCHLO`, `PROCHLO_uncertainty`, `PROKAR`, `PROKAR_uncertainty`, `flags` | no | [10.48670/moi-00280](https://doi.org/10.48670/moi-00280)<br>[product](https://data.marine.copernicus.eu/product/OCEANCOLOUR_GLO_BGC_L3_MY_009_103/description) |
+| `cmems_global_bgc_model` | `cmems_mod_glo_bgc-pft_anfc_0.25deg_P1D-m` | 0.25 deg | `24h` | -180.0/179.8 -80.0/90.0 | from `2021-11-01` (rolling/open on 2026-07-06) | `chl`, `phyc` | yes | [10.48670/moi-00015](https://doi.org/10.48670/moi-00015)<br>[product](https://data.marine.copernicus.eu/product/GLOBAL_ANALYSISFORECAST_BGC_001_028/description) |
+
+### IBI / Atlantic
+
+| Source key | Dataset ID | Resolution | Native sampling | Spatial coverage | Temporal coverage | Variables | Depth | DOI / product |
+|---|---|---|---|---|---|---|---|---|
+| `cmems_ibi_currents` | `cmems_mod_ibi_phy_anfc_0.027deg-3D_P1D-m` | 0.027 deg | `24h` | -19.1/5.1 26.2/56.1 | from `2022-11-23` (rolling/open on 2026-07-06) | `bottomT`, `mlotst`, `so`, `thetao`, `uo`, `vo`, `zos` | yes | [10.48670/moi-00027](https://doi.org/10.48670/moi-00027)<br>[product](https://data.marine.copernicus.eu/product/IBI_ANALYSISFORECAST_PHY_005_001/description) |
+| `cmems_ibi_waves` | `cmems_mod_ibi_wav_anfc_0.027deg_PT1H-i` | 0.027 deg | `1h` | -19.0/5.0 26.0/56.0 | from `2022-11-26` (rolling/open on 2026-07-06) | `VCMX`, `VHM0`, `VHM0_SW1`, `VHM0_SW2`, `VHM0_WW`, `VMDR`, `VMDR_SW1`, `VMDR_SW2`, `VMDR_WW`, `VMXL`, `VPED`, `VSDX`, `VSDY`, `VTM01_SW1`, `VTM01_SW2`, `VTM01_WW`, `VTM02`, `VTM10`, `VTPK` | no | [10.48670/moi-00025](https://doi.org/10.48670/moi-00025)<br>[product](https://data.marine.copernicus.eu/product/IBI_ANALYSISFORECAST_WAV_005_005/description) |
+| `cmems_atl_chl_obs_nrt` | `cmems_obs-oc_atl_bgc-plankton_nrt_l3-multi-1km_P1D` | 1 km | `24h` | -46.0/13.0 20.0/66.0 | from `2026-06-16` (rolling/open on 2026-07-06) | `CHL`, `CHL_uncertainty`, `DIATO`, `DIATO_uncertainty`, `DINO`, `DINO_uncertainty`, `GREEN`, `GREEN_uncertainty`, `HAPTO`, `HAPTO_uncertainty`, `MICRO`, `MICRO_uncertainty`, `NANO`, `NANO_uncertainty`, `PICO`, `PICO_uncertainty`, `PROCHLO`, `PROCHLO_uncertainty`, `PROKAR`, `PROKAR_uncertainty`, `flags` | no | [10.48670/moi-00284](https://doi.org/10.48670/moi-00284)<br>[product](https://data.marine.copernicus.eu/product/OCEANCOLOUR_ATL_BGC_L3_NRT_009_111/description) |
+| `cmems_atl_chl_obs_my` | `cmems_obs-oc_atl_bgc-plankton_my_l3-multi-1km_P1D` | 1 km | `24h` | -46.0/13.0 20.0/66.0 | `1997-09-04` to `2026-06-25` | `CHL`, `CHL_uncertainty`, `DIATO`, `DIATO_uncertainty`, `DINO`, `DINO_uncertainty`, `GREEN`, `GREEN_uncertainty`, `HAPTO`, `HAPTO_uncertainty`, `MICRO`, `MICRO_uncertainty`, `NANO`, `NANO_uncertainty`, `PICO`, `PICO_uncertainty`, `PROCHLO`, `PROCHLO_uncertainty`, `PROKAR`, `PROKAR_uncertainty`, `flags` | no | [10.48670/moi-00286](https://doi.org/10.48670/moi-00286)<br>[product](https://data.marine.copernicus.eu/product/OCEANCOLOUR_ATL_BGC_L3_MY_009_113/description) |
+| `cmems_ibi_bgc_model` | `cmems_mod_ibi_bgc_anfc_0.027deg-3D_P1D-m` | 0.027 deg | `24h` | -19.1/5.1 26.2/56.1 | from `2022-11-23` (rolling/open on 2026-07-06) | `chl`, `dissic`, `fe`, `nh4`, `no3`, `nppv`, `o2`, `ph`, `phyc`, `po4`, `si`, `spco2`, `zeu`, `zooc` | yes | [10.48670/moi-00026](https://doi.org/10.48670/moi-00026)<br>[product](https://data.marine.copernicus.eu/product/IBI_ANALYSISFORECAST_BGC_005_004/description) |
+
+### Mediterranean
+
+| Source key | Dataset ID | Resolution | Native sampling | Spatial coverage | Temporal coverage | Variables | Depth | DOI / product |
+|---|---|---|---|---|---|---|---|---|
+| `cmems_med_currents_nrt` | `cmems_mod_med_phy-cur_anfc_4.2km_P1D-m` | 4.2 km | `24h` | -17.3/36.3 30.2/46.0 | from `2024-03-30` (rolling/open on 2026-07-06) | `uo`, `vo` | yes | [10.48670/mds-00359](https://doi.org/10.48670/mds-00359)<br>[product](https://data.marine.copernicus.eu/product/MEDSEA_ANALYSISFORECAST_PHY_006_013/description) |
+| `cmems_med_currents_nrt_15min` | `cmems_mod_med_phy-cur_anfc_4.2km_PT15M-i` | 4.2 km | `15min` | -17.3/36.3 30.2/46.0 | from `2024-03-28` (rolling/open on 2026-07-06) | `uo`, `vo` | yes | [10.48670/mds-00359](https://doi.org/10.48670/mds-00359)<br>[product](https://data.marine.copernicus.eu/product/MEDSEA_ANALYSISFORECAST_PHY_006_013/description) |
+| `cmems_med_currents_nrt_2d_hourly` | `cmems_mod_med_phy-cur_anfc_4.2km-2D_PT1H-m` | 4.2 km | `1h` | -17.3/36.3 30.2/46.0 | from `2024-03-29` (rolling/open on 2026-07-06) | `uo`, `vo` | no | [10.48670/mds-00359](https://doi.org/10.48670/mds-00359)<br>[product](https://data.marine.copernicus.eu/product/MEDSEA_ANALYSISFORECAST_PHY_006_013/description) |
+| `cmems_med_currents_nrt_3d_hourly` | `cmems_mod_med_phy-cur_anfc_4.2km-3D_PT1H-m` | 4.2 km | `1h` | -17.3/36.3 30.2/46.0 | from `2025-10-06` (rolling/open on 2026-07-06) | `uo`, `vo` | yes | [10.48670/mds-00359](https://doi.org/10.48670/mds-00359)<br>[product](https://data.marine.copernicus.eu/product/MEDSEA_ANALYSISFORECAST_PHY_006_013/description) |
+| `cmems_med_currents_my` | `cmems_mod_med_phy-cur_my_4.2km_P1D-m` | 4.2 km | `24h` | -6.0/36.3 30.2/46.0 | `1987-01-01` to `2026-05-31` | `uo`, `vo` | yes | [10.48670/mds-00375](https://doi.org/10.48670/mds-00375)<br>[product](https://data.marine.copernicus.eu/product/MEDSEA_MULTIYEAR_PHY_006_004/description) |
+| `cmems_med_waves` | `cmems_mod_med_wav_anfc_4.2km_PT1H-i` | 4.2 km | `1h` | -18.1/36.3 30.2/46.0 | from `2021-11-30` (rolling/open on 2026-07-06) | `VCMX`, `VHM0`, `VHM0_SW1`, `VHM0_SW2`, `VHM0_WW`, `VMDR`, `VMDR_SW1`, `VMDR_SW2`, `VMDR_WW`, `VMXL`, `VPED`, `VSDX`, `VSDY`, `VTM01_SW1`, `VTM01_SW2`, `VTM01_WW`, `VTM02`, `VTM10`, `VTPK` | no | [10.48670/mds-00373](https://doi.org/10.48670/mds-00373)<br>[product](https://data.marine.copernicus.eu/product/MEDSEA_ANALYSISFORECAST_WAV_006_017/description) |
+| `cmems_med_chl_obs` | `cmems_obs-oc_med_bgc-plankton_nrt_l3-multi-1km_P1D` | 1 km | `24h` | -6.0/36.5 30.0/46.0 | from `2026-06-24` (rolling/open on 2026-07-06) | `CHL`, `CRYPTO`, `DIATO`, `DINO`, `GREEN`, `HAPTO`, `MICRO`, `NANO`, `PICO`, `PROKAR`, `QI_CHL`, `SENSORMASK`, `WTM` | no | [10.48670/moi-00297](https://doi.org/10.48670/moi-00297)<br>[product](https://data.marine.copernicus.eu/product/OCEANCOLOUR_MED_BGC_L3_NRT_009_141/description) |
+| `cmems_med_bgc_model` | `cmems_mod_med_bgc-bio_anfc_4.2km_P1D-m` | 4.2 km | `24h` | -5.5/36.3 30.2/46.0 | from `2024-02-26` (rolling/open on 2026-07-06) | `nppv`, `o2` | yes | [10.48670/mds-00358](https://doi.org/10.48670/mds-00358)<br>[product](https://data.marine.copernicus.eu/product/MEDSEA_ANALYSISFORECAST_BGC_006_014/description) |
+
+### North-West Shelf
+
+| Source key | Dataset ID | Resolution | Native sampling | Spatial coverage | Temporal coverage | Variables | Depth | DOI / product |
+|---|---|---|---|---|---|---|---|---|
+| `cmems_nws_currents` | `cmems_mod_nws_phy-cur_anfc_1.5km-3D_P1D-m` | 1.5 km | `24h` | -16.0/13.0 46.0/62.7 | from `2024-03-01` (rolling/open on 2026-07-06) | `ubar`, `uo`, `vbar`, `vo`, `wo` | yes | [10.48670/moi-00054](https://doi.org/10.48670/moi-00054)<br>[product](https://data.marine.copernicus.eu/product/NWSHELF_ANALYSISFORECAST_PHY_004_013/description) |
+| `cmems_nws_waves` | `cmems_mod_nws_wav_anfc_1.5km_PT1H-i` | 1.5 km | `1h` | -16.0/13.0 46.0/62.7 | from `2024-03-03` (rolling/open on 2026-07-06) | `VCMX`, `VHM0`, `VHM0_SW1`, `VHM0_SW2`, `VHM0_WW`, `VMDR`, `VMDR_SW1`, `VMDR_SW2`, `VMDR_WW`, `VMXL`, `VPED`, `VSDX`, `VSDY`, `VTM01_SW1`, `VTM01_SW2`, `VTM01_WW`, `VTM02`, `VTM10`, `VTPK`, `forecast_period` | no | [10.48670/moi-00055](https://doi.org/10.48670/moi-00055)<br>[product](https://data.marine.copernicus.eu/product/NWSHELF_ANALYSISFORECAST_WAV_004_014/description) |
+| `cmems_nws_chl_obs` | `cmems_obs_oc_nws_bgc_tur-spm-chl_nrt_l3-hr-mosaic_P1D-m` | not declared | `24h` | -12.0/13.0 48.0/62.0 | from `2020-01-01` (rolling/open on 2026-07-06) | `CHL`, `SPM`, `TUR` | no | [10.48670/moi-00118](https://doi.org/10.48670/moi-00118)<br>[product](https://data.marine.copernicus.eu/product/OCEANCOLOUR_NWS_BGC_HR_L3_NRT_009_203/description) |
+| `cmems_nws_bgc_model` | `cmems_mod_nws_bgc-chl_anfc_7km-3D_P1D-m` | 7 km | `24h` | -19.9/13.0 40.1/65.0 | from `2024-02-28` (rolling/open on 2026-07-06) | `chl` | yes | [10.48670/moi-00056](https://doi.org/10.48670/moi-00056)<br>[product](https://data.marine.copernicus.eu/product/NWSHELF_ANALYSISFORECAST_BGC_004_002/description) |
+
+:::
+
 Select concrete datasets with `DatasetConfig`, using provider-specific
 dataclasses whose fields match the YAML preset form:
 

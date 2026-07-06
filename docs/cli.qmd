@@ -1,0 +1,158 @@
+---
+title: "CLI"
+toc: true
+number-sections: false
+---
+
+The `collekt` command line is a thin wrapper around the same objects used by the
+Python API: a region and time window, a `DatasetConfig` YAML selection, and a
+runtime output directory.
+
+## Fetch Data
+
+Use `collekt fetch` to download source-native files for a request. A dataset
+selection is required and the output directory is runtime state, not part of the
+selection file.
+
+```bash
+collekt fetch \
+  --bbox -6 20 35 45 \
+  --start 2023-06-15 \
+  --end 2023-06-15 \
+  --dataset-config westmed.yaml \
+  --output-dir data/collections
+```
+
+`--bbox` uses `WEST EAST SOUTH NORTH` order. The same request can also use a
+point radius:
+
+```bash
+collekt fetch \
+  --at-lat 43.3 \
+  --at-lon 5.4 \
+  --radius 50 \
+  --start 2023-06-15 \
+  --dataset-config westmed.yaml \
+  --output-dir data/collections
+```
+
+or a GeoJSON region:
+
+```bash
+collekt fetch \
+  --region regions/west-med.geojson \
+  --start 2023-06-15 \
+  --dataset-config westmed.yaml \
+  --output-dir data/collections
+```
+
+If `--end` is omitted, it defaults to the start day. If `--start` is omitted,
+the request defaults to the current UTC day.
+
+## Dataset Selection
+
+`--dataset-config` points to a YAML version of `DatasetConfig`. It names the
+desired datasets and provider parameters; the source catalog remains bundled with
+the package, or supplied through `--conf-dir`.
+
+```yaml
+datasets:
+  - provider: cmems
+    key: cmems_glorys_my
+    variables: [uo, vo]
+    depth: [1.0, 1.1]
+  - provider: cmems
+    key: cmems_duacs_my
+    variables: [ugos, vgos]
+  - provider: skytruth
+    key: skytruth
+```
+
+For CMEMS, select variables from the catalog's `available_variables`. Datasets
+with depth require a `depth: [min, max]` range. See [Products](products.qmd) for
+the bundled source keys and [Credentials](credentials.qmd) for provider secrets.
+
+## Planning
+
+Use `--dry-run` to inspect the planned provider requests without downloading
+files.
+
+```bash
+collekt fetch \
+  --bbox -6 20 35 45 \
+  --start 2023-06-15 \
+  --dataset-config westmed.yaml \
+  --output-dir data/collections \
+  --dry-run
+```
+
+The dry-run table reports each source, requested day, availability status,
+dataset ID, variables, and planned output path.
+
+## Cache and Strict Mode
+
+By default, `fetch` reuses files already present under the output directory.
+Pass `--no-cache` to force a new download.
+
+```bash
+collekt fetch \
+  --bbox -6 20 35 45 \
+  --start 2023-06-15 \
+  --dataset-config westmed.yaml \
+  --output-dir data/collections \
+  --no-cache
+```
+
+Pass `--strict` when skipped sources should make the command fail instead of
+being reported in the result summary.
+
+## Catalog Overlays
+
+Use `--conf-dir` when a project needs to add or override source catalog entries.
+The directory is merged on top of the bundled catalog.
+
+```bash
+collekt fetch \
+  --bbox -6 20 35 45 \
+  --start 2023-06-15 \
+  --conf-dir my_brick/conf \
+  --dataset-config presets/currents.yaml \
+  --output-dir data/collections
+```
+
+The selection file still contains only the requested datasets. The catalog
+overlay defines what datasets exist.
+
+## Diagnostics
+
+`collekt doctor` checks provider packages, credentials, and catalog consistency.
+
+```bash
+collekt doctor
+```
+
+Pass `--online` to validate CMEMS datasets, variables, and declared coverage
+against the Copernicus Marine catalogue.
+
+```bash
+collekt doctor --online
+```
+
+Use the same catalog overlay mechanism when checking downstream source entries.
+
+```bash
+collekt doctor --conf-dir my_brick/conf --online
+```
+
+The command exits with a non-zero status if any check fails.
+
+## Inspect Configuration
+
+`collekt config show` prints the merged configuration as YAML.
+
+```bash
+collekt config show
+collekt config show --conf-dir my_brick/conf
+```
+
+Use it to verify that a catalog overlay is visible before running a fetch.
