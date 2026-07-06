@@ -42,7 +42,6 @@ class DatasetSelection:
     variables: tuple[str, ...] = ()
 
     provider: ClassVar[str]
-    kind: ClassVar[str]
 
     def __init__(self, key: str, variables: Iterable[str] | None = None) -> None:
         object.__setattr__(self, "key", str(key))
@@ -65,7 +64,6 @@ class CMEMS(DatasetSelection):
     """Copernicus Marine dataset selection."""
 
     provider: ClassVar[str] = "cmems"
-    kind: ClassVar[str] = "cmems"
     depth: tuple[float, float] | None = None
 
     def __init__(
@@ -95,7 +93,6 @@ class ECMWFOpenData(DatasetSelection):
     """ECMWF Open Data forecast selection."""
 
     provider: ClassVar[str] = "ecmwf_open_data"
-    kind: ClassVar[str] = "ecmwf_open_data"
 
 
 @dataclass(frozen=True, init=False)
@@ -103,7 +100,6 @@ class ERA5(DatasetSelection):
     """ERA5 reanalysis selection."""
 
     provider: ClassVar[str] = "era5"
-    kind: ClassVar[str] = "era5"
 
 
 @dataclass(frozen=True, init=False)
@@ -111,7 +107,6 @@ class Eodyn(DatasetSelection):
     """eOdyn dataset selection."""
 
     provider: ClassVar[str] = "eodyn"
-    kind: ClassVar[str] = "eodyn"
 
 
 @dataclass(frozen=True, init=False)
@@ -119,7 +114,6 @@ class SkyTruth(DatasetSelection):
     """SkyTruth Cerulean slick selection."""
 
     provider: ClassVar[str] = "skytruth"
-    kind: ClassVar[str] = "skytruth"
     limit: int | None = None
 
     def __init__(self, key: str = "skytruth", *, limit: int | None = None) -> None:
@@ -144,7 +138,6 @@ class CopernicusDataSpace(DatasetSelection):
     """Copernicus Data Space product selection."""
 
     provider: ClassVar[str] = "copernicus_dataspace"
-    kind: ClassVar[str] = "copernicus_dataspace"
     max_records: int | None = None
 
     def __init__(self, key: str, *, max_records: int | None = None) -> None:
@@ -173,7 +166,6 @@ class Hozint(DatasetSelection):
     """
 
     provider: ClassVar[str] = "hozint"
-    kind: ClassVar[str] = "hozint"
 
     def __init__(self, key: str = "hozint") -> None:
         super().__init__(key, ())
@@ -241,9 +233,9 @@ class DatasetConfig:
             if dataset.key not in sources:
                 raise ValueError(f"unknown dataset key {dataset.key!r}")
             raw_source = dict(sources[dataset.key] or {})
-            kind = str(raw_source.get("kind", dataset.key))
-            if kind != dataset.kind:
-                raise ValueError(f"dataset {dataset.key!r} is a {kind!r} source, not {dataset.provider!r}")
+            source_kind = str(raw_source.get("kind", dataset.key))
+            if source_kind != dataset.provider:
+                raise ValueError(f"dataset {dataset.key!r} is a {source_kind!r} source, not {dataset.provider!r}")
             raw_source.update(dataset.source_overrides())
             selected[dataset.key] = raw_source
         raw = dict(catalog)
