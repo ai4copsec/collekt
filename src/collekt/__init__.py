@@ -26,10 +26,6 @@ from collekt.core.result import Result
 
 from .version import __version__, __version_info__
 
-# Keep a conventional class-case alias so quartodoc can generate the API page
-# without fighting the eOdyn brand capitalization.
-Eodyn = eOdyn
-
 # Load a project-local .env (searched upward from the working directory) so
 # credentials placed there reach every provider adapter: the provider tools read
 # the OS environment, which this fills. Existing environment variables win.
