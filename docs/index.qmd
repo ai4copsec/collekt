@@ -23,21 +23,21 @@ assembly step.
 
 ::: {.ai4copsec-home-grid}
 :::{}
-### Source-native collection
+#### Source-native collection
 
 Fetch CMEMS, ECMWF, SkyTruth, Copernicus Data Space, eOdyn, and other provider
 outputs without flattening their useful metadata away.
 :::
 
 :::{}
-### Reproducible manifests
+#### Reproducible manifests
 
 Every run writes a relocatable manifest describing requests, files, variables,
 coverage, and provider details.
 :::
 
 :::{}
-### Assembly workflow
+#### Assembly workflow
 
 Gridded outputs can be regridded and aligned onto a common grid and time axis
 when downstream analysis needs a single dataset.
@@ -46,8 +46,10 @@ when downstream analysis needs a single dataset.
 
 ## Getting started
 
+Installation from source:
+
 ```bash
-uv sync   # or: just install
+uv sync --all-groups  # or: just install
 ```
 
 ```python

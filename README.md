@@ -17,12 +17,23 @@ Requires Python 3.13+ and [`uv`](https://docs.astral.sh/uv/).
 ```bash
 git clone https://github.com/ai4copsec/collekt.git
 cd collekt
-uv sync   # or: just install
+uv sync --all-groups  # or: just install
 ```
 
 All provider clients and the gridded `Assembler` are installed by default, so
 every source works out of the box. Clients are imported lazily, so importing
 collekt stays fast.
+
+To build the documentation locally, you will also need the `quarto` binary ([quarto.org](https://quarto.org/)):
+
+```bash
+just docs
+# or :
+uv run quartodoc build --config docs/_quarto.yml
+quarto render docs
+```
+
+We recommend using `just` (<https://github.com/casey/just>)with the make-like commands available in `justfile`.
 
 ## Usage
 
