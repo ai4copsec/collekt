@@ -5,7 +5,7 @@ until it exists this adapter serves currents from a frozen historical archive of
 L4 NetCDF files (``mode: archive``), limited to the western Mediterranean for
 April-August 2023. The ``mode: api`` seam is reserved for the live API and
 behaves identically from the caller's side once available. The adapter emits an
-`EodynArchiveWarning` and skips any request outside the archive coverage.
+`eOdynArchiveWarning` and skips any request outside the archive coverage.
 """
 
 from __future__ import annotations
@@ -44,7 +44,7 @@ DEFAULT_COVERAGE: dict[str, object] = {
 }
 
 
-class EodynArchiveWarning(UserWarning):
+class eOdynArchiveWarning(UserWarning):
     """Warns that eOdyn currents come from a limited historical preview archive."""
 
 
@@ -154,7 +154,7 @@ def fetch_eodyn(
         ]
 
     coverage = _coverage(source)
-    warnings.warn(_historical_warning(coverage), EodynArchiveWarning, stacklevel=2)
+    warnings.warn(_historical_warning(coverage), eOdynArchiveWarning, stacklevel=2)
     progress(source.name, "serving the historical eOdyn preview archive (the production API does not exist yet)")
 
     if _region_out_of_coverage(request.region, coverage):

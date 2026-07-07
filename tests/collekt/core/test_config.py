@@ -96,6 +96,14 @@ def test_dataset_config_resolves_selected_catalog_entries(tmp_path):
     }
 
 
+def test_eodyn_dataset_selection_uses_brand_casing():
+    selection = collekt.eOdyn("eodyn_osmose_currents")
+
+    assert selection.as_dict() == {"provider": "eodyn", "key": "eodyn_osmose_currents"}
+    assert "eOdyn" in collekt.__all__
+    assert "Eodyn" not in collekt.__all__
+
+
 def test_dataset_config_resolves_a_downstream_dataset_via_conf_dir(tmp_path):
     # A conf_dir lets DatasetConfig select a dataset collekt does not ship.
     conf = tmp_path / "conf"

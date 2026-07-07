@@ -33,7 +33,7 @@ uv run quartodoc build --config docs/_quarto.yml
 quarto render docs
 ```
 
-We recommend using `just` (<https://github.com/casey/just>)with the make-like commands available in `justfile`.
+We recommend using `just` (<https://github.com/casey/just>) with the make-like commands available in `justfile`.
 
 ## Usage
 

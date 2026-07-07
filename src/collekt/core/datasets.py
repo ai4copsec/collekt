@@ -103,7 +103,7 @@ class ERA5(DatasetSelection):
 
 
 @dataclass(frozen=True, init=False)
-class Eodyn(DatasetSelection):
+class eOdyn(DatasetSelection):
     """eOdyn dataset selection."""
 
     provider: ClassVar[str] = "eodyn"
@@ -177,10 +177,10 @@ class Hozint(DatasetSelection):
         return {"provider": self.provider, "key": self.key}
 
 
-DatasetLike = CMEMS | ECMWFOpenData | ERA5 | Eodyn | SkyTruth | CopernicusDataSpace | Hozint
+DatasetLike = CMEMS | ECMWFOpenData | ERA5 | eOdyn | SkyTruth | CopernicusDataSpace | Hozint
 
 _PROVIDERS: dict[str, type[DatasetLike]] = {
-    cls.provider: cls for cls in (CMEMS, ECMWFOpenData, ERA5, Eodyn, SkyTruth, CopernicusDataSpace, Hozint)
+    cls.provider: cls for cls in (CMEMS, ECMWFOpenData, ERA5, eOdyn, SkyTruth, CopernicusDataSpace, Hozint)
 }
 
 

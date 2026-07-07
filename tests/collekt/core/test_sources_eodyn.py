@@ -9,7 +9,7 @@ import pytest
 from collekt import Fetcher
 from collekt.core.config import get_config
 from collekt.core.request import Region, Request
-from collekt.sources import EodynArchiveWarning
+from collekt.sources import eOdynArchiveWarning
 from collekt.sources.base import SourceStatus
 
 
@@ -124,7 +124,7 @@ def test_eodyn_reads_archive_and_subsets(tmp_path):
     _write_archive(archive)
     cfg = _config(tmp_path, archive)
 
-    with pytest.warns(EodynArchiveWarning):
+    with pytest.warns(eOdynArchiveWarning):
         result = Fetcher(_request(), config=cfg).download()
 
     assert result.summary.downloaded == 1

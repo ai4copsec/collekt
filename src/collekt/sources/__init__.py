@@ -18,4 +18,4 @@ from collekt.sources import (  # noqa: F401
     skytruth,
 )
 from collekt.sources.base import SourceResult, SourceStatus  # noqa: F401
-from collekt.sources.eodyn import EodynArchiveWarning  # noqa: F401
+from collekt.sources.eodyn import eOdynArchiveWarning  # noqa: F401
