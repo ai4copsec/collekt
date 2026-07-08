@@ -8,7 +8,7 @@ from dotenv import find_dotenv, load_dotenv
 # Importing the sources package registers the built-in source adapters.
 from collekt import sources  # noqa: F401
 from collekt.assemble import Assembler
-from collekt.core.catalog import available_datasets
+from collekt.core.catalog import available_datasets, describe_datasets
 from collekt.core.datasets import (
     CMEMS,
     ERA5,
@@ -46,6 +46,7 @@ __all__ = [
     "Result",
     "SkyTruth",
     "available_datasets",
+    "describe_datasets",
     "eOdyn",
     "run_doctor",
     "__version__",

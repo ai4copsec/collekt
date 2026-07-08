@@ -1,8 +1,7 @@
-"""A hierarchical, read-only view of the bundled dataset catalog."""
+"""A read-only view of the bundled dataset catalog."""
 
 from __future__ import annotations
 
-from pathlib import PurePath
 from typing import TYPE_CHECKING, Any
 
 from collekt.core.availability import (
@@ -41,15 +40,15 @@ def _coverage_dict(coverage: Any) -> dict[str, Any]:
     }
 
 
-def available_datasets(*, conf_dir: str | Path | None = None) -> dict[str, Any]:
-    """Return all catalog datasets as a nested dict keyed by their ``path``.
+def available_datasets(*, conf_dir: str | Path | None = None) -> dict[str, dict[str, Any]]:
+    """Return every catalog dataset as a flat mapping keyed by dataset key.
 
-    Each dataset becomes a leaf under its `path` components (e.g.
-    ``cmems -> med -> currents -> cmems_med_currents_nrt``), carrying the provider,
-    dataset id, advertised variables, coverage, and reference links. Use it to
-    discover which keys and variables a request can select. Every leaf has a
-    ``coverage`` (whole-globe / all-time when the source does not restrict it) and a
-    ``dataset_id`` (the source key when the provider has no distinct id).
+    Each value is a uniform metadata dict with the same keys for every provider:
+    ``provider``, ``path`` (e.g. ``"cmems/med/currents"``), ``dataset_id``,
+    ``variables``, ``has_depth``, ``temporal_sampling``, ``coverage`` (whole-globe /
+    all-time when the source does not restrict it), ``url``, and ``doi``. Group or
+    filter by the ``provider`` / ``path`` fields; see `describe_datasets` for a
+    human-readable listing.
 
     Example:
 
@@ -57,25 +56,23 @@ def available_datasets(*, conf_dir: str | Path | None = None) -> dict[str, Any]:
     import collekt
 
     catalog = collekt.available_datasets()
-    list(catalog["cmems"]["med"]["currents"])
-    # ['cmems_med_currents_nrt', 'cmems_med_currents_nrt_15min', ...]
+    catalog["cmems_med_currents_nrt"]["variables"]
+    # ['uo', 'vo']
+    [key for key, meta in catalog.items() if meta["provider"] == "cmems"]
     ```
 
     Args:
         conf_dir: Optional downstream config directory overlaid on the bundled catalogs.
 
     Returns:
-        A nested dictionary; leaves are per-dataset metadata dictionaries.
+        A flat ``{dataset_key: metadata}`` mapping with a uniform metadata schema.
     """
     config = get_config(conf_dir=conf_dir)
-    tree: dict[str, Any] = {}
+    catalog: dict[str, dict[str, Any]] = {}
     for name, source in config.sources.items():
-        parts = list(PurePath(str(source.path)).parts) if source.path else [source.kind]
-        node = tree
-        for part in parts:
-            node = node.setdefault(part, {})
-        node[name] = {
+        catalog[name] = {
             "provider": source.kind,
+            "path": str(source.path) if source.path else source.kind,
             "dataset_id": source.dataset_id or source.name,
             "variables": list(source.available_variables),
             "has_depth": bool(source.has_depth),
@@ -84,4 +81,40 @@ def available_datasets(*, conf_dir: str | Path | None = None) -> dict[str, Any]:
             "url": source.url,
             "doi": source.doi,
         }
-    return tree
+    return catalog
+
+
+def describe_datasets(*, conf_dir: str | Path | None = None) -> str:
+    """Return a human-readable, provider-grouped listing of the catalog.
+
+    Example:
+
+    ```python
+    import collekt
+
+    print(collekt.describe_datasets())
+    ```
+
+    Args:
+        conf_dir: Optional downstream config directory overlaid on the bundled catalogs.
+
+    Returns:
+        A multi-line string; print it to browse the datasets, their extent, date range,
+        and variables grouped by provider.
+    """
+    by_provider: dict[str, list[tuple[str, dict[str, Any]]]] = {}
+    for key, meta in available_datasets(conf_dir=conf_dir).items():
+        by_provider.setdefault(meta["provider"], []).append((key, meta))
+
+    lines: list[str] = []
+    for provider in sorted(by_provider):
+        entries = sorted(by_provider[provider])
+        lines.append(f"{provider}  ({len(entries)})")
+        for key, meta in entries:
+            coverage = meta["coverage"]
+            bbox = f"[{coverage['west']:g}, {coverage['east']:g}] x [{coverage['south']:g}, {coverage['north']:g}]"
+            span = f"{coverage['start'] or '…'}..{coverage['end'] or 'now'}"
+            variables = ", ".join(meta["variables"]) or "—"
+            lines.append(f"  {key:34} {bbox:28} {span}")
+            lines.append(f"      {meta['path']}  |  {variables}")
+    return "\n".join(lines)
