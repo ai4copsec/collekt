@@ -9,11 +9,13 @@ sources:
   ecmwf_open_data_forecast:
     kind: ecmwf_open_data
     path: "ecmwf/open_data"
-    filename_pattern: "ecmwf_open_data_{date:%Y%m%d}_{time}z_{bbox_hash}.grib2"
+    filename_pattern: "ecmwf_open_data_{date:%Y%m%d}_{time}z_{bbox_hash}.nc"
     dataset_id: "ecmwf-open-data-ifs"
     temporal_sampling: 3h
-    # ECMWF Open Data keeps only a rolling window of recent runs. Global; dates
-    # are relative to "now".
+    # ECMWF Open Data keeps only a rolling window of recent runs; dates are
+    # relative to "now". The provider always serves the global grid, so
+    # downloaded GRIB2 files are cropped to the padded request region and
+    # written out as NetCDF.
     coverage:
       start: "now-4d"
       end: "now+10d"
@@ -25,6 +27,7 @@ sources:
     stream: oper
     time: "00"
     steps: [0, 3, 6, 9, 12, 15, 18, 21, 24]
+    pad_deg: 0.5
     available_variables: [10u, 10v, 10fg, 100u, 100v]
     url: "https://www.ecmwf.int/en/forecasts/datasets/open-data"
 

@@ -14,7 +14,7 @@ source's `kind`.
 | Kind | Produces | Access | Format |
 |---|---|---|---|
 | `cmems` | Gridded ocean fields (currents, SST, waves, biogeochemistry) | open | NetCDF |
-| `ecmwf_open_data` | Gridded forecast wind | open | GRIB2 |
+| `ecmwf_open_data` | Gridded forecast wind | open | NetCDF (cropped from global GRIB2) |
 | `era5` | Gridded reanalysis wind | credentials (CDS) | NetCDF |
 | `copernicus_dataspace` | Sentinel / Landsat product files | credentials | product (e.g. `.zip`) |
 | `skytruth` | Oil-slick detections (features) | open | Parquet |

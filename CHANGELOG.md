@@ -58,3 +58,10 @@ under `[main]`; `just bump` copies them under the new version.
   fallback, with rolling NRT coverage handled separately from archive products.
 - Example notebooks and source documentation were refreshed for the bundled
   catalogs and native-resolution CMEMS inspection workflow.
+
+### Fixed
+
+- ECMWF Open Data always serves the full global grid (no server-side region
+  subsetting). The adapter now crops downloaded GRIB2 files to the padded
+  request region and writes them out as NetCDF, matching the region-scoped
+  output of the other gridded adapters (`cmems`, `era5`).

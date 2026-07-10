@@ -1,7 +1,14 @@
-"""ECMWF Open Data forecast adapter."""
+"""ECMWF Open Data forecast adapter.
+
+ECMWF Open Data always serves the full global grid; there is no server-side
+region subsetting. Downloaded GRIB2 files are therefore cropped to the padded
+request region and written out as NetCDF, matching the region-scoped output
+of the other gridded adapters (`cmems`, `era5`).
+"""
 
 from __future__ import annotations
 
+import math
 from datetime import date, datetime, time
 from pathlib import Path
 from typing import Any
@@ -10,7 +17,7 @@ from collekt.core.availability import Coverage
 from collekt.core.config import Config, SourceConfig
 from collekt.core.diagnostics import DoctorCheck, package_check
 from collekt.core.naming import format_pattern, pattern_values
-from collekt.core.request import Request
+from collekt.core.request import Region, Request
 from collekt.core.temporal import SamplingPlan, sampling_plan
 from collekt.sources.base import (
     ProgressCallback,
@@ -23,6 +30,8 @@ from collekt.sources.base import (
 from collekt.sources.planning import plan_source, static_source_coverage
 
 DEFAULT_DATASET_ID = "ecmwf-open-data-ifs"
+DEFAULT_PAD_DEG = 0.5
+DEFAULT_RESOLUTION = 0.25
 
 
 def _client_class():
@@ -34,6 +43,52 @@ def _client_class():
             "reinstall collekt's dependencies (uv sync)."
         ) from exc
     return Client
+
+
+def _grid_resolution(resol: str, default: float = DEFAULT_RESOLUTION) -> float:
+    """Parse an ECMWF Open Data ``resol`` label (e.g. ``0p25``) into degrees."""
+    text = str(resol).split("-", 1)[0]
+    try:
+        return float(text.replace("p", "."))
+    except ValueError:
+        return default
+
+
+def _padded_bbox(region: Region, pad_deg: float, resolution: float) -> tuple[float, float, float, float]:
+    """Return ``(south, north, west, east)`` padded and snapped to the native grid."""
+    south = max(-90.0, math.floor((region.south - pad_deg) / resolution) * resolution)
+    north = min(90.0, math.ceil((region.north + pad_deg) / resolution) * resolution)
+    west = max(-180.0, math.floor((region.west - pad_deg) / resolution) * resolution)
+    east = min(180.0, math.ceil((region.east + pad_deg) / resolution) * resolution)
+    return south, north, west, east
+
+
+def _open_raw_grib(path: Path):
+    """Open a downloaded global GRIB2 file with the cfgrib backend."""
+    try:
+        import xarray as xr
+    except ImportError as exc:  # pragma: no cover - exercised only without optional extra
+        raise ImportError(
+            "xarray and cfgrib are required to crop ECMWF Open Data files; reinstall collekt's dependencies (uv sync)."
+        ) from exc
+    return xr.open_dataset(path, engine="cfgrib", backend_kwargs={"indexpath": ""})
+
+
+def _crop_dataset(dataset: Any, region: Region, pad_deg: float, resolution: float) -> Any:
+    """Crop a global, 0-360 longitude dataset to the padded request region."""
+    south, north, west, east = _padded_bbox(region, pad_deg, resolution)
+    lat_name = "latitude" if "latitude" in dataset.coords else "lat"
+    lon_name = "longitude" if "longitude" in dataset.coords else "lon"
+    normalized = dataset.assign_coords({lon_name: ((dataset[lon_name] + 180) % 360) - 180})
+    sorted_dataset = normalized.sortby([lat_name, lon_name])
+    return sorted_dataset.sel({lat_name: slice(south, north), lon_name: slice(west, east)})
+
+
+def _crop_to_netcdf(raw_path: Path, output_path: Path, region: Region, pad_deg: float, resolution: float) -> None:
+    """Crop a downloaded global GRIB2 file to the request region and write NetCDF."""
+    with _open_raw_grib(raw_path) as dataset:
+        cropped = _crop_dataset(dataset.load(), region, pad_deg, resolution)
+    cropped.to_netcdf(output_path)
 
 
 def _request_for_day(source: SourceConfig, day: date, plan: SamplingPlan | None = None) -> dict[str, object]:
@@ -64,13 +119,15 @@ def fetch_ecmwf_open_data(
     *,
     progress: ProgressCallback = null_progress,
 ) -> list[SourceResult]:
-    """Fetch ECMWF Open Data forecast files."""
+    """Fetch ECMWF Open Data forecast files, cropped to the request region."""
     results: list[SourceResult] = []
     out_dir = request_dir / source.path
     out_dir.mkdir(parents=True, exist_ok=True)
     dataset_id = source.dataset_id or DEFAULT_DATASET_ID
     model = str(source.raw.get("model", "ifs"))
     resol = str(source.raw.get("resol", "0p25"))
+    pad_deg = float(source.raw.get("pad_deg", DEFAULT_PAD_DEG))
+    resolution = _grid_resolution(resol)
     plan = sampling_plan(request, source)
     client = None
     for day in request.iter_days():
@@ -93,17 +150,19 @@ def fetch_ecmwf_open_data(
                     dataset_id=dataset_id,
                     variables=source.variables,
                     day=day.isoformat(),
-                    format="grib2",
+                    format="netcdf",
                     details={"temporal": plan.day_dict(day)},
                 )
             )
             continue
 
+        raw_path = output_path.with_suffix(".raw.grib2")
         progress(source.name, f"downloading {day.isoformat()} {run_time} UTC forecast from ECMWF Open Data")
         try:
             if client is None:
                 client = _client_class()(source=str(source.raw.get("source", "ecmwf")), model=model, resol=resol)
-            client.retrieve(_request_for_day(source, day, plan), target=str(output_path))
+            client.retrieve(_request_for_day(source, day, plan), target=str(raw_path))
+            _crop_to_netcdf(raw_path, output_path, request.region, pad_deg, resolution)
         except Exception as exc:  # noqa: BLE001 - provider availability failures are warnings
             results.append(
                 SourceResult(
@@ -113,11 +172,13 @@ def fetch_ecmwf_open_data(
                     variables=source.variables,
                     message=str(exc),
                     day=day.isoformat(),
-                    format="grib2",
+                    format="netcdf",
                     details={"temporal": plan.day_dict(day)},
                 )
             )
             continue
+        finally:
+            raw_path.unlink(missing_ok=True)
         if output_path.exists():
             results.append(
                 SourceResult(
@@ -127,7 +188,7 @@ def fetch_ecmwf_open_data(
                     dataset_id=dataset_id,
                     variables=source.variables,
                     day=day.isoformat(),
-                    format="grib2",
+                    format="netcdf",
                     details={"temporal": plan.day_dict(day)},
                 )
             )
@@ -140,7 +201,7 @@ def fetch_ecmwf_open_data(
                     variables=source.variables,
                     message="download completed but file is missing",
                     day=day.isoformat(),
-                    format="grib2",
+                    format="netcdf",
                     details={"temporal": plan.day_dict(day)},
                 )
             )
@@ -168,11 +229,15 @@ def _ecmwf_day_details(
 ) -> tuple[str, dict[str, Any], dict[str, Any]]:
     dataset_id = source.dataset_id or DEFAULT_DATASET_ID
     run_time = str(source.raw.get("time", "00"))
+    pad_deg = float(source.raw.get("pad_deg", DEFAULT_PAD_DEG))
+    resolution = _grid_resolution(str(source.raw.get("resol", "0p25")))
+    south, north, west, east = _padded_bbox(request.region, pad_deg, resolution)
     details = {
         "provider": "ecmwf-opendata",
         "method": "retrieve",
         "temporal": plan.day_dict(day),
         "request": _request_for_day(source, day, plan),
+        "crop": {"south": south, "north": north, "west": west, "east": east},
     }
     return dataset_id, details, {"time": run_time}
 
@@ -191,13 +256,16 @@ def plan_ecmwf_open_data(
         checked=checked,
         dataset_for_day=_ecmwf_dataset_for_day,
         day_details=_ecmwf_day_details,
-        planned_format="grib2",
+        planned_format="netcdf",
     )
 
 
 def diagnose(config: Config, online: bool) -> list[DoctorCheck]:
     """Return ECMWF Open Data package diagnostics."""
-    return [package_check("ecmwf-opendata package", "ecmwf.opendata")]
+    return [
+        package_check("ecmwf-opendata package", "ecmwf.opendata"),
+        package_check("cfgrib package", "cfgrib"),
+    ]
 
 
 register_adapter(

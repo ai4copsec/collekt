@@ -70,7 +70,7 @@ ECMWF = {
     "kind": "ecmwf_open_data",
     "enabled": True,
     "path": "ecmwf/open_data",
-    "filename_pattern": "ecmwf_open_data_10m_wind_{date:%Y%m%d}_{time}z_{bbox_hash}.grib2",
+    "filename_pattern": "ecmwf_open_data_10m_wind_{date:%Y%m%d}_{time}z_{bbox_hash}.nc",
     "dataset_id": "ecmwf-open-data-ifs",
     "variables": ["10u", "10v"],
     "temporal_sampling": "3h",
@@ -244,7 +244,7 @@ def test_era5_plan_skips_dates_outside_declarative_coverage(tmp_path):
 # --- ECMWF Open Data --------------------------------------------------------
 
 
-def test_ecmwf_downloads_grib_with_stubbed_client(tmp_path, monkeypatch):
+def test_ecmwf_downloads_grib_and_crops_to_region_with_stubbed_client(tmp_path, monkeypatch):
     calls = []
 
     class FakeClient:
@@ -255,16 +255,60 @@ def test_ecmwf_downloads_grib_with_stubbed_client(tmp_path, monkeypatch):
             calls.append(("retrieve", request, target))
             Path(target).write_text("grib", encoding="utf-8")
 
+    def fake_crop(raw_path, output_path, region, pad_deg, resolution):
+        calls.append(("crop", raw_path, output_path, region, pad_deg, resolution))
+        Path(output_path).write_text("netcdf", encoding="utf-8")
+
     monkeypatch.setattr("collekt.sources.ecmwf_open_data._client_class", lambda: FakeClient)
+    monkeypatch.setattr("collekt.sources.ecmwf_open_data._crop_to_netcdf", fake_crop)
     result = Fetcher(_request(start="2026-06-25"), config=_cfg(tmp_path, ecmwf_open_data_forecast=ECMWF)).download()
 
     assert result.summary.downloaded == 1
-    assert result.results[0].format == "grib2"
+    assert result.results[0].format == "netcdf"
     assert result.files[0].name.startswith("ecmwf_open_data_10m_wind_20260625_00z_")
+    assert result.files[0].suffix == ".nc"
     assert calls[0] == ("init", {"source": "ecmwf", "model": "ifs", "resol": "0p25"})
     assert calls[1][1]["param"] == ["10u", "10v"]
     # 3h native cadence over the day -> steps every 3 hours.
     assert calls[1][1]["step"] == [0, 3, 6, 9, 12, 15, 18, 21]
+
+    _, raw_path, output_path, region, pad_deg, resolution = calls[2]
+    assert raw_path.name.endswith(".raw.grib2")
+    assert not raw_path.exists()  # cleaned up after cropping
+    assert output_path.name == result.files[0].name
+    assert region == Region.from_bbox((-6, 20, 35, 45))
+    assert pad_deg == 0.5
+    assert resolution == 0.25
+
+
+def test_ecmwf_grid_resolution_parses_resol_label():
+    from collekt.sources.ecmwf_open_data import _grid_resolution
+
+    assert _grid_resolution("0p25") == 0.25
+    assert _grid_resolution("0p4-beta") == 0.4
+
+
+def test_ecmwf_crop_dataset_normalizes_longitude_and_clips_to_region():
+    import numpy as np
+    import xarray as xr
+
+    from collekt.sources.ecmwf_open_data import _crop_dataset
+
+    latitude = np.arange(90.0, -90.25, -0.25)
+    longitude = np.arange(0.0, 360.0, 0.25)
+    data = np.zeros((latitude.size, longitude.size))
+    dataset = xr.Dataset(
+        {"u10": (("latitude", "longitude"), data)},
+        coords={"latitude": latitude, "longitude": longitude},
+    )
+
+    region = Region.from_bbox((-6, 20, 35, 45))
+    cropped = _crop_dataset(dataset, region, pad_deg=0.5, resolution=0.25)
+
+    assert float(cropped.longitude.min()) == -6.5
+    assert float(cropped.longitude.max()) == 20.5
+    assert float(cropped.latitude.min()) == 34.5
+    assert float(cropped.latitude.max()) == 45.5
 
 
 def test_ecmwf_plan_available_within_rolling_window(tmp_path):
