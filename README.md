@@ -43,7 +43,9 @@ We recommend using `just` (<https://github.com/casey/just>) with the make-like c
 import collekt
 
 config = collekt.DatasetConfig(
+    collekt.CMEMS("cmems_glorys_my", variables=["uo", "vo"], depth=[1.0, 1.1]),
     collekt.CMEMS("cmems_duacs_my", variables=["ugos", "vgos"]),
+    collekt.CMEMS("cmems_med_currents_my", variables=["uo", "vo"], depth=[1.0, 1.1]),
 )
 request = collekt.Request(
     region=collekt.Region.from_bbox((-6.0, 20.0, 35.0, 45.0)),
@@ -72,8 +74,16 @@ collekt doctor            # check the environment and configuration
 cat > datasets.yaml <<'YAML'
 datasets:
   - provider: cmems
+    key: cmems_glorys_my
+    variables: [uo, vo]
+    depth: [1.0, 1.1]
+  - provider: cmems
     key: cmems_duacs_my
     variables: [ugos, vgos]
+  - provider: cmems
+    key: cmems_med_currents_my
+    variables: [uo, vo]
+    depth: [1.0, 1.1]
 YAML
 
 collekt fetch --bbox -6 20 35 45 --start 2023-06-15 \
