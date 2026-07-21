@@ -177,6 +177,25 @@ def _validate_selected_variables(
         raise ValueError(f"source {source_name!r} requested unknown variables {missing}; known: {known}")
 
 
+def selection_error(source: SourceConfig) -> str | None:
+    """Return why a source's variable/depth selection is incomplete, or `None` if it's ready.
+
+    The bundled catalog ships capabilities, not choices: a source advertising
+    `available_variables` needs a variable selection, and a `has_depth` source
+    needs a depth. Both are downstream decisions, so a missing one is a usage
+    error the caller must fix rather than a data-availability warning. Unknown
+    variables are rejected earlier, at parse time, by `_validate_selected_variables`.
+    """
+    if source.available_variables and not source.variables:
+        return (
+            f"source {source.name!r} requires a variable selection; set 'variables' to a "
+            f"subset of its available_variables: {', '.join(source.available_variables)}"
+        )
+    if source.has_depth and source.raw.get("depth") is None:
+        return f"source {source.name!r} has a depth dimension; set 'depth: [min, max]' for it"
+    return None
+
+
 def parse_config(raw: Mapping[str, Any] | None) -> Config:
     """Parse a resolved configuration mapping."""
     d = dict(raw or {})

@@ -9,6 +9,7 @@ from collekt.core.config.schema import (
     SourceConfig,
     get_config,
     parse_config,
+    selection_error,
 )
 
 # Legacy logging constants used by the current CLI (`collekt.cli.main`). The CLI
@@ -29,6 +30,7 @@ __all__ = [
     "get_config",
     "load_config",
     "parse_config",
+    "selection_error",
     "DATE_FORMAT",
     "LOG_FORMAT",
     "LOG_STYLE",

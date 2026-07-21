@@ -10,7 +10,7 @@ from typing import Any, ClassVar
 import yaml
 
 from collekt.core.config.loader import load_config
-from collekt.core.config.schema import Config, SourceConfig, parse_config
+from collekt.core.config.schema import Config, parse_config, selection_error
 
 
 def _as_tuple(value: Iterable[Any] | Any | None) -> tuple[Any, ...]:
@@ -257,26 +257,6 @@ def _dataset_from_mapping(raw: Mapping[str, Any]) -> DatasetLike:
 
 
 def _validate_selected_sources(config: Config) -> None:
-    for source in config.sources.values():
-        _validate_variables(source)
-        _validate_depth(source)
-
-
-def _validate_variables(source: SourceConfig) -> None:
-    if not source.available_variables:
-        return
-    if not source.variables:
-        raise ValueError(
-            f"dataset {source.name!r} requires variables; choose from: {', '.join(source.available_variables)}"
-        )
-    unknown = sorted(set(source.variables) - set(source.available_variables))
-    if unknown:
-        raise ValueError(
-            f"dataset {source.name!r} requested unknown variables {', '.join(unknown)}; "
-            f"choose from: {', '.join(source.available_variables)}"
-        )
-
-
-def _validate_depth(source: SourceConfig) -> None:
-    if source.has_depth and source.raw.get("depth") is None:
-        raise ValueError(f"dataset {source.name!r} has a depth dimension; set depth=[min, max]")
+    errors = [message for source in config.sources.values() if (message := selection_error(source))]
+    if errors:
+        raise ValueError("; ".join(errors))

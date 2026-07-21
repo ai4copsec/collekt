@@ -58,6 +58,10 @@ under `[main]`; `just bump` copies them under the new version.
 - Source collection now validates explicit variable/depth selections for bundled
   catalogs and only allows request sampling at dataset cadence or coarser
   integer multiples.
+- The "a source needs a variable/depth selection" check had three independent
+  implementations (`collect.py`, `datasets.py`, `config/schema.py`); it is now
+  one shared `collekt.core.config.selection_error`, called from both
+  `DatasetConfig.resolve()` and `run_collection`.
 - CMEMS diagnostics and planning use declared coverage metadata as an offline
   fallback, with rolling NRT coverage handled separately from archive products.
 - Example notebooks and source documentation were refreshed for the bundled
