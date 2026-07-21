@@ -65,6 +65,12 @@ under `[main]`; `just bump` copies them under the new version.
 - `collekt doctor` now warns about source config keys not recognized by their
   adapter (e.g. `pad_dg` instead of `pad_deg`), which were previously ignored
   with no error or warning — the adapter just silently fell back to its default.
+- Every fetch adapter repeated the same cache-hit check
+  (`output_path.exists() and config.cache.reuse_existing and not
+  config.cache.overwrite`), and cmems/era5/ecmwf_open_data each repeated the
+  same "download completed but file is missing" SKIPPED result verbatim.
+  Both are now shared helpers (`should_reuse_cache`, `missing_after_fetch` in
+  `sources/base.py`) used by all seven source adapters.
 - CMEMS diagnostics and planning use declared coverage metadata as an offline
   fallback, with rolling NRT coverage handled separately from archive products.
 - Example notebooks and source documentation were refreshed for the bundled

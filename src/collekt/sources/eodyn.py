@@ -28,6 +28,7 @@ from collekt.sources.base import (
     SourceStatus,
     null_progress,
     register_adapter,
+    should_reuse_cache,
 )
 from collekt.sources.planning import plan_source, static_source_coverage
 
@@ -199,7 +200,7 @@ def fetch_eodyn(
         )
         output_path = out_dir / format_pattern(source.filename_pattern, values)
         archive_path = _archive_path(source, day)
-        if output_path.exists() and config.cache.reuse_existing and not config.cache.overwrite:
+        if should_reuse_cache(output_path.exists(), config):
             results.append(
                 SourceResult(
                     source=source.name,

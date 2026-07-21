@@ -22,6 +22,7 @@ from collekt.sources.base import (
     SourceStatus,
     null_progress,
     register_adapter,
+    should_reuse_cache,
 )
 
 TIME_FORMAT = "%Y-%m-%d"
@@ -54,7 +55,7 @@ def fetch_hozint(
     dataset_id = source.dataset_id or source.name
 
     existing = sorted(out_dir.glob("*.parquet"))
-    if existing and config.cache.reuse_existing and not config.cache.overwrite:
+    if should_reuse_cache(bool(existing), config):
         return [_result(source, SourceStatus.REUSED, dataset_id, path=path) for path in existing]
 
     cmd = _command(source, out_dir, request)

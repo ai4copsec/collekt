@@ -18,8 +18,10 @@ from collekt.sources.base import (
     SourceAdapter,
     SourceResult,
     SourceStatus,
+    missing_after_fetch,
     null_progress,
     register_adapter,
+    should_reuse_cache,
 )
 from collekt.sources.planning import plan_source, static_source_coverage
 
@@ -69,7 +71,7 @@ def fetch_era5(
             day=day,
         )
         output_path = out_dir / format_pattern(source.filename_pattern, values)
-        if output_path.exists() and config.cache.reuse_existing and not config.cache.overwrite:
+        if should_reuse_cache(output_path.exists(), config):
             results.append(
                 SourceResult(
                     source=source.name,
@@ -117,15 +119,7 @@ def fetch_era5(
             )
         else:
             results.append(
-                SourceResult(
-                    source=source.name,
-                    status=SourceStatus.SKIPPED,
-                    dataset_id=dataset_id,
-                    variables=source.variables,
-                    message="download completed but file is missing",
-                    day=day.isoformat(),
-                    details={"temporal": plan.day_dict(day)},
-                )
+                missing_after_fetch(source, dataset_id, day=day.isoformat(), details={"temporal": plan.day_dict(day)})
             )
     return results
 

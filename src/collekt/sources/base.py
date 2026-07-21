@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from collekt.core.config import Config
+    from collekt.core.config import Config, SourceConfig
     from collekt.core.diagnostics import DoctorCheck
 
 
@@ -49,6 +49,48 @@ ProgressCallback = Callable[[str, str], None]
 
 def null_progress(_source: str, _message: str) -> None:
     """Progress callback that ignores all events."""
+
+
+def should_reuse_cache(exists: bool, config: Config) -> bool:
+    """Return whether an already-staged file should be reused instead of re-fetched.
+
+    Args:
+        exists: Whether the output for this day/request already exists on disk.
+        config: Global configuration (cache policy).
+    """
+    return exists and config.cache.reuse_existing and not config.cache.overwrite
+
+
+def missing_after_fetch(
+    source: SourceConfig,
+    dataset_id: str,
+    *,
+    day: str | None = None,
+    details: dict[str, Any] | None = None,
+    extra: str | None = None,
+) -> SourceResult:
+    """Build the SKIPPED result for a fetch that reported success but wrote nothing.
+
+    Args:
+        source: Source-specific configuration.
+        dataset_id: Provider dataset identifier for this result.
+        day: Requested day, if this is a per-day result.
+        details: Provider-specific detail payload.
+        extra: Optional extra context appended to the message (e.g. the
+            provider's own response repr).
+    """
+    message = "download completed but file is missing"
+    if extra:
+        message = f"{message} ({extra})"
+    return SourceResult(
+        source=source.name,
+        status=SourceStatus.SKIPPED,
+        dataset_id=dataset_id,
+        variables=source.variables,
+        message=message,
+        day=day,
+        details=details,
+    )
 
 
 @dataclass(frozen=True)

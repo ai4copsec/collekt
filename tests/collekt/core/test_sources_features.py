@@ -331,9 +331,7 @@ class _FakeStreamResponse:
 
 
 def test_dataspace_download_writes_final_path_only(tmp_path, monkeypatch):
-    monkeypatch.setattr(
-        copernicus_dataspace.requests, "get", lambda *a, **k: _FakeStreamResponse([b"product-bytes"])
-    )
+    monkeypatch.setattr(copernicus_dataspace.requests, "get", lambda *a, **k: _FakeStreamResponse([b"product-bytes"]))
     path = tmp_path / "product.zip"
 
     copernicus_dataspace._download("https://x/prod", "token", path)

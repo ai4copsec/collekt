@@ -25,6 +25,7 @@ from collekt.sources.base import (
     SourceStatus,
     null_progress,
     register_adapter,
+    should_reuse_cache,
 )
 
 logger = logging.getLogger(__name__)
@@ -153,7 +154,7 @@ def fetch_skytruth(
     out_dir.mkdir(parents=True, exist_ok=True)
     dataset_id = source.dataset_id or DEFAULT_DATASET_ID
     output_path = _output_path(request, source, request_dir)
-    if output_path.exists() and config.cache.reuse_existing and not config.cache.overwrite:
+    if should_reuse_cache(output_path.exists(), config):
         return [
             SourceResult(
                 source=source.name,

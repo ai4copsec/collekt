@@ -28,6 +28,7 @@ from collekt.sources.base import (
     SourceStatus,
     null_progress,
     register_adapter,
+    should_reuse_cache,
 )
 
 logger = logging.getLogger(__name__)
@@ -147,7 +148,7 @@ def fetch_copernicus_dataspace(
             continue
         name = product.get("file:local_path") or f"{feature.get('id', 'product')}"
         path = out_dir / name
-        if path.exists() and config.cache.reuse_existing and not config.cache.overwrite:
+        if should_reuse_cache(path.exists(), config):
             results.append(_result(source, SourceStatus.REUSED, dataset_id, path=path, file_format=_format_for(name)))
             continue
         progress(source.name, f"downloading {name}")

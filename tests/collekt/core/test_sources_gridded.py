@@ -401,9 +401,7 @@ def test_ecmwf_crop_to_netcdf_keeps_time_processed_variables(tmp_path):
     output_path = tmp_path / "output.nc"
     region = Region.from_bbox((-7, -6, 44.5, 45.5))
 
-    missing = _crop_to_netcdf(
-        raw_path, output_path, region, pad_deg=0.0, resolution=1.0, params=("10u", "10v", "10fg")
-    )
+    missing = _crop_to_netcdf(raw_path, output_path, region, pad_deg=0.0, resolution=1.0, params=("10u", "10v", "10fg"))
 
     assert missing == []
     with xr.open_dataset(output_path) as ds:
