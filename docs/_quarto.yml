@@ -67,6 +67,8 @@ quartodoc:
         - Assembler
         - run_doctor
         - DoctorCheck
+        - available_datasets
+        - describe_datasets
     - title: "Datasets"
       desc: "Select datasets from the bundled catalog and set their provider parameters."
       contents:

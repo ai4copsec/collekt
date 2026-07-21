@@ -14,6 +14,8 @@ under `[main]`; `just bump` copies them under the new version.
   `CopernicusDataSpace`).
 - Manual `scripts/update_cmems_coverage.py` helper to refresh declared CMEMS
   coverage from the Copernicus catalogue.
+- Public `available_datasets`/`describe_datasets` to browse the bundled (and any
+  downstream-overlaid) catalog programmatically, without reading the source YAML.
 - Downstream catalog extension: a `conf_dir` overlays the bundled configuration
   (adding or overriding datasets and appending `source_catalogs`, so the shipped
   datasets stay available), threaded through `collekt fetch --conf-dir`,
@@ -48,6 +50,8 @@ under `[main]`; `just bump` copies them under the new version.
   provider dataset declarations.
 - Legacy `collekt query` CLI, `Collector`, `Query`, the `DataSource` base classes,
   and the old `datasources/` package (superseded by the adapter framework).
+- Unused `core/credentials.py`: every credential-gated adapter already resolves
+  its own credentials.
 
 ### Changed
 
@@ -65,3 +69,10 @@ under `[main]`; `just bump` copies them under the new version.
   subsetting). The adapter now crops downloaded GRIB2 files to the padded
   request region and writes them out as NetCDF, matching the region-scoped
   output of the other gridded adapters (`cmems`, `era5`).
+- ERA5 and Copernicus Data Space downloads now stream to a temporary file and
+  only move it into place after completing fully, so a dropped connection can
+  no longer leave a partial file that a later run mistakes for a valid,
+  already-downloaded product.
+- `copernicus_dataspace` and `skytruth` now degrade to a per-source warning
+  instead of aborting the whole collection run on a malformed API response or
+  a missing optional dependency (e.g. `damast`/`geopandas` for skytruth).

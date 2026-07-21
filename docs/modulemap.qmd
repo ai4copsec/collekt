@@ -22,6 +22,7 @@ src/collekt/
     result.py              # Result
     manifest.py            # manifest builder + post-fetch inspection
     datasets.py            # DatasetConfig + provider selection dataclasses
+    catalog.py             # available_datasets / describe_datasets (read-only catalog view)
     reporting.py           # Summary, summarize, CliReporter
     availability.py        # coverage checks (declarative + online describe)
     diagnostics.py         # DoctorCheck + shared diagnostic helpers
