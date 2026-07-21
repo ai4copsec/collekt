@@ -6,6 +6,7 @@ needed. Skytruth's Parquet-writing path needs damast/geopandas and is covered
 separately when those are installed.
 """
 
+import json
 import types
 import warnings
 from pathlib import Path
@@ -74,6 +75,33 @@ def test_skytruth_zero_features_is_a_warning(tmp_path, monkeypatch):
 
     assert result.summary.skipped == 1
     assert "0 features" in result.results[0].message
+
+
+def test_skytruth_query_failure_is_a_warning(tmp_path, monkeypatch):
+    # A malformed JSON body isn't a requests.exceptions.RequestException, but it
+    # must still degrade to a SKIPPED result rather than aborting the whole run.
+    def _raise(url, parameters):
+        raise json.JSONDecodeError("bad json", "", 0)
+
+    monkeypatch.setattr(skytruth, "_fetch_pages", _raise)
+    result = Fetcher(_request(), config=_cfg(tmp_path, skytruth_slicks=SKYTRUTH)).download()
+
+    assert result.summary.skipped == 1
+    assert "bad json" in result.results[0].message
+
+
+def test_skytruth_write_parquet_failure_is_a_warning(tmp_path, monkeypatch):
+    # e.g. damast/geopandas missing: _write_parquet raising must not crash the run.
+    monkeypatch.setattr(skytruth, "_fetch_pages", lambda url, parameters: ([{"id": 1}], "http://cerulean/items"))
+
+    def _raise(features, output_path, request_url):
+        raise ImportError("damast is not installed")
+
+    monkeypatch.setattr(skytruth, "_write_parquet", _raise)
+    result = Fetcher(_request(), config=_cfg(tmp_path, skytruth_slicks=SKYTRUTH)).download()
+
+    assert result.summary.skipped == 1
+    assert "damast is not installed" in result.results[0].message
 
 
 def test_skytruth_reuses_existing_parquet(tmp_path, monkeypatch):
@@ -329,6 +357,22 @@ def test_dataspace_download_failure_leaves_no_partial_file(tmp_path, monkeypatch
 
     assert not path.exists()
     assert not (tmp_path / "product.zip.part").exists()
+
+
+def test_dataspace_search_failure_is_a_warning(tmp_path, monkeypatch):
+    # A malformed JSON body isn't a requests.exceptions.RequestException, but it
+    # must still degrade to a SKIPPED result rather than aborting the whole run.
+    monkeypatch.setattr(copernicus_dataspace, "_credentials", lambda: ("user", "pass"))
+    monkeypatch.setattr(copernicus_dataspace, "_login", lambda username, password: "token")
+
+    def _raise(token, params):
+        raise json.JSONDecodeError("bad json", "", 0)
+
+    monkeypatch.setattr(copernicus_dataspace, "_search", _raise)
+    result = Fetcher(_request(), config=_cfg(tmp_path, dataspace=DATASPACE)).download()
+
+    assert result.summary.skipped == 1
+    assert "bad json" in result.results[0].message
 
 
 def test_dataspace_plan_reports_search_without_network(tmp_path):

@@ -133,7 +133,7 @@ def fetch_copernicus_dataspace(
     progress(source.name, f"searching {collection}")
     try:
         catalogue = _search(token, _search_params(request, source, collection))
-    except requests.exceptions.RequestException as exc:
+    except Exception as exc:  # noqa: BLE001 - network/response failures are warnings, not fatal errors
         return [_result(source, SourceStatus.SKIPPED, dataset_id, message=str(exc))]
 
     features = catalogue.get("features", [])
@@ -153,7 +153,7 @@ def fetch_copernicus_dataspace(
         progress(source.name, f"downloading {name}")
         try:
             _download(product["href"], token, path)
-        except requests.exceptions.RequestException as exc:
+        except Exception as exc:  # noqa: BLE001 - network/response failures are warnings, not fatal errors
             results.append(_result(source, SourceStatus.SKIPPED, dataset_id, message=str(exc)))
             continue
         results.append(_result(source, SourceStatus.DOWNLOADED, dataset_id, path=path, file_format=_format_for(name)))

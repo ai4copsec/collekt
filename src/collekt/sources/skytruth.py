@@ -170,7 +170,7 @@ def fetch_skytruth(
     progress(source.name, "querying the Cerulean slick catalogue")
     try:
         features, request_url = _fetch_pages(url, parameters)
-    except requests.exceptions.RequestException as exc:
+    except Exception as exc:  # noqa: BLE001 - network/response failures are warnings, not fatal errors
         return [
             SourceResult(
                 source=source.name,
@@ -194,7 +194,19 @@ def fetch_skytruth(
             )
         ]
 
-    _write_parquet(features, output_path, request_url)
+    try:
+        _write_parquet(features, output_path, request_url)
+    except Exception as exc:  # noqa: BLE001 - e.g. missing optional deps (damast/geopandas) are warnings
+        return [
+            SourceResult(
+                source=source.name,
+                status=SourceStatus.SKIPPED,
+                dataset_id=dataset_id,
+                variables=source.variables,
+                message=str(exc),
+                format="parquet",
+            )
+        ]
     return [
         SourceResult(
             source=source.name,
