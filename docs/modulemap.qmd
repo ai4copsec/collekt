@@ -28,7 +28,6 @@ src/collekt/
     doctor.py              # generic orchestrator over source diagnose hooks
     exporting.py           # directory / zip exports
     geo.py                 # bbox maths (geopy) + GeoJSON -> WKT (shapely)
-    credentials.py         # environment credential resolution
     config/
       loader.py            # bundled source-catalog load + env expansion
       schema.py            # typed Config / SourceConfig / ... + variable resolution

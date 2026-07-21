@@ -231,8 +231,8 @@ collekt's point+radius and GeoJSON conventions.
 - **Credentials by reference only.** `CredentialsConfig` holds path hints
   (`$HOME/.cdsapirc`, `copernicusmarine` credentials file); secrets never enter
   YAML or the manifest. API-key sources (HOZINT, eOdyn) resolve secrets from the
-  environment via `core/credentials.py` (pydantic-settings, `COLLEKT_…` /
-  provider-native variables), the pattern collekt already uses.
+  environment through their own provider-native tooling or a local
+  pydantic-settings model, never through YAML or the manifest.
 
 ## Source adapters
 
