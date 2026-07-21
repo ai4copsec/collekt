@@ -313,5 +313,13 @@ def diagnose(config: Config, online: bool) -> list[DoctorCheck]:
 
 
 register_adapter(
-    SourceAdapter(kind="ecmwf_open_data", fetch=fetch_ecmwf_open_data, plan=plan_ecmwf_open_data, diagnose=diagnose)
+    SourceAdapter(
+        kind="ecmwf_open_data",
+        fetch=fetch_ecmwf_open_data,
+        plan=plan_ecmwf_open_data,
+        diagnose=diagnose,
+        known_raw_keys=frozenset(
+            {"model", "resol", "pad_deg", "source", "time", "steps", "step", "type", "levtype", "stream"}
+        ),
+    )
 )

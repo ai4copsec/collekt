@@ -125,7 +125,9 @@ overlay defines what datasets exist.
 
 ## Diagnostics
 
-`collekt doctor` checks provider packages, credentials, and catalog consistency.
+`collekt doctor` checks provider packages, credentials, catalog consistency, and
+flags any source config key not recognized by its adapter (a likely typo, e.g.
+`pad_dg` instead of `pad_deg`) as a warning.
 
 ```bash
 collekt doctor

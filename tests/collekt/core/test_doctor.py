@@ -19,6 +19,47 @@ def test_run_doctor_reports_packages_and_sources():
     assert "cmems" in by_name["source s"].message
 
 
+def test_run_doctor_flags_a_typo_in_a_source_raw_key():
+    # 'pad_dg' instead of 'pad_deg' would otherwise be silently ignored: the
+    # adapter just falls back to its default with no error or warning.
+    cfg = parse_config(
+        {
+            "sources": {
+                "s": {
+                    "kind": "era5",
+                    "available_variables": ["10m_u_component_of_wind"],
+                    "variables": ["10m_u_component_of_wind"],
+                    "pad_dg": 1.0,
+                }
+            }
+        }
+    )
+    checks = run_doctor(config=cfg)
+
+    by_name = {check.name: check for check in checks}
+    assert by_name["source s config keys"].status == "warn"
+    assert "pad_dg" in by_name["source s config keys"].message
+
+
+def test_run_doctor_does_not_flag_known_raw_keys():
+    cfg = parse_config(
+        {
+            "sources": {
+                "s": {
+                    "kind": "era5",
+                    "available_variables": ["10m_u_component_of_wind"],
+                    "variables": ["10m_u_component_of_wind"],
+                    "pad_deg": 1.0,
+                    "data_format": "netcdf",
+                }
+            }
+        }
+    )
+    checks = run_doctor(config=cfg)
+
+    assert "source s config keys" not in {check.name for check in checks}
+
+
 def test_run_doctor_online_flags_stale_available_variables(monkeypatch):
     cfg = parse_config(
         {"sources": {"s": {"kind": "cmems", "dataset_id": "glo", "available_variables": ["uo", "missing"]}}}

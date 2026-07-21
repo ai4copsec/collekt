@@ -65,12 +65,17 @@ class SourceAdapter:
         plan: ``(request, source, config, request_dir) -> list[SourceResult]``.
         diagnose: Optional ``(config, online) -> list[DoctorCheck]`` hook for
             package, credential, and provider-catalogue diagnostics.
+        known_raw_keys: Provider-specific keys this adapter reads from
+            `SourceConfig.raw`. `collekt doctor` warns about any other key on a
+            source of this kind, since a typo in one is otherwise silently
+            ignored (the adapter just falls back to its default).
     """
 
     kind: str
     fetch: Callable[..., list[SourceResult]]
     plan: Callable[..., list[SourceResult]]
     diagnose: Callable[[Config, bool], list[DoctorCheck]] | None = None
+    known_raw_keys: frozenset[str] = frozenset()
 
 
 _ADAPTERS: dict[str, SourceAdapter] = {}

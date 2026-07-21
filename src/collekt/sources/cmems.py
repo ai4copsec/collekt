@@ -399,4 +399,12 @@ def diagnose(config: Config, online: bool) -> list[DoctorCheck]:
     return checks
 
 
-register_adapter(SourceAdapter(kind="cmems", fetch=fetch_cmems, plan=plan_cmems, diagnose=diagnose))
+register_adapter(
+    SourceAdapter(
+        kind="cmems",
+        fetch=fetch_cmems,
+        plan=plan_cmems,
+        diagnose=diagnose,
+        known_raw_keys=frozenset({"coordinates_selection_method", "depth", "time_selection"}),
+    )
+)

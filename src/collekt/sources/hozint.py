@@ -125,4 +125,12 @@ def diagnose(config: Config, online: bool) -> list[DoctorCheck]:
     ]
 
 
-register_adapter(SourceAdapter(kind="hozint", fetch=fetch_hozint, plan=plan_hozint, diagnose=diagnose))
+register_adapter(
+    SourceAdapter(
+        kind="hozint",
+        fetch=fetch_hozint,
+        plan=plan_hozint,
+        diagnose=diagnose,
+        known_raw_keys=frozenset({"command"}),
+    )
+)

@@ -62,6 +62,9 @@ under `[main]`; `just bump` copies them under the new version.
   implementations (`collect.py`, `datasets.py`, `config/schema.py`); it is now
   one shared `collekt.core.config.selection_error`, called from both
   `DatasetConfig.resolve()` and `run_collection`.
+- `collekt doctor` now warns about source config keys not recognized by their
+  adapter (e.g. `pad_dg` instead of `pad_deg`), which were previously ignored
+  with no error or warning — the adapter just silently fell back to its default.
 - CMEMS diagnostics and planning use declared coverage metadata as an offline
   fallback, with rolling NRT coverage handled separately from archive products.
 - Example notebooks and source documentation were refreshed for the bundled

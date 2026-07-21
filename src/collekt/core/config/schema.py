@@ -94,6 +94,29 @@ class Config:
     raw: dict[str, Any] = field(default_factory=dict)
 
 
+# Keys `_parse_source` reads directly into typed `SourceConfig` fields, plus
+# `coverage` (read generically by `collekt.core.availability.static_coverage`
+# for every source kind). Keep in sync with `_parse_source` below; used by
+# `collekt.core.doctor` to warn about unrecognized (e.g. mistyped) source keys.
+STRUCTURAL_SOURCE_KEYS = frozenset(
+    {
+        "kind",
+        "enabled",
+        "path",
+        "filename_pattern",
+        "available_variables",
+        "variables",
+        "has_depth",
+        "url",
+        "doi",
+        "mode",
+        "dataset_id",
+        "temporal_sampling",
+        "coverage",
+    }
+)
+
+
 def _optional_path(value: Any) -> Path | None:
     if value in (None, ""):
         return None

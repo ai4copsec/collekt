@@ -2,6 +2,7 @@
 
 from collekt.core.config.loader import default_conf_dir, load_config
 from collekt.core.config.schema import (
+    STRUCTURAL_SOURCE_KEYS,
     CacheConfig,
     Config,
     CredentialsConfig,
@@ -21,6 +22,7 @@ LOG_STYLE = "{"
 LOG_DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 __all__ = [
+    "STRUCTURAL_SOURCE_KEYS",
     "CacheConfig",
     "Config",
     "CredentialsConfig",

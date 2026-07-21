@@ -349,4 +349,11 @@ def plan_eodyn(request: Request, source: SourceConfig, config: Config, request_d
     )
 
 
-register_adapter(SourceAdapter(kind="eodyn", fetch=fetch_eodyn, plan=plan_eodyn))
+register_adapter(
+    SourceAdapter(
+        kind="eodyn",
+        fetch=fetch_eodyn,
+        plan=plan_eodyn,
+        known_raw_keys=frozenset({"archive_root", "day_pattern", "mode"}),
+    )
+)

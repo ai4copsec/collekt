@@ -234,5 +234,6 @@ register_adapter(
         fetch=fetch_copernicus_dataspace,
         plan=plan_copernicus_dataspace,
         diagnose=diagnose,
+        known_raw_keys=frozenset({"collection", "max_records", "cloud_cover"}),
     )
 )

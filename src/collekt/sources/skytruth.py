@@ -265,4 +265,11 @@ def plan_skytruth(request: Request, source: SourceConfig, config: Config, reques
     ]
 
 
-register_adapter(SourceAdapter(kind="skytruth", fetch=fetch_skytruth, plan=plan_skytruth))
+register_adapter(
+    SourceAdapter(
+        kind="skytruth",
+        fetch=fetch_skytruth,
+        plan=plan_skytruth,
+        known_raw_keys=frozenset({"limit", "api_url"}),
+    )
+)

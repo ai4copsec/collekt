@@ -193,4 +193,12 @@ def diagnose(config: Config, online: bool) -> list[DoctorCheck]:
     return checks
 
 
-register_adapter(SourceAdapter(kind="era5", fetch=fetch_era5, plan=plan_era5, diagnose=diagnose))
+register_adapter(
+    SourceAdapter(
+        kind="era5",
+        fetch=fetch_era5,
+        plan=plan_era5,
+        diagnose=diagnose,
+        known_raw_keys=frozenset({"data_format", "download_format", "pad_deg"}),
+    )
+)

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from collekt.core.config import Config, get_config
+from collekt.core.config import STRUCTURAL_SOURCE_KEYS, Config, SourceConfig, get_config
 from collekt.core.diagnostics import DoctorCheck, DoctorStatus, package_check
 from collekt.sources.base import get_adapter, registered_kinds
 
@@ -21,7 +21,24 @@ def _source_checks(config: Config) -> list[DoctorCheck]:
         else:
             detail = "no variables"
         checks.append(DoctorCheck(f"source {source.name}", DoctorStatus.OK, f"{source.kind}; {detail}"))
+        checks.extend(_unknown_raw_key_checks(source))
     return checks
+
+
+def _unknown_raw_key_checks(source: SourceConfig) -> list[DoctorCheck]:
+    adapter = get_adapter(source.kind)
+    if adapter is None:
+        return []
+    unknown = sorted(set(source.raw) - STRUCTURAL_SOURCE_KEYS - adapter.known_raw_keys)
+    if not unknown:
+        return []
+    return [
+        DoctorCheck(
+            f"source {source.name} config keys",
+            DoctorStatus.WARN,
+            f"unrecognized key(s) {', '.join(unknown)} (possible typo?); ignored by the {source.kind!r} adapter",
+        )
+    ]
 
 
 def run_doctor(
