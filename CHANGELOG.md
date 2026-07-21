@@ -76,3 +76,10 @@ under `[main]`; `just bump` copies them under the new version.
 - `copernicus_dataspace` and `skytruth` now degrade to a per-source warning
   instead of aborting the whole collection run on a malformed API response or
   a missing optional dependency (e.g. `damast`/`geopandas` for skytruth).
+- ECMWF Open Data: `10fg` (10m wind gust, a running maximum) shares a GRIB2 file
+  with instantaneous fields (`10u`/`10v`/`100u`/`100v`); cfgrib cannot merge the
+  two into one hypercube and previously dropped `10fg` from the cropped NetCDF
+  with no error or warning. The adapter now opens each cfgrib hypercube
+  separately, merges them, and renames variables back to their requested
+  mnemonics; any param still missing from the result is reported in the
+  source's manifest message instead of silently vanishing.

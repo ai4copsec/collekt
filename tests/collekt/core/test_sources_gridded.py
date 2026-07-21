@@ -274,9 +274,10 @@ def test_ecmwf_downloads_grib_and_crops_to_region_with_stubbed_client(tmp_path, 
             calls.append(("retrieve", request, target))
             Path(target).write_text("grib", encoding="utf-8")
 
-    def fake_crop(raw_path, output_path, region, pad_deg, resolution):
-        calls.append(("crop", raw_path, output_path, region, pad_deg, resolution))
+    def fake_crop(raw_path, output_path, region, pad_deg, resolution, params):
+        calls.append(("crop", raw_path, output_path, region, pad_deg, resolution, params))
         Path(output_path).write_text("netcdf", encoding="utf-8")
+        return []
 
     monkeypatch.setattr("collekt.sources.ecmwf_open_data._client_class", lambda: FakeClient)
     monkeypatch.setattr("collekt.sources.ecmwf_open_data._crop_to_netcdf", fake_crop)
@@ -291,13 +292,14 @@ def test_ecmwf_downloads_grib_and_crops_to_region_with_stubbed_client(tmp_path, 
     # 3h native cadence over the day -> steps every 3 hours.
     assert calls[1][1]["step"] == [0, 3, 6, 9, 12, 15, 18, 21]
 
-    _, raw_path, output_path, region, pad_deg, resolution = calls[2]
+    _, raw_path, output_path, region, pad_deg, resolution, params = calls[2]
     assert raw_path.name.endswith(".raw.grib2")
     assert not raw_path.exists()  # cleaned up after cropping
     assert output_path.name == result.files[0].name
     assert region == Region.from_bbox((-6, 20, 35, 45))
     assert pad_deg == 0.5
     assert resolution == 0.25
+    assert params == ("10u", "10v")
 
 
 def test_ecmwf_grid_resolution_parses_resol_label():
@@ -328,6 +330,100 @@ def test_ecmwf_crop_dataset_normalizes_longitude_and_clips_to_region():
     assert float(cropped.longitude.max()) == 20.5
     assert float(cropped.latitude.min()) == 34.5
     assert float(cropped.latitude.max()) == 45.5
+
+
+def _write_mixed_step_type_grib(path):
+    """Write a tiny synthetic GRIB2 file mixing instantaneous winds (10u/10v) with a
+    3-hourly running-max gust (10fg), reproducing the ECMWF Open Data combination that
+    a plain `xr.open_dataset(..., engine="cfgrib")` cannot merge into one hypercube
+    and silently drops instead of raising.
+    """
+    eccodes = pytest.importorskip("eccodes")
+
+    def new_message():
+        gid = eccodes.codes_grib_new_from_samples("regular_ll_sfc_grib2")
+        eccodes.codes_set(gid, "Ni", 4)
+        eccodes.codes_set(gid, "Nj", 3)
+        eccodes.codes_set(gid, "latitudeOfFirstGridPointInDegrees", 46.0)
+        eccodes.codes_set(gid, "longitudeOfFirstGridPointInDegrees", -8.0)
+        eccodes.codes_set(gid, "latitudeOfLastGridPointInDegrees", 44.0)
+        eccodes.codes_set(gid, "longitudeOfLastGridPointInDegrees", -5.0)
+        eccodes.codes_set(gid, "iDirectionIncrementInDegrees", 1.0)
+        eccodes.codes_set(gid, "jDirectionIncrementInDegrees", 1.0)
+        eccodes.codes_set_values(gid, [1.0] * 12)
+        eccodes.codes_set(gid, "dataDate", 20260101)
+        eccodes.codes_set(gid, "dataTime", 0)
+        return gid
+
+    with open(path, "wb") as handle:
+        for step in (0, 3):
+            for number in (2, 3):  # u-component (10u), v-component (10v)
+                gid = new_message()
+                eccodes.codes_set(gid, "discipline", 0)
+                eccodes.codes_set(gid, "parameterCategory", 2)
+                eccodes.codes_set(gid, "parameterNumber", number)
+                eccodes.codes_set(gid, "typeOfFirstFixedSurface", 103)
+                eccodes.codes_set(gid, "scaledValueOfFirstFixedSurface", 10)
+                eccodes.codes_set(gid, "scaleFactorOfFirstFixedSurface", 0)
+                eccodes.codes_set(gid, "step", step)
+                eccodes.codes_write(gid, handle)
+                eccodes.codes_release(gid)
+
+        gid = new_message()  # 10fg: 3-hourly running max, window ending at step=3
+        eccodes.codes_set(gid, "productDefinitionTemplateNumber", 8)
+        eccodes.codes_set(gid, "discipline", 0)
+        eccodes.codes_set(gid, "parameterCategory", 2)
+        eccodes.codes_set(gid, "parameterNumber", 22)
+        eccodes.codes_set(gid, "typeOfFirstFixedSurface", 103)
+        eccodes.codes_set(gid, "scaledValueOfFirstFixedSurface", 10)
+        eccodes.codes_set(gid, "scaleFactorOfFirstFixedSurface", 0)
+        eccodes.codes_set(gid, "forecastTime", 0)
+        eccodes.codes_set(gid, "typeOfStatisticalProcessing", 2)  # maximum
+        eccodes.codes_set(gid, "indicatorOfUnitForTimeRange", 1)  # hour
+        eccodes.codes_set(gid, "lengthOfTimeRange", 3)
+        eccodes.codes_set(gid, "yearOfEndOfOverallTimeInterval", 2026)
+        eccodes.codes_set(gid, "monthOfEndOfOverallTimeInterval", 1)
+        eccodes.codes_set(gid, "dayOfEndOfOverallTimeInterval", 1)
+        eccodes.codes_set(gid, "hourOfEndOfOverallTimeInterval", 3)
+        eccodes.codes_set(gid, "minuteOfEndOfOverallTimeInterval", 0)
+        eccodes.codes_set(gid, "secondOfEndOfOverallTimeInterval", 0)
+        eccodes.codes_set(gid, "numberOfTimeRange", 1)
+        eccodes.codes_write(gid, handle)
+        eccodes.codes_release(gid)
+
+
+def test_ecmwf_crop_to_netcdf_keeps_time_processed_variables(tmp_path):
+    xr = pytest.importorskip("xarray")
+    from collekt.sources.ecmwf_open_data import _crop_to_netcdf
+
+    raw_path = tmp_path / "raw.grib2"
+    _write_mixed_step_type_grib(raw_path)
+    output_path = tmp_path / "output.nc"
+    region = Region.from_bbox((-7, -6, 44.5, 45.5))
+
+    missing = _crop_to_netcdf(
+        raw_path, output_path, region, pad_deg=0.0, resolution=1.0, params=("10u", "10v", "10fg")
+    )
+
+    assert missing == []
+    with xr.open_dataset(output_path) as ds:
+        assert {"10u", "10v", "10fg"} <= set(ds.data_vars)
+
+
+def test_ecmwf_crop_to_netcdf_reports_params_missing_from_the_file(tmp_path):
+    pytest.importorskip("xarray")
+    from collekt.sources.ecmwf_open_data import _crop_to_netcdf
+
+    raw_path = tmp_path / "raw.grib2"
+    _write_mixed_step_type_grib(raw_path)
+    output_path = tmp_path / "output.nc"
+    region = Region.from_bbox((-7, -6, 44.5, 45.5))
+
+    missing = _crop_to_netcdf(
+        raw_path, output_path, region, pad_deg=0.0, resolution=1.0, params=("10u", "not_in_the_file")
+    )
+
+    assert missing == ["not_in_the_file"]
 
 
 def test_ecmwf_plan_available_within_rolling_window(tmp_path):

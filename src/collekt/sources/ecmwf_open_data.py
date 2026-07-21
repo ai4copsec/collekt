@@ -9,6 +9,7 @@ of the other gridded adapters (`cmems`, `era5`).
 from __future__ import annotations
 
 import math
+import re
 from datetime import date, datetime, time
 from pathlib import Path
 from typing import Any
@@ -63,15 +64,41 @@ def _padded_bbox(region: Region, pad_deg: float, resolution: float) -> tuple[flo
     return south, north, west, east
 
 
-def _open_raw_grib(path: Path):
-    """Open a downloaded global GRIB2 file with the cfgrib backend."""
+def _open_raw_datasets(path: Path) -> list[Any]:
+    """Open a downloaded global GRIB2 file, one dataset per cfgrib hypercube.
+
+    ECMWF Open Data mixes instantaneous fields (10u/10v/100u/100v) with
+    time-processed ones (10fg, a running maximum); a single `xr.open_dataset` call
+    cannot merge those into one hypercube and silently drops the incompatible
+    variable. `cfgrib.open_datasets` returns one dataset per compatible group
+    instead, so nothing requested is lost.
+    """
     try:
-        import xarray as xr
+        import cfgrib
     except ImportError as exc:  # pragma: no cover - exercised only without optional extra
         raise ImportError(
             "xarray and cfgrib are required to crop ECMWF Open Data files; reinstall collekt's dependencies (uv sync)."
         ) from exc
-    return xr.open_dataset(path, engine="cfgrib", backend_kwargs={"indexpath": ""})
+    return cfgrib.open_datasets(path, backend_kwargs={"indexpath": ""})
+
+
+def _rename_to_requested_params(dataset: Any, params: tuple[str, ...]) -> Any:
+    """Rename cfgrib-decoded variables back to the exact param mnemonics that were requested.
+
+    eccodes appends the accumulation window length to the GRIB short name of
+    time-processed parameters (e.g. ``10fg`` decodes as ``10fg3`` for a 3-hourly
+    window), and cfgrib derives the xarray variable name from that suffixed short
+    name (e.g. ``fg10_3``). Rename each variable back to the mnemonic it was
+    requested under so callers can look it up by that name.
+    """
+    rename = {}
+    for name, variable in dataset.data_vars.items():
+        short_name = variable.attrs.get("GRIB_shortName", name)
+        for param in params:
+            if short_name == param or re.fullmatch(re.escape(param) + r"\d+", short_name):
+                rename[name] = param
+                break
+    return dataset.rename(rename) if rename else dataset
 
 
 def _crop_dataset(dataset: Any, region: Region, pad_deg: float, resolution: float) -> Any:
@@ -84,11 +111,25 @@ def _crop_dataset(dataset: Any, region: Region, pad_deg: float, resolution: floa
     return sorted_dataset.sel({lat_name: slice(south, north), lon_name: slice(west, east)})
 
 
-def _crop_to_netcdf(raw_path: Path, output_path: Path, region: Region, pad_deg: float, resolution: float) -> None:
-    """Crop a downloaded global GRIB2 file to the request region and write NetCDF."""
-    with _open_raw_grib(raw_path) as dataset:
-        cropped = _crop_dataset(dataset.load(), region, pad_deg, resolution)
+def _crop_to_netcdf(
+    raw_path: Path, output_path: Path, region: Region, pad_deg: float, resolution: float, params: tuple[str, ...]
+) -> list[str]:
+    """Crop a downloaded global GRIB2 file to the request region and write NetCDF.
+
+    Returns the requested ``params`` that ended up missing from the written file.
+    """
+    import xarray as xr
+
+    datasets = _open_raw_datasets(raw_path)
+    try:
+        combined = datasets[0] if len(datasets) == 1 else xr.merge(datasets, join="outer", compat="override")
+        merged = _rename_to_requested_params(combined, params).load()
+        cropped = _crop_dataset(merged, region, pad_deg, resolution)
+    finally:
+        for dataset in datasets:
+            dataset.close()
     cropped.to_netcdf(output_path)
+    return [param for param in params if param not in cropped.data_vars]
 
 
 def _request_for_day(source: SourceConfig, day: date, plan: SamplingPlan | None = None) -> dict[str, object]:
@@ -162,7 +203,7 @@ def fetch_ecmwf_open_data(
             if client is None:
                 client = _client_class()(source=str(source.raw.get("source", "ecmwf")), model=model, resol=resol)
             client.retrieve(_request_for_day(source, day, plan), target=str(raw_path))
-            _crop_to_netcdf(raw_path, output_path, request.region, pad_deg, resolution)
+            missing = _crop_to_netcdf(raw_path, output_path, request.region, pad_deg, resolution, source.variables)
         except Exception as exc:  # noqa: BLE001 - provider availability failures are warnings
             results.append(
                 SourceResult(
@@ -187,6 +228,9 @@ def fetch_ecmwf_open_data(
                     path=output_path,
                     dataset_id=dataset_id,
                     variables=source.variables,
+                    message=(f"missing from the cropped file (provider limitation): {', '.join(missing)}")
+                    if missing
+                    else None,
                     day=day.isoformat(),
                     format="netcdf",
                     details={"temporal": plan.day_dict(day)},
