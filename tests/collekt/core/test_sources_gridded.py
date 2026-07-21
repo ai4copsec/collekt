@@ -231,6 +231,25 @@ def test_era5_downloads_with_stubbed_cdsapi(tmp_path, monkeypatch):
     assert calls[0]["time"] == [f"{hour:02d}:00" for hour in range(24)]
 
 
+def test_era5_download_failure_leaves_no_partial_file(tmp_path, monkeypatch):
+    class FakeRetrieval:
+        def download(self, path):
+            Path(path).write_text("partial", encoding="utf-8")
+            raise RuntimeError("connection dropped")
+
+    class FakeClient:
+        def retrieve(self, dataset_id, request):
+            return FakeRetrieval()
+
+    monkeypatch.setitem(sys.modules, "cdsapi", types.SimpleNamespace(Client=FakeClient))
+    result = Fetcher(_request(start="2026-06-25"), config=_cfg(tmp_path, era5_reanalysis=ERA5)).download()
+
+    assert result.summary.skipped == 1
+    out_dir = result.output_dir / "ecmwf/era5"
+    assert list(out_dir.glob("*.part")) == []
+    assert list(out_dir.glob("era5_10m_wind_*.nc")) == []
+
+
 def test_era5_plan_skips_dates_outside_declarative_coverage(tmp_path):
     result = Fetcher(_request(start="1900-01-01"), config=_cfg(tmp_path, era5_reanalysis=ERA5)).plan()
 

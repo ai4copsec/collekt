@@ -65,12 +65,23 @@ def _search(token: str, params: dict[str, Any]) -> dict[str, Any]:
 
 
 def _download(url: str, token: str, path: Path) -> None:
-    with requests.get(url, headers={"Authorization": f"Bearer {token}"}, stream=True) as response:
-        response.raise_for_status()
-        with open(path, "wb") as handle:
-            for chunk in response.iter_content(chunk_size=1024 * 8):
-                if chunk:
-                    handle.write(chunk)
+    """Stream a product to a temporary file, then move it into place atomically.
+
+    A partial file left at ``path`` after a dropped connection would otherwise be
+    mistaken for a valid, already-downloaded product by the fetch loop's cache check.
+    """
+    tmp_path = path.parent / (path.name + ".part")
+    try:
+        with requests.get(url, headers={"Authorization": f"Bearer {token}"}, stream=True) as response:
+            response.raise_for_status()
+            with open(tmp_path, "wb") as handle:
+                for chunk in response.iter_content(chunk_size=1024 * 8):
+                    if chunk:
+                        handle.write(chunk)
+    except BaseException:
+        tmp_path.unlink(missing_ok=True)
+        raise
+    tmp_path.replace(path)
 
 
 def _search_params(request: Request, source: SourceConfig, collection: str) -> dict[str, Any]:

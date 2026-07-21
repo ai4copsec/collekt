@@ -11,6 +11,7 @@ import warnings
 from pathlib import Path
 
 import pytest
+import requests
 
 from collekt import Fetcher
 from collekt.core.config import get_config
@@ -282,6 +283,52 @@ def test_dataspace_login_failure_is_a_warning(tmp_path, monkeypatch):
 
     assert result.summary.skipped == 1
     assert "login failed" in result.results[0].message
+
+
+class _FakeStreamResponse:
+    def __init__(self, chunks):
+        self._chunks = chunks
+
+    def raise_for_status(self):
+        pass
+
+    def iter_content(self, chunk_size):
+        yield from self._chunks
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc_info):
+        return False
+
+
+def test_dataspace_download_writes_final_path_only(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        copernicus_dataspace.requests, "get", lambda *a, **k: _FakeStreamResponse([b"product-bytes"])
+    )
+    path = tmp_path / "product.zip"
+
+    copernicus_dataspace._download("https://x/prod", "token", path)
+
+    assert path.read_bytes() == b"product-bytes"
+    assert not (tmp_path / "product.zip.part").exists()
+
+
+def test_dataspace_download_failure_leaves_no_partial_file(tmp_path, monkeypatch):
+    def _broken_iter_content(chunk_size):
+        yield b"partial-bytes"
+        raise requests.exceptions.ConnectionError("dropped")
+
+    response = _FakeStreamResponse([])
+    response.iter_content = _broken_iter_content
+    monkeypatch.setattr(copernicus_dataspace.requests, "get", lambda *a, **k: response)
+    path = tmp_path / "product.zip"
+
+    with pytest.raises(requests.exceptions.ConnectionError):
+        copernicus_dataspace._download("https://x/prod", "token", path)
+
+    assert not path.exists()
+    assert not (tmp_path / "product.zip.part").exists()
 
 
 def test_dataspace_plan_reports_search_without_network(tmp_path):

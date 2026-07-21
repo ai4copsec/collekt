@@ -85,9 +85,11 @@ def fetch_era5(
 
         request_body = _request_body(request, source, day, plan)
         progress(source.name, f"downloading {day.isoformat()} from {dataset_id}")
+        tmp_path = output_path.parent / (output_path.name + ".part")
         try:
-            _cdsapi().Client().retrieve(dataset_id, request_body).download(str(output_path))
+            _cdsapi().Client().retrieve(dataset_id, request_body).download(str(tmp_path))
         except Exception as exc:  # noqa: BLE001 - expected provider/date failures are warnings
+            tmp_path.unlink(missing_ok=True)
             results.append(
                 SourceResult(
                     source=source.name,
@@ -100,7 +102,8 @@ def fetch_era5(
                 )
             )
             continue
-        if output_path.exists():
+        if tmp_path.exists():
+            tmp_path.replace(output_path)
             results.append(
                 SourceResult(
                     source=source.name,
