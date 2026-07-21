@@ -1,0 +1,73 @@
+# Copernicus Marine — Atlantic European North-West Shelf regional products.
+
+sources:
+  cmems_nws_currents:
+    kind: cmems
+    path: "cmems/nws/currents"
+    dataset_id: "cmems_mod_nws_phy-cur_anfc_1.5km-3D_P1D-m"
+    temporal_sampling: 24h
+    coverage:
+      longitude: [-16, 13]
+      latitude: [46, 62.74324]
+      temporal:
+        start: "2024-03-01"
+        end: null
+        kind: rolling
+    coordinates_selection_method: inside
+    has_depth: true
+    available_variables: [ubar, uo, vbar, vo, wo]
+    url: "https://data.marine.copernicus.eu/product/NWSHELF_ANALYSISFORECAST_PHY_004_013/description"
+    doi: "10.48670/moi-00054"
+
+  cmems_nws_waves:
+    kind: cmems
+    path: "cmems/nws/waves"
+    dataset_id: "cmems_mod_nws_wav_anfc_1.5km_PT1H-i"
+    temporal_sampling: 1h
+    coverage:
+      longitude: [-16, 13]
+      latitude: [46, 62.74324]
+      temporal:
+        start: "2024-03-03"
+        end: null
+        kind: rolling
+    time_selection: full_day
+    coordinates_selection_method: outside
+    available_variables: [VCMX, VHM0, VHM0_SW1, VHM0_SW2, VHM0_WW, VMDR, VMDR_SW1, VMDR_SW2, VMDR_WW, VMXL, VPED, VSDX, VSDY, VTM01_SW1, VTM01_SW2, VTM01_WW, VTM02, VTM10, VTPK, forecast_period]
+    url: "https://data.marine.copernicus.eu/product/NWSHELF_ANALYSISFORECAST_WAV_004_014/description"
+    doi: "10.48670/moi-00055"
+
+  cmems_nws_chl_obs:
+    kind: cmems
+    path: "cmems/nws/ocean_colour"
+    dataset_id: "cmems_obs_oc_nws_bgc_tur-spm-chl_nrt_l3-hr-mosaic_P1D-m"
+    temporal_sampling: 24h
+    coverage:
+      longitude: [-11.999476, 13.000524]
+      latitude: [48.000463, 61.999537]
+      temporal:
+        start: "2020-01-01"
+        end: null
+        kind: rolling
+    coordinates_selection_method: outside
+    available_variables: [CHL, SPM, TUR]
+    url: "https://data.marine.copernicus.eu/product/OCEANCOLOUR_NWS_BGC_HR_L3_NRT_009_203/description"
+    doi: "10.48670/moi-00118"
+
+  cmems_nws_bgc_model:
+    kind: cmems
+    path: "cmems/nws/bgc"
+    dataset_id: "cmems_mod_nws_bgc-chl_anfc_7km-3D_P1D-m"
+    temporal_sampling: 24h
+    coverage:
+      longitude: [-19.888889, 12.99967]
+      latitude: [40.066669, 65.001251]
+      temporal:
+        start: "2024-02-28"
+        end: null
+        kind: rolling
+    coordinates_selection_method: inside
+    has_depth: true
+    available_variables: [chl]
+    url: "https://data.marine.copernicus.eu/product/NWSHELF_ANALYSISFORECAST_BGC_004_002/description"
+    doi: "10.48670/moi-00056"

@@ -1,0 +1,27 @@
+# Copernicus Data Space — Sentinel / Landsat product downloads.
+#
+# Credential-gated (COPERNICUS_DATASPACE_USERNAME / _PASSWORD). Each source
+# downloads full product files (no variable selection), so select the collection
+# key(s) you need in DatasetConfig.
+
+sources:
+  copernicus_s1_grd:
+    kind: copernicus_dataspace
+    path: "dataspace/sentinel-1-grd"
+    collection: "sentinel-1-grd"
+    max_records: 20
+    url: "https://dataspace.copernicus.eu"
+
+  copernicus_s2_l2a:
+    kind: copernicus_dataspace
+    path: "dataspace/sentinel-2-l2a"
+    collection: "sentinel-2-l2a"
+    max_records: 20
+    url: "https://dataspace.copernicus.eu"
+
+  copernicus_landsat:
+    kind: copernicus_dataspace
+    path: "dataspace/landsat"
+    collection: "landsat-c2-l1-oli-tirs"
+    max_records: 20
+    url: "https://dataspace.copernicus.eu"

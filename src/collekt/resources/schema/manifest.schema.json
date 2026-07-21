@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/ai4copsec/collekt/raw/main/src/collekt/resources/schema/manifest.schema.json",
+  "title": "collekt Manifest Draft Schema",
+  "description": "Permissive pre-1.0 schema for collekt manifest.json files. Core fields are required; provider-specific metadata may evolve. This schema is shipped for reference and is not enforced during alpha.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "manifest_schema_version",
+    "request",
+    "summary",
+    "sources",
+    "files",
+    "planned",
+    "warnings",
+    "failures"
+  ],
+  "properties": {
+    "manifest_schema_version": {
+      "type": "string",
+      "description": "Pre-1.0 manifest schema version. Additive changes may occur before 1.0."
+    },
+    "request": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["region", "start", "end", "sampling"],
+      "properties": {
+        "region": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": ["west", "east", "south", "north"],
+          "properties": {
+            "west": {"type": "number"},
+            "east": {"type": "number"},
+            "south": {"type": "number"},
+            "north": {"type": "number"},
+            "geometry": {"type": "string"}
+          }
+        },
+        "start": {"type": "string"},
+        "end": {"type": "string"},
+        "sampling": {"type": "string"},
+        "metadata": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["planned", "downloaded", "reused", "skipped", "failed"],
+      "properties": {
+        "planned": {"type": "integer", "minimum": 0},
+        "downloaded": {"type": "integer", "minimum": 0},
+        "reused": {"type": "integer", "minimum": 0},
+        "skipped": {"type": "integer", "minimum": 0},
+        "failed": {"type": "integer", "minimum": 0}
+      }
+    },
+    "sources": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["kind", "enabled", "variables"],
+        "properties": {
+          "kind": {"type": "string"},
+          "enabled": {"type": "boolean"},
+          "variables": {"type": "array", "items": {"type": "string"}},
+          "available_variables": {"type": "array", "items": {"type": "string"}},
+          "temporal_sampling": {"type": "string"},
+          "coverage": {"type": ["object", "null"]}
+        }
+      }
+    },
+    "files": {"type": "array", "items": {"$ref": "#/$defs/result"}},
+    "planned": {"type": "array", "items": {"$ref": "#/$defs/result"}},
+    "warnings": {"type": "array", "items": {"$ref": "#/$defs/result"}},
+    "failures": {"type": "array", "items": {"$ref": "#/$defs/result"}}
+  },
+  "$defs": {
+    "result": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["source", "status", "variables"],
+      "properties": {
+        "source": {"type": "string"},
+        "dataset_id": {"type": ["string", "null"]},
+        "path": {"type": ["string", "null"]},
+        "status": {
+          "type": "string",
+          "enum": ["planned", "downloaded", "reused", "skipped", "failed"]
+        },
+        "format": {"type": "string"},
+        "variables": {"type": "array", "items": {"type": "string"}},
+        "day": {"type": ["string", "null"]},
+        "message": {"type": ["string", "null"]},
+        "details": {"type": ["object", "null"], "additionalProperties": true},
+        "inspection": {"type": ["object", "null"], "additionalProperties": true}
+      }
+    }
+  }
+}

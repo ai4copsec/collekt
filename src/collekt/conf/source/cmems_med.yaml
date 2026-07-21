@@ -1,0 +1,148 @@
+# Copernicus Marine — Mediterranean regional products.
+#
+# See `cmems_global` for the near-real-time (`*_nrt`) vs multi-year (`*_my`)
+# split and the `available_variables` / `has_depth` conventions.
+
+sources:
+  cmems_med_currents_nrt:
+    kind: cmems
+    path: "cmems/med/currents"
+    dataset_id: "cmems_mod_med_phy-cur_anfc_4.2km_P1D-m"
+    temporal_sampling: 24h
+    coverage:
+      longitude: [-17.291666, 36.291668]
+      latitude: [30.1875, 45.979168]
+      temporal:
+        start: "2024-03-30"
+        end: null
+        kind: rolling
+    coordinates_selection_method: inside
+    has_depth: true
+    available_variables: [uo, vo]
+    url: "https://data.marine.copernicus.eu/product/MEDSEA_ANALYSISFORECAST_PHY_006_013/description"
+    doi: "10.48670/mds-00359"
+
+  cmems_med_currents_nrt_15min:
+    kind: cmems
+    path: "cmems/med/currents"
+    dataset_id: "cmems_mod_med_phy-cur_anfc_4.2km_PT15M-i"
+    temporal_sampling: 15min
+    coverage:
+      longitude: [-17.291666, 36.291668]
+      latitude: [30.1875, 45.979168]
+      temporal:
+        start: "2024-03-28"
+        end: null
+        kind: rolling
+    time_selection: full_day
+    coordinates_selection_method: inside
+    has_depth: true
+    available_variables: [uo, vo]
+    url: "https://data.marine.copernicus.eu/product/MEDSEA_ANALYSISFORECAST_PHY_006_013/description"
+    doi: "10.48670/mds-00359"
+
+  cmems_med_currents_nrt_2d_hourly:
+    kind: cmems
+    path: "cmems/med/currents"
+    dataset_id: "cmems_mod_med_phy-cur_anfc_4.2km-2D_PT1H-m"
+    temporal_sampling: 1h
+    coverage:
+      longitude: [-17.291666, 36.291668]
+      latitude: [30.1875, 45.979168]
+      temporal:
+        start: "2024-03-29"
+        end: null
+        kind: rolling
+    time_selection: full_day
+    coordinates_selection_method: inside
+    available_variables: [uo, vo]
+    url: "https://data.marine.copernicus.eu/product/MEDSEA_ANALYSISFORECAST_PHY_006_013/description"
+    doi: "10.48670/mds-00359"
+
+  cmems_med_currents_nrt_3d_hourly:
+    kind: cmems
+    path: "cmems/med/currents"
+    dataset_id: "cmems_mod_med_phy-cur_anfc_4.2km-3D_PT1H-m"
+    temporal_sampling: 1h
+    coverage:
+      longitude: [-17.291666, 36.291668]
+      latitude: [30.1875, 45.979168]
+      temporal:
+        start: "2025-10-06"
+        end: null
+        kind: rolling
+    time_selection: full_day
+    coordinates_selection_method: inside
+    has_depth: true
+    available_variables: [uo, vo]
+    url: "https://data.marine.copernicus.eu/product/MEDSEA_ANALYSISFORECAST_PHY_006_013/description"
+    doi: "10.48670/mds-00359"
+
+  cmems_med_currents_my:
+    kind: cmems
+    path: "cmems/med/currents"
+    dataset_id: "cmems_mod_med_phy-cur_my_4.2km_P1D-m"
+    temporal_sampling: 24h
+    coverage:
+      longitude: [-6, 36.291668]
+      latitude: [30.1875, 45.979168]
+      temporal:
+        start: "1987-01-01"
+        end: "2026-05-31"
+        kind: archive
+    coordinates_selection_method: inside
+    has_depth: true
+    available_variables: [uo, vo]
+    url: "https://data.marine.copernicus.eu/product/MEDSEA_MULTIYEAR_PHY_006_004/description"
+    doi: "10.48670/mds-00375"
+
+  cmems_med_waves:
+    kind: cmems
+    path: "cmems/med/waves"
+    dataset_id: "cmems_mod_med_wav_anfc_4.2km_PT1H-i"
+    temporal_sampling: 1h
+    coverage:
+      longitude: [-18.125, 36.291668]
+      latitude: [30.1875, 45.979168]
+      temporal:
+        start: "2021-11-30"
+        end: null
+        kind: rolling
+    time_selection: full_day
+    available_variables: [VCMX, VHM0, VHM0_SW1, VHM0_SW2, VHM0_WW, VMDR, VMDR_SW1, VMDR_SW2, VMDR_WW, VMXL, VPED, VSDX, VSDY, VTM01_SW1, VTM01_SW2, VTM01_WW, VTM02, VTM10, VTPK]
+    url: "https://data.marine.copernicus.eu/product/MEDSEA_ANALYSISFORECAST_WAV_006_017/description"
+    doi: "10.48670/mds-00373"
+
+  cmems_med_chl_obs:
+    kind: cmems
+    path: "cmems/med/ocean_colour"
+    dataset_id: "cmems_obs-oc_med_bgc-plankton_nrt_l3-multi-1km_P1D"
+    temporal_sampling: 24h
+    coverage:
+      longitude: [-5.993576, 36.493576]
+      latitude: [30.005064, 45.994938]
+      temporal:
+        start: "2026-06-24"
+        end: null
+        kind: rolling
+    available_variables: [CHL, CRYPTO, DIATO, DINO, GREEN, HAPTO, MICRO, NANO, PICO, PROKAR, QI_CHL, SENSORMASK, WTM]
+    url: "https://data.marine.copernicus.eu/product/OCEANCOLOUR_MED_BGC_L3_NRT_009_141/description"
+    doi: "10.48670/moi-00297"
+
+  cmems_med_bgc_model:
+    kind: cmems
+    path: "cmems/med/bgc"
+    dataset_id: "cmems_mod_med_bgc-bio_anfc_4.2km_P1D-m"
+    temporal_sampling: 24h
+    coverage:
+      longitude: [-5.541667, 36.291668]
+      latitude: [30.1875, 45.979168]
+      temporal:
+        start: "2024-02-26"
+        end: null
+        kind: rolling
+    coordinates_selection_method: inside
+    has_depth: true
+    available_variables: [nppv, o2]
+    url: "https://data.marine.copernicus.eu/product/MEDSEA_ANALYSISFORECAST_BGC_006_014/description"
+    doi: "10.48670/mds-00358"

@@ -1,0 +1,40 @@
+"""Configuration loading for collekt."""
+
+from collekt.core.config.loader import default_conf_dir, load_config
+from collekt.core.config.schema import (
+    STRUCTURAL_SOURCE_KEYS,
+    CacheConfig,
+    Config,
+    CredentialsConfig,
+    OutputConfig,
+    SourceConfig,
+    get_config,
+    parse_config,
+    selection_error,
+)
+
+# Legacy logging constants used by the current CLI (`collekt.cli.main`). The CLI
+# moves to rich-based reporting in a later phase; kept here so imports of
+# `collekt.core.config` keep working during the transition.
+DATE_FORMAT = "%Y-%m-%d"
+LOG_FORMAT = "[{asctime}][{levelname:^8s}] {name}: {message}"
+LOG_STYLE = "{"
+LOG_DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
+
+__all__ = [
+    "STRUCTURAL_SOURCE_KEYS",
+    "CacheConfig",
+    "Config",
+    "CredentialsConfig",
+    "OutputConfig",
+    "SourceConfig",
+    "default_conf_dir",
+    "get_config",
+    "load_config",
+    "parse_config",
+    "selection_error",
+    "DATE_FORMAT",
+    "LOG_FORMAT",
+    "LOG_STYLE",
+    "LOG_DATE_FORMAT",
+]

@@ -1,0 +1,135 @@
+columns:
+- name: aoi_type_1_ids
+  description: A list of Exclusive Economic Zones (EEZs) that the slick intersects
+  is_optional: false
+  representation_type: List(Int64)
+
+- name: aoi_type_2_ids
+  description: A list of International Hydrographic Organization (IHO) Sea Areas that the slick intersects.
+  is_optional: false
+  representation_type: List(Int64)
+
+- name: aoi_type_3_ids
+  description: A list of Marine Protected Areas (MPAs) that the slick intersects.
+  is_optional: false
+  representation_type: List(Int64)
+
+- name: area
+  description: An estimate of the total area of the slick in square meters.
+  unit: 'm^2'
+  is_optional: false
+  representation_type: Float64
+
+- name: aspect_ratio_factor
+  description: A measure of the aspect ratio of the slick (its area divided by its centerline length squared).
+  is_optional: false
+  representation_type: Float64
+
+- name: centerlines
+  description: A computed feature collection of linestrings that trace along the center of each slick multipolygon, reducing linear slicks to 1D geometries.
+  is_optional: false
+  representation_type: 'Struct({''features'': List(Struct({''geometry'': Struct({''coordinates'':
+    List(List(Float64)), ''type'': String}), ''id'': String, ''properties'': Struct({''area'':
+    Float64, ''length'': Float64}), ''type'': String})), ''type'': String})'
+
+- name: cls
+  description: An integer representing the models best guess of slick classification (not to be interpreted as reliable ground truth).
+  is_optional: false
+  representation_type: Int64
+
+- name: fill_factor
+  description: A metric indicating how rectangular the slick is.
+  is_optional: false
+  representation_type: Float64
+
+- name: geometry_geojson
+  description: A multipolygon (in geojson) representing a slick on the water's surface.
+  is_optional: false
+  representation_type: Utf8
+
+- name: hitl_cls
+  description: An integer representing the slick classification provided through internal human review. Corresponds to classes defined in `public.cls`.
+  is_optional: false
+  representation_type: Int64
+
+- name: hitl_cls_name
+  description: The label corresponding to the human reviewed classification of the slick (`hitl_cls`).
+  is_optional: false
+  representation_type: Utf8
+
+- name: id
+  description: A unique identifier for the slick record.
+  is_optional: false
+  representation_type: Int64
+
+- name: length
+  description: An estimate of the length of the slick in meters.
+  is_optional: false
+  representation_type: Float64
+
+- name: linearity
+  description: A measure of how linear the slick's shape is.
+  is_optional: false
+  representation_type: Float64
+
+- name: machine_confidence
+  description: A score from the slick detection model regarding its confidence in the detection. It is used as a rough estimate of detection accuracy.
+  is_optional: false
+  representation_type: Float64
+
+- name: max_source_collated_score
+  description: The highest Source Collated Score (aka. Slick-Source Match) for the slick, indicating its adjacency to anthropogenic sources and therefore our strongest indicator that the slick detection is a true positive oil slick (prior to human review).
+  is_optional: false
+  representation_type: Float64
+
+- name: orchestrator_run
+  description: Identifier for the orchestrator run that processed this slick detection. Typically one per Sentinel-1 Scene.
+  is_optional: false
+  representation_type: Int64
+
+- name: perimeter
+  description: The perimeter length of the slick in meters.
+  is_optional: false
+  representation_type: Float64
+
+- name: polsby_popper
+  description: A compactness measure of the slick's shape based on the Polsby-Popper metric.
+  is_optional: false
+  representation_type: Float64
+
+- name: s1_scene_id
+  description: Sentinel-1 Scene identifier associated with the slick detection.
+  is_optional: false
+  representation_type: Utf8
+
+- name: slick_confidence
+  description: A score based on our Geometric Slick Potential (GSP) model which predicts if a detection is a true vessel slick prior to AIS availability. It is used as an alternative to `max_source_collated_score` when the detection is less than 72hrs old and AIS is unavailable.
+  is_optional: false
+  representation_type: Float64
+
+- name: slick_timestamp
+  description: The timestamp indicating when the slick was detected.
+  is_optional: false
+  representation_type: Utf8
+
+- name: slick_url
+  description: A URL to quickly view the slick detection in the Cerulean UI.
+  is_optional: false
+  representation_type: Utf8
+
+- name: source_type_1_ids
+  description: A list of vessels that are proximal to the slick.
+  is_optional: false
+  representation_type: List(String)
+
+- name: source_type_2_ids
+  description: A list of pieces of infrastructue that are proximal to the slick.
+  is_optional: false
+  representation_type: List(String)
+
+- name: source_type_3_ids
+  description: A list of dark vessels that are proximal to the slick.
+  is_optional: false
+  representation_type: List(String)
+
+annotations: {}

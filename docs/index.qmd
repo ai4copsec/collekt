@@ -1,0 +1,109 @@
+---
+title: ""
+page-layout: full
+toc: false
+number-sections: false
+title-block-banner: false
+---
+
+::: {.ai4copsec-hero}
+<img src="assets/ai4copsec-logo.png" alt="AI4COPSEC">
+
+# collekt
+
+A library to facilitate spatio-temporal data collection across arbitrary
+datasources for Copernicus security and maritime monitoring workflows.
+:::
+
+**collekt** fans out a single request — a region of interest and a time window —
+across the datasets named in a `DatasetConfig`, each fetched by a pluggable source
+adapter that records what it did in a machine-readable manifest. Every dataset is
+fetched at its native cadence; aligning to a common time axis is a downstream
+assembly step.
+
+::: {.ai4copsec-home-grid}
+:::{}
+#### Source-native collection
+
+Fetch CMEMS, ECMWF, SkyTruth, Copernicus Data Space, eOdyn, and other provider
+outputs without flattening their useful metadata away.
+:::
+
+:::{}
+#### Reproducible manifests
+
+Every run writes a relocatable manifest describing requests, files, variables,
+coverage, and provider details.
+:::
+
+:::{}
+#### Assembly workflow
+
+Gridded outputs can be regridded and aligned onto a common grid and time axis
+when downstream analysis needs a single dataset.
+:::
+:::
+
+## Getting started
+
+Installation from source:
+
+```bash
+uv sync --all-groups  # or: just install
+```
+
+```python
+import collekt
+
+config = collekt.DatasetConfig(
+    collekt.CMEMS("cmems_glorys_my", variables=["uo", "vo"], depth=[1.0, 1.1]),
+    collekt.CMEMS("cmems_duacs_my", variables=["ugos", "vgos"]),
+    collekt.CMEMS("cmems_med_currents_my", variables=["uo", "vo"], depth=[1.0, 1.1]),
+)
+request = collekt.Request(
+    region=collekt.Region.from_bbox((-6.0, 20.0, 35.0, 45.0)),
+    start="2023-06-15",
+)
+
+fetcher = collekt.Fetcher(request=request, config=config, output_dir="data/collections")
+result = fetcher.download()
+print(result.manifest_path)
+```
+
+Gridded results can be assembled onto a common grid and time axis:
+
+```python
+assembler = collekt.Assembler(result)
+dataset = assembler.to_xarray(grid="lowest_resolution", time="lowest_resolution")
+```
+
+The same workflow is available from the command line:
+
+```bash
+cat > datasets.yaml <<'YAML'
+datasets:
+  - provider: cmems
+    key: cmems_glorys_my
+    variables: [uo, vo]
+    depth: [1.0, 1.1]
+  - provider: cmems
+    key: cmems_duacs_my
+    variables: [ugos, vgos]
+  - provider: cmems
+    key: cmems_med_currents_my
+    variables: [uo, vo]
+    depth: [1.0, 1.1]
+YAML
+
+collekt fetch --bbox -6 20 35 45 --start 2023-06-15 \
+  --dataset-config datasets.yaml --output-dir data/collections
+collekt doctor
+```
+
+## Where to go next
+
+- [Products](products.qmd): the built-in source adapters and how sources are configured.
+- [CLI](cli.qmd): command-line fetch, dry-run, diagnostics, and config inspection.
+- [Credentials](credentials.qmd): provider setup and secret-handling rules.
+- [Manifest](manifest.qmd): the machine-readable output contract.
+- [API reference](api/index.qmd): the public API.

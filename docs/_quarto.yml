@@ -1,0 +1,82 @@
+project:
+  type: website
+  output-dir: ../public
+
+website:
+  title: "collekt"
+  description: "A library to facilitate spatio-temporal data collection across arbitrary datasources"
+  page-navigation: true
+  bread-crumbs: false
+  favicon: assets/ai4copsec-favicon.png
+
+  navbar:
+    logo: assets/ai4copsec-logo.png
+    logo-alt: "AI4COPSEC"
+    left:
+      - text: "Home"
+        href: index.qmd
+      - text: "Products"
+        href: products.qmd
+      - text: "CLI"
+        href: cli.qmd
+      - text: "Credentials"
+        href: credentials.qmd
+      - text: "Manifest"
+        href: manifest.qmd
+      - text: "API reference"
+        href: api/index.qmd
+    right:
+      - icon: github
+        href: https://github.com/ai4copsec/collekt
+
+  page-footer:
+    left: |
+      Part of [AI4COPSEC](https://ai4copsec.eu/).
+    center: |
+      Built with [Quarto](https://quarto.org).
+    right: |
+      [GitHub](https://github.com/ai4copsec/collekt)
+
+format:
+  html:
+    theme: cosmo
+    css: assets/ai4copsec.css
+    toc: true
+    toc-depth: 3
+    number-sections: false
+    smooth-scroll: true
+    page-layout: full
+
+highlight-style: github
+
+quartodoc:
+  title: "API Reference"
+  style: pkgdown
+  parser: google
+  package: collekt
+  dir: api
+  sections:
+    - title: "Core"
+      desc: "Request a region and time window, fetch, and inspect the result."
+      contents:
+        - __version__
+        - Request
+        - Region
+        - Fetcher
+        - Result
+        - Assembler
+        - run_doctor
+        - DoctorCheck
+        - available_datasets
+        - describe_datasets
+    - title: "Datasets"
+      desc: "Select datasets from the bundled catalog and set their provider parameters."
+      contents:
+        - DatasetConfig
+        - CMEMS
+        - ECMWFOpenData
+        - ERA5
+        - eOdyn
+        - SkyTruth
+        - CopernicusDataSpace
+        - Hozint

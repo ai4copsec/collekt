@@ -1,0 +1,21 @@
+# collekt base configuration.
+#
+# Runtime defaults plus the curated source catalogs collekt ships. Public
+# DatasetConfig objects select from these catalog keys and provide provider
+# parameters such as variables and depth. See docs/products.qmd.
+
+output:
+  root: "data/collections"
+  request_pattern: "{start:%Y%m%d}_{end:%Y%m%d}_{bbox_hash}"
+  manifest_name: "manifest.json"
+
+cache:
+  reuse_existing: true
+  overwrite: false
+  strict: false
+
+credentials:
+  cdsapi_rc: "$HOME/.cdsapirc"
+  copernicusmarine_credentials_file: null
+
+source_catalogs: [cmems_global, cmems_med, cmems_ibi, cmems_nws, ecmwf, eodyn, skytruth, hozint, dataspace]

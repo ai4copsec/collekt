@@ -1,6 +1,4 @@
-MAJOR_VERSION = 0
-MINOR_VERSION = 1
-PATCH_LEVEL = 0
+"""Single source of truth for the package version (bumped by commitizen)."""
 
-__version_info__ = (str(MAJOR_VERSION), str(MINOR_VERSION), str(PATCH_LEVEL))
-__version__ = '.'.join(__version_info__)
+__version__ = "0.1.0"
+__version_info__ = tuple(__version__.split("."))

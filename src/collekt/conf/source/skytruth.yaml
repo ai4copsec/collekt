@@ -1,0 +1,12 @@
+# Skytruth (Cerulean) oil-slick detections — an open feature source.
+#
+# A feature source: it writes detected slicks to Parquet and takes no variable
+# selection.
+
+sources:
+  skytruth:
+    kind: skytruth
+    path: "skytruth"
+    filename_pattern: "skytruth_{start:%Y%m%d}_{end:%Y%m%d}_{bbox_hash}.parquet"
+    limit: 1000
+    url: "https://cerulean.skytruth.org"

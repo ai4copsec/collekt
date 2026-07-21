@@ -1,0 +1,55 @@
+# ECMWF atmospheric sources: near-real-time forecast wind (Open Data) and
+# reanalysis (ERA5).
+#
+# These are not part of the Copernicus Marine catalogue, so `available_variables`
+# is maintained by hand — extend it downstream if you need variables beyond the
+# ones listed here. Selecting which to fetch is a downstream decision.
+
+sources:
+  ecmwf_open_data_forecast:
+    kind: ecmwf_open_data
+    path: "ecmwf/open_data"
+    filename_pattern: "ecmwf_open_data_{date:%Y%m%d}_{time}z_{bbox_hash}.nc"
+    dataset_id: "ecmwf-open-data-ifs"
+    temporal_sampling: 3h
+    # ECMWF Open Data keeps only a rolling window of recent runs; dates are
+    # relative to "now". The provider always serves the global grid, so
+    # downloaded GRIB2 files are cropped to the padded request region and
+    # written out as NetCDF.
+    coverage:
+      start: "now-4d"
+      end: "now+10d"
+    model: ifs
+    source: ecmwf
+    resol: 0p25
+    type: fc
+    levtype: sfc
+    stream: oper
+    time: "00"
+    steps: [0, 3, 6, 9, 12, 15, 18, 21, 24]
+    pad_deg: 0.5
+    available_variables: [10u, 10v, 10fg, 100u, 100v]
+    url: "https://www.ecmwf.int/en/forecasts/datasets/open-data"
+
+  era5_reanalysis:
+    kind: era5
+    path: "ecmwf/era5"
+    dataset_id: "reanalysis-era5-single-levels"
+    temporal_sampling: 1h
+    # ERA5 is global and spans 1940 to roughly five days ago (ERA5T latency).
+    coverage:
+      start: "1940-01-01"
+      end: "now-5d"
+    pad_deg: 0.5
+    data_format: netcdf
+    download_format: unarchived
+    available_variables:
+      - 10m_u_component_of_wind
+      - 10m_v_component_of_wind
+      - 100m_u_component_of_wind
+      - 100m_v_component_of_wind
+      - 2m_temperature
+      - mean_sea_level_pressure
+      - sea_surface_temperature
+    url: "https://cds.climate.copernicus.eu/datasets/reanalysis-era5-single-levels"
+    doi: "10.24381/cds.adbb2d47"
