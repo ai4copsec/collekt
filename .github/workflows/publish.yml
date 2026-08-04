@@ -1,0 +1,108 @@
+name: Publish wheels
+
+# By default this action does not push to test or production PyPI.  The wheels
+# are available as an artifact that can be downloaded and tested locally.
+on:
+  # allow to run manually: https://docs.github.com/en/actions/managing-workflow-runs-and-deployments/managing-workflow-runs/manually-running-a-workflow
+  workflow_dispatch:
+    inputs:
+      project_ref:
+        description: "Project git ref to checkout"
+        default: "main"
+        type: string
+      test_pypi_publish:
+        description: "Publish to Test PyPi"
+        default: false
+        type: boolean
+      pypi_publish:
+        description: "Publish to PyPi"
+        default: false
+        type: boolean
+  workflow_call:
+    inputs:
+      project_ref:
+        description: "Project git ref to checkout"
+        default: "main"
+        type: string
+      test_pypi_publish:
+        description: "Publish to Test PyPi"
+        default: false
+        type: boolean
+      pypi_publish:
+        description: "Publish to PyPi"
+        default: false
+        type: boolean
+
+# Avoid two publish runs racing for the same ref (e.g. a re-triggered dispatch).
+concurrency:
+  group: publish-${{ inputs.project_ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build wheel and source distribution
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.project_ref }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+
+      - name: Build sdist and wheel
+        run: uv build --wheel --sdist
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: dist/*
+
+  upload_test_pypi:
+    name: Upload to test PyPI (optional)
+    if: ${{ inputs.test_pypi_publish }}
+    needs: [build]
+    runs-on: ubuntu-latest
+    environment:
+      name: testpypi
+      url: ${{ format('https://test.pypi.org/p/{0}', github.event.repository.name) }}
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Download distributions
+        uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+
+      - name: Push to test PyPI
+        run: uv publish --publish-url https://test.pypi.org/legacy/
+
+  upload_pypi:
+    name: Upload to PyPI (optional)
+    if: ${{ inputs.pypi_publish }}
+    needs: [build]
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: ${{ format('https://pypi.org/p/{0}', github.event.repository.name) }}
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Download distributions
+        uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+
+      - name: Push to PyPI
+        run: uv publish
