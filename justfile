@@ -39,13 +39,18 @@ docs:
     uv run quartodoc build --config docs/_quarto.yml
     quarto render docs
 
+# Fail if the working tree has uncommitted changes (the bump commit stages uv.lock)
+check-clean:
+    @git diff --quiet && git diff --cached --quiet || { echo "Working tree is dirty: commit or stash before bumping."; exit 1; }
+
 # Lint + test (pre-release check, no build — build happens after version bump)
 release-check: lint
     just test
     just check-deps
 
 # Bump version (PATCH|MINOR|MAJOR): lint + test, then bump, tag and push
-bump type="PATCH": release-check
+# `cz bump` re-locks uv.lock via its pre_bump_hook, so the commit is self-consistent
+bump type="PATCH": release-check check-clean
     uv run cz bump --increment {{type}}
     just build
     git push origin main --follow-tags

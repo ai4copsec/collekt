@@ -98,6 +98,9 @@ tag_format = "$version"
 annotated_tag = true
 major_version_zero = true
 update_changelog_on_bump = false
+# Re-lock so uv.lock records the new version and lands in the bump commit
+# (hooks run after the version files are written, before the commit).
+pre_bump_hooks = ["uv lock && git add uv.lock"]
 
 # Dev-only tooling. uv installs the `dev` group automatically on `uv sync`
 # and `uv run`, so `just test` / `just lint` work without extra flags.
