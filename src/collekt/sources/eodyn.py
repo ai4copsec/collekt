@@ -33,7 +33,7 @@ from collekt.sources.base import (
 from collekt.sources.planning import plan_source, static_source_coverage
 
 DEFAULT_DATASET_ID = "EODYN-OS-VELOCITY-L4"
-DEFAULT_ARCHIVE_ROOT = "~/Research/Currents/OSmose/results/MARES/causal"
+DEFAULT_ARCHIVE_ROOT = "~/Research/OmniSitu/OSmose/results/MARES/causal"
 DEFAULT_DAY_PATTERN = "{date:%Y%m%d}_MARES/{date:%Y%m%d}_MARES_osmose_L4.nc"
 DEFAULT_COVERAGE: dict[str, object] = {
     "west": -6.0,

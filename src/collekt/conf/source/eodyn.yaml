@@ -13,7 +13,7 @@ sources:
     path: "eodyn/osmose"
     dataset_id: "EODYN-OS-VELOCITY-L4"
     mode: archive
-    archive_root: "$HOME/Research/Currents/OSmose/results/MARES/causal"
+    archive_root: "$HOME/OmniSitu/Currents/OSmose/results/MARES/causal"
     day_pattern: "{date:%Y%m%d}_MARES/{date:%Y%m%d}_MARES_osmose_L4.nc"
     coverage:
       west: -6.0
