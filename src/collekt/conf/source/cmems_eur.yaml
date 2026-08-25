@@ -1,0 +1,40 @@
+# Copernicus Marine — European seas regional products.
+#
+# See `cmems_global` for the near-real-time (`*_nrt`) vs multi-year (`*_my`)
+# split and the `available_variables` / `has_depth` conventions. The European
+# sea-level products are higher resolution (0.0625°) than the global ones
+# (0.125°) and cover the Mediterranean, IBI and North-West Shelf domains, so
+# they are catalogued here rather than under any single regional file.
+
+sources:
+  cmems_duacs_eur_nrt:
+    kind: cmems
+    path: "cmems/eur/duacs"
+    dataset_id: "cmems_obs-sl_eur_phy-ssh_nrt_allsat-l4-duacs-0.0625deg_P1D"
+    temporal_sampling: 24h
+    coverage:
+      longitude: [-30.03125, 42.03125]
+      latitude: [19.96875, 66.03125]
+      temporal:
+        start: "2024-07-01"
+        end: null
+        kind: rolling
+    available_variables: [adt, err_sla, err_ugosa, err_vgosa, flag_ice, sla, ugos, ugosa, vgos, vgosa]
+    url: "https://data.marine.copernicus.eu/product/SEALEVEL_EUR_PHY_L4_NRT_008_060/description"
+    doi: "10.48670/moi-00142"
+
+  cmems_duacs_eur_my:
+    kind: cmems
+    path: "cmems/eur/duacs"
+    dataset_id: "cmems_obs-sl_eur_phy-ssh_my_allsat-l4-duacs-0.0625deg_P1D"
+    temporal_sampling: 24h
+    coverage:
+      longitude: [-30.03125, 42.03125]
+      latitude: [19.96875, 66.03125]
+      temporal:
+        start: "1993-01-01"
+        end: "2026-01-16"
+        kind: archive
+    available_variables: [adt, err_sla, err_ugosa, err_vgosa, flag_ice, sla, tpa_correction, ugos, ugosa, vgos, vgosa]
+    url: "https://data.marine.copernicus.eu/product/SEALEVEL_EUR_PHY_L4_MY_008_068/description"
+    doi: "10.48670/moi-00141"

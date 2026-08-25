@@ -7,6 +7,10 @@ under `[main]`; `just bump` copies them under the new version.
 
 ### Added
 
+- Catalog entries for the European high-resolution DUACS sea-level products
+  (`cmems_duacs_eur_nrt` / `cmems_duacs_eur_my`, 0.0625°) in a new `cmems_eur`
+  source catalog, and for the CMEMS hourly L4 near-real-time global wind
+  (`cmems_global_wind_nrt`).
 - Bundled source catalogs for CMEMS, ECMWF, eOdyn, SkyTruth, HOZINT, and
   Copernicus Data Space, including CMEMS Global/MED/IBI/NWS metadata and coverage
   declarations. Every first-class provider has a `DatasetConfig` dataclass

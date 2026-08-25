@@ -174,3 +174,20 @@ sources:
     available_variables: [chl, phyc]
     url: "https://data.marine.copernicus.eu/product/GLOBAL_ANALYSISFORECAST_BGC_001_028/description"
     doi: "10.48670/moi-00015"
+
+  cmems_global_wind_nrt:
+    kind: cmems
+    path: "cmems/global/wind"
+    dataset_id: "cmems_obs-wind_glo_phy_nrt_l4_0.125deg_PT1H"
+    temporal_sampling: 1h
+    time_selection: full_day
+    coverage:
+      longitude: [-179.9375, 179.9375]
+      latitude: [-89.9375, 89.9375]
+      temporal:
+        start: "2024-06-13"
+        end: null
+        kind: rolling
+    available_variables: [air_density, eastward_stress, eastward_stress_bias, eastward_stress_sdd, eastward_wind, eastward_wind_bias, eastward_wind_sdd, northward_stress, northward_stress_bias, northward_stress_sdd, northward_wind, northward_wind_bias, northward_wind_sdd, number_of_observations, number_of_observations_divcurl, stress_curl, stress_curl_bias, stress_curl_dv, stress_divergence, stress_divergence_bias, stress_divergence_dv, wind_curl, wind_curl_bias, wind_curl_dv, wind_divergence, wind_divergence_bias, wind_divergence_dv]
+    url: "https://data.marine.copernicus.eu/product/WIND_GLO_PHY_L4_NRT_012_004/description"
+    doi: "10.48670/moi-00305"
