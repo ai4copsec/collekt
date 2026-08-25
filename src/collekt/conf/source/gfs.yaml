@@ -1,0 +1,32 @@
+# NOAA GFS — global forecast system analysis wind, via the NOMADS GRIB filter.
+#
+# Not part of the Copernicus Marine catalogue, so `available_variables` is
+# maintained by hand. Wind is selected as `{height}u` / `{height}v` mnemonics
+# (`20u`, `100v`, …), following the same style as the ECMWF Open Data source.
+#
+# Note the missing 10 m: the GFS *analysis* file carries wind from 20 m upwards
+# only. 10 m wind exists solely in the forecast files, whose fields differ from
+# the analysis (a same-valid-time comparison at 20 m shows differences of several
+# m/s), so it cannot be substituted here. A forecast source is a separate entry
+# and is not catalogued yet.
+
+sources:
+  gfs_analysis:
+    kind: gfs
+    path: "gfs/analysis"
+    filename_pattern: "gfs_analysis_{date:%Y%m%d}_{bbox_hash}.nc"
+    dataset_id: "gfs-analysis"
+    # Four analysis cycles a day (00/06/12/18 UTC). This is GFS's native
+    # analysis cadence and a hard ceiling — there is nothing finer. Downstream
+    # thinning or aggregation is an `Assembler` concern.
+    temporal_sampling: 6h
+    # NOMADS retains roughly the last ten days; older dates return HTTP 403.
+    coverage:
+      start: "now-9d"
+      end: "now"
+    stream: anl
+    resolution: 0p25
+    cycles: [0, 6, 12, 18]
+    pad_deg: 0.5
+    available_variables: [20u, 20v, 30u, 30v, 40u, 40v, 50u, 50v, 80u, 80v, 100u, 100v]
+    url: "https://nomads.ncep.noaa.gov/"

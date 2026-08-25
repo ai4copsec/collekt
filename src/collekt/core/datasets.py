@@ -96,6 +96,22 @@ class ECMWFOpenData(DatasetSelection):
 
 
 @dataclass(frozen=True, init=False)
+class GFS(DatasetSelection):
+    """NOAA GFS analysis selection.
+
+    Wind is selected as ``{height}u`` / ``{height}v`` mnemonics. The GFS analysis
+    carries wind from 20 m upwards only; there is no 10 m analysis wind.
+
+    Example:
+        ```python
+        collekt.GFS("gfs_analysis", variables=["20u", "20v"])
+        ```
+    """
+
+    provider: ClassVar[str] = "gfs"
+
+
+@dataclass(frozen=True, init=False)
 class ERA5(DatasetSelection):
     """ERA5 reanalysis selection."""
 
@@ -177,10 +193,10 @@ class Hozint(DatasetSelection):
         return {"provider": self.provider, "key": self.key}
 
 
-DatasetLike = CMEMS | ECMWFOpenData | ERA5 | eOdyn | SkyTruth | CopernicusDataSpace | Hozint
+DatasetLike = CMEMS | ECMWFOpenData | ERA5 | GFS | eOdyn | SkyTruth | CopernicusDataSpace | Hozint
 
 _PROVIDERS: dict[str, type[DatasetLike]] = {
-    cls.provider: cls for cls in (CMEMS, ECMWFOpenData, ERA5, eOdyn, SkyTruth, CopernicusDataSpace, Hozint)
+    cls.provider: cls for cls in (CMEMS, ECMWFOpenData, ERA5, GFS, eOdyn, SkyTruth, CopernicusDataSpace, Hozint)
 }
 
 

@@ -76,6 +76,7 @@ quartodoc:
         - CMEMS
         - ECMWFOpenData
         - ERA5
+        - GFS
         - eOdyn
         - SkyTruth
         - CopernicusDataSpace

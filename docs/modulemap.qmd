@@ -39,6 +39,7 @@ src/collekt/
     cmems.py               # copernicusmarine.subset               (open)
     ecmwf_open_data.py     # forecast wind, GRIB2 cropped to NetCDF (open)
     era5.py                # reanalysis wind, cdsapi                (credentials)
+    gfs.py                 # GFS analysis wind, NOMADS GRIB filter  (open)
     copernicus_dataspace.py# Sentinel/Landsat product files        (credentials)
     skytruth.py            # oil-slick features -> Parquet          (open)
     hozint.py              # threat-intel reports -> Parquet        (credentials)
@@ -50,9 +51,9 @@ src/collekt/
 
   conf/
     default.yaml           # runtime defaults + source_catalogs
-    source/                # curated dataset catalogs: cmems_global, cmems_med,
-                           #   cmems_ibi, cmems_nws, ecmwf, eodyn,
-                           #   skytruth, dataspace
+    source/                # curated dataset catalogs: cmems_global, cmems_eur,
+                           #   cmems_med, cmems_ibi, cmems_nws, ecmwf, gfs,
+                           #   eodyn, skytruth, dataspace
 
   resources/
     schema/manifest.schema.json   # draft manifest schema (reference; not enforced)

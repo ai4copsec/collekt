@@ -510,3 +510,161 @@ def test_cmems_plan_falls_back_to_declarative_coverage(tmp_path, monkeypatch):
     assert availability["status"] == "available"
     assert availability["method"] == "coverage"
     assert availability["coverage"]["kind"] == "archive"
+
+
+# --- GFS --------------------------------------------------------------------
+
+GFS = {
+    "kind": "gfs",
+    "enabled": True,
+    "path": "gfs/analysis",
+    "filename_pattern": "gfs_analysis_{date:%Y%m%d}_{bbox_hash}.nc",
+    "dataset_id": "gfs-analysis",
+    "variables": ["20u", "20v"],
+    "temporal_sampling": "6h",
+    "coverage": {"start": "now-9d", "end": "now"},
+    "stream": "anl",
+    "resolution": "0p25",
+    "cycles": [0, 6, 12, 18],
+    "pad_deg": 0.5,
+}
+
+
+def _stub_gfs_download(monkeypatch, calls, *, fail_hours=()):
+    def download(url, target):
+        calls.append(url)
+        if any(f"gfs.t{hour:02d}z" in url for hour in fail_hours):
+            raise ValueError("not available yet")
+        Path(target).write_text("grib", encoding="utf-8")
+
+    monkeypatch.setattr("collekt.sources.gfs._download_cycle", download)
+
+    def concat(raw_paths, output_path, variables):
+        Path(output_path).write_text("netcdf", encoding="utf-8")
+        return []
+
+    monkeypatch.setattr("collekt.sources.gfs._concat_cycles_to_netcdf", concat)
+
+
+def test_gfs_downloads_four_analysis_cycles_per_day(tmp_path, monkeypatch):
+    calls = []
+    _stub_gfs_download(monkeypatch, calls)
+    result = Fetcher(_request(start=date.today().isoformat()), config=_cfg(tmp_path, gfs_analysis=GFS)).download()
+
+    assert result.summary.downloaded == 1
+    assert result.results[0].format == "netcdf"
+    assert result.results[0].details["cycles"] == 4
+    assert [url.split("file=")[1].split("&")[0] for url in calls] == [
+        "gfs.t00z.pgrb2.0p25.anl",
+        "gfs.t06z.pgrb2.0p25.anl",
+        "gfs.t12z.pgrb2.0p25.anl",
+        "gfs.t18z.pgrb2.0p25.anl",
+    ]
+
+
+def test_gfs_url_requests_wind_levels_and_server_side_subregion(tmp_path, monkeypatch):
+    calls = []
+    _stub_gfs_download(monkeypatch, calls)
+    Fetcher(_request(start=date.today().isoformat()), config=_cfg(tmp_path, gfs_analysis=GFS)).download()
+
+    url = calls[0]
+    assert "filter_gfs_0p25.pl" in url
+    assert "var_UGRD=on" in url and "var_VGRD=on" in url
+    # Both components share one level request, not one per variable.
+    assert url.count("lev_20_m_above_ground=on") == 1
+    # Padded and snapped to the 0.25 degree native grid.
+    assert "leftlon=-6.5" in url and "rightlon=20.5" in url
+    assert "bottomlat=34.5" in url and "toplat=45.5" in url
+
+
+def test_gfs_skips_cycles_that_are_not_published_yet(tmp_path, monkeypatch):
+    """A late analysis must not fail the day: the earlier cycles are still written."""
+    calls = []
+    _stub_gfs_download(monkeypatch, calls, fail_hours=(12, 18))
+    result = Fetcher(_request(start=date.today().isoformat()), config=_cfg(tmp_path, gfs_analysis=GFS)).download()
+
+    assert result.summary.downloaded == 1
+    assert result.results[0].details["cycles"] == 2
+    assert "cycles not available yet" in result.results[0].message
+    assert "12z" in result.results[0].message and "18z" in result.results[0].message
+
+
+def test_gfs_skips_the_day_when_no_cycle_is_available(tmp_path, monkeypatch):
+    calls = []
+    _stub_gfs_download(monkeypatch, calls, fail_hours=(0, 6, 12, 18))
+    result = Fetcher(_request(start=date.today().isoformat()), config=_cfg(tmp_path, gfs_analysis=GFS)).download()
+
+    assert result.summary.downloaded == 0
+    assert result.results[0].status is SourceStatus.SKIPPED
+    assert "no cycle available" in result.results[0].message
+
+
+def test_gfs_plan_reports_cycles_without_downloading(tmp_path):
+    result = Fetcher(_request(start=date.today().isoformat()), config=_cfg(tmp_path, gfs_analysis=GFS)).plan()
+
+    assert result.summary.planned == 1
+    request_details = result.results[0].details["request"]
+    assert request_details["cycles"] == ["00z", "06z", "12z", "18z"]
+    assert result.results[0].details["crop"] == {"south": 34.5, "north": 45.5, "west": -6.5, "east": 20.5}
+
+
+def test_gfs_plan_skips_dates_outside_nomads_retention(tmp_path):
+    result = Fetcher(_request(start="2023-06-15"), config=_cfg(tmp_path, gfs_analysis=GFS)).plan()
+
+    assert result.results[0].status is SourceStatus.SKIPPED
+
+
+def test_gfs_rejects_variables_that_are_not_wind_mnemonics():
+    from collekt.sources.gfs import UnknownVariableError, _parse_variable
+
+    assert _parse_variable("20u") == ("UGRD", 20)
+    assert _parse_variable("100V") == ("VGRD", 100)
+    with pytest.raises(UnknownVariableError):
+        _parse_variable("10m_u_component_of_wind")
+
+
+def test_gfs_renames_height_level_to_requested_mnemonics():
+    import numpy as np
+    import xarray as xr
+
+    from collekt.sources.gfs import _rename_to_requested_variables
+
+    # cfgrib decodes GFS wind above 10 m as bare u/v with the height as a coord.
+    dataset = xr.Dataset(
+        {
+            "u": (("latitude", "longitude"), np.ones((2, 3))),
+            "v": (("latitude", "longitude"), np.zeros((2, 3))),
+        },
+        coords={"latitude": [40.0, 41.0], "longitude": [1.0, 2.0, 3.0], "heightAboveGround": 20.0},
+    )
+
+    renamed = _rename_to_requested_variables(dataset, ("20u", "20v"))
+
+    assert set(renamed.data_vars) == {"20u", "20v"}
+    assert "heightAboveGround" not in renamed.coords
+    assert float(renamed["20u"].mean()) == 1.0
+
+
+def test_gfs_selects_each_height_from_a_multi_level_dimension():
+    """A multi-height request decodes as one u/v pair over a heightAboveGround dim."""
+    import numpy as np
+    import xarray as xr
+
+    from collekt.sources.gfs import _rename_to_requested_variables
+
+    heights = np.array([20.0, 100.0])
+    dataset = xr.Dataset(
+        {
+            "u": (("heightAboveGround", "latitude"), np.array([[1.0, 1.0], [2.0, 2.0]])),
+            "v": (("heightAboveGround", "latitude"), np.array([[3.0, 3.0], [4.0, 4.0]])),
+        },
+        coords={"heightAboveGround": heights, "latitude": [40.0, 41.0]},
+    )
+
+    renamed = _rename_to_requested_variables(dataset, ("20u", "20v", "100u", "100v"))
+
+    assert set(renamed.data_vars) == {"20u", "20v", "100u", "100v"}
+    assert "heightAboveGround" not in renamed.dims
+    assert float(renamed["20u"].mean()) == 1.0
+    assert float(renamed["100u"].mean()) == 2.0
+    assert float(renamed["100v"].mean()) == 4.0

@@ -7,6 +7,11 @@ under `[main]`; `just bump` copies them under the new version.
 
 ### Added
 
+- `gfs` source adapter and `gfs_analysis` catalog entry: NOAA GFS analysis wind
+  from the NOMADS GRIB filter, with server-side region subsetting, one NetCDF per
+  day holding that day's available analysis cycles, and heights selected as
+  `{height}u`/`{height}v` mnemonics. Cycles the provider has not published yet are
+  skipped rather than failing the day.
 - Catalog entries for the European high-resolution DUACS sea-level products
   (`cmems_duacs_eur_nrt` / `cmems_duacs_eur_my`, 0.0625°) in a new `cmems_eur`
   source catalog, and for the CMEMS hourly L4 near-real-time global wind

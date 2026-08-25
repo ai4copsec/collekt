@@ -14,6 +14,7 @@ from collekt.sources import (  # noqa: F401
     ecmwf_open_data,
     eodyn,
     era5,
+    gfs,
     hozint,
     skytruth,
 )
