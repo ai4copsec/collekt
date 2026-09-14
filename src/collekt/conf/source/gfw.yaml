@@ -1,0 +1,21 @@
+# Global Fishing Watch (GFW) events — a credential-gated feature source.
+#
+# Queries the Events API (fishing, port visits, encounters, loitering, AIS gaps)
+# for the request's region and time window. Region filtering uses a GeoJSON
+# geometry derived from the request, not a GFW named region id. It takes no
+# variable selection, and `limit` bounds the number of events per request (GFW
+# recommends keeping requests to small regions/short windows manageable).
+
+sources:
+  gfw:
+    kind: gfw
+    path: "gfw"
+    filename_pattern: "gfw_{start:%Y%m%d}_{end:%Y%m%d}_{bbox_hash}.parquet"
+    datasets:
+      - "public-global-fishing-events:latest"
+      - "public-global-port-visits-events:latest"
+      - "public-global-encounters-events:latest"
+      - "public-global-loitering-events:latest"
+      - "public-global-gaps-events:latest"
+    limit: 1000
+    url: "https://globalfishingwatch.org"

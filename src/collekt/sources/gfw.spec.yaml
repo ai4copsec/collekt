@@ -1,0 +1,120 @@
+columns:
+- name: id
+  description: Unique identifier for the event within its GFW dataset.
+  is_optional: true
+  representation_type: Utf8
+
+- name: type
+  description: 'Event type: fishing, encounter, loitering, gap, gap_start, port, or port_visit.'
+  is_optional: true
+  representation_type: Utf8
+
+- name: start
+  description: Start of the event. For long-running events (e.g. a multi-year port visit), this may fall well outside the requested time window - GFW's date filter matches on overlap, not on event start.
+  is_optional: true
+  representation_type: "Datetime(time_unit='us', time_zone='UTC')"
+
+- name: end
+  description: End of the event. See `start` for the overlap-matching caveat.
+  is_optional: true
+  representation_type: "Datetime(time_unit='us', time_zone='UTC')"
+
+- name: lat
+  description: Latitude of the event position.
+  unit: deg
+  is_optional: true
+  representation_type: Float64
+
+- name: lon
+  description: Longitude of the event position.
+  unit: deg
+  is_optional: true
+  representation_type: Float64
+
+- name: bounding_box
+  description: 'Bounding box of the event as [min_lon, min_lat, max_lon, max_lat].'
+  is_optional: true
+  representation_type: List(Float64)
+
+- name: start_distance_from_shore_km
+  description: Distance from shore at the start of the event.
+  unit: km
+  is_optional: true
+  representation_type: Float64
+
+- name: end_distance_from_shore_km
+  description: Distance from shore at the end of the event.
+  unit: km
+  is_optional: true
+  representation_type: Float64
+
+- name: start_distance_from_port_km
+  description: Distance from port at the start of the event.
+  unit: km
+  is_optional: true
+  representation_type: Float64
+
+- name: end_distance_from_port_km
+  description: Distance from port at the end of the event.
+  unit: km
+  is_optional: true
+  representation_type: Float64
+
+- name: vessel_id
+  description: GFW-internal identifier of the vessel primarily associated with the event.
+  is_optional: true
+  representation_type: Utf8
+
+- name: vessel_name
+  description: Self-reported vessel name.
+  is_optional: true
+  representation_type: Utf8
+
+- name: vessel_ssvid
+  description: Vessel's AIS identifier (MMSI, as a string).
+  is_optional: true
+  representation_type: Utf8
+
+- name: vessel_flag
+  description: Vessel's flag state (ISO3).
+  is_optional: true
+  representation_type: Utf8
+
+- name: vessel_type
+  description: 'GFW vessel type classification, e.g. FISHING, CARGO, CARRIER.'
+  is_optional: true
+  representation_type: Utf8
+
+- name: regions
+  description: Named areas (EEZ/MPA/RFMO/FAO/high-seas) the event's position falls within, as lists of region ids.
+  is_optional: true
+  representation_type: 'Struct({''mpa'': List(String), ''eez'': List(String), ''rfmo'': List(String),
+    ''fao'': List(String), ''major_fao'': List(String), ''eez_12_nm'': List(String),
+    ''high_seas'': List(String), ''mpa_no_take_partial'': List(String), ''mpa_no_take'': List(String)})'
+
+- name: encounter_json
+  description: Encounter-specific detail (median distance/speed, vessel involved, risk flags), as JSON text. Populated only when type is encounter.
+  is_optional: true
+  representation_type: Utf8
+
+- name: fishing_json
+  description: Fishing-specific detail (distance, average speed/duration, risk flags), as JSON text. Populated only when type is fishing.
+  is_optional: true
+  representation_type: Utf8
+
+- name: gap_json
+  description: AIS-gap-specific detail (intentional disabling flag, implied speed, off/on positions), as JSON text. Populated only when type is gap/gap_start.
+  is_optional: true
+  representation_type: Utf8
+
+- name: loitering_json
+  description: Loitering-specific detail (total time/distance, average speed), as JSON text. Populated only when type is loitering.
+  is_optional: true
+  representation_type: Utf8
+
+- name: port_visit_json
+  description: Port-visit-specific detail (visit id, confidence, duration, start/intermediate/end anchorages), as JSON text. Populated only when type is port_visit.
+  is_optional: true
+  representation_type: Utf8
+
+annotations: {}

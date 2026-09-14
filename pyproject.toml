@@ -49,6 +49,7 @@ dependencies = [
     "copernicusmarine>=2.4.1",
     "cdsapi>=0.7.7",
     "ecmwf-opendata>=0.3.30",
+    "gfw-api-python-client>=1.4.0",
     "hozint-apiclient",
     "python-dotenv>=1.2.2",
 ]

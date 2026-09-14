@@ -18,4 +18,4 @@ credentials:
   cdsapi_rc: "$HOME/.cdsapirc"
   copernicusmarine_credentials_file: null
 
-source_catalogs: [cmems_global, cmems_eur, cmems_med, cmems_ibi, cmems_nws, ecmwf, gfs, eodyn, skytruth, hozint, dataspace]
+source_catalogs: [cmems_global, cmems_eur, cmems_med, cmems_ibi, cmems_nws, ecmwf, gfs, eodyn, skytruth, hozint, dataspace, gfw]

@@ -7,6 +7,13 @@ under `[main]`; `just bump` copies them under the new version.
 
 ### Added
 
+- `gfw` source adapter and catalog entry: Global Fishing Watch Events API
+  (fishing, port visits, encounters, loitering, AIS gaps), filtered by the
+  request's region (as a GeoJSON geometry, not a GFW named region id) and time
+  window, written as one annotated Parquet file per request. Event-type-specific
+  detail (`encounter`/`fishing`/`gap`/`loitering`/`port_visit`) is kept as JSON
+  text rather than a typed struct, since GFW's response models allow
+  undocumented extra fields. Public `GFW` `DatasetConfig` dataclass.
 - `gfs` source adapter and `gfs_analysis` catalog entry: NOAA GFS analysis wind
   from the NOMADS GRIB filter, with server-side region subsetting, one NetCDF per
   day holding that day's available analysis cycles, and heights selected as

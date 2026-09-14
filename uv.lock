@@ -565,6 +565,7 @@ dependencies = [
     { name = "ecmwf-opendata" },
     { name = "geopandas" },
     { name = "geopy" },
+    { name = "gfw-api-python-client" },
     { name = "hozint-apiclient" },
     { name = "polars" },
     { name = "pydantic" },
@@ -614,6 +615,7 @@ requires-dist = [
     { name = "ecmwf-opendata", specifier = ">=0.3.30" },
     { name = "geopandas" },
     { name = "geopy" },
+    { name = "gfw-api-python-client", specifier = ">=1.4.0" },
     { name = "hozint-apiclient" },
     { name = "polars" },
     { name = "pydantic" },
@@ -1155,6 +1157,26 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/0e/fd/ef6d53875ceab72c1fad22dbed5ec1ad04eb378c2251a6a8024bad890c3b/geopy-2.4.1.tar.gz", hash = "sha256:50283d8e7ad07d89be5cb027338c6365a32044df3ae2556ad3f52f4840b3d0d1", size = 117625, upload-time = "2023-11-23T21:49:32.734Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/e5/15/cf2a69ade4b194aa524ac75112d5caac37414b20a3a03e6865dfe0bd1539/geopy-2.4.1-py3-none-any.whl", hash = "sha256:ae8b4bc5c1131820f4d75fce9d4aaaca0c85189b3aa5d64c3dcaf5e3b7b882a7", size = 125437, upload-time = "2023-11-23T21:49:30.421Z" },
+]
+
+[[package]]
+name = "gfw-api-python-client"
+version = "1.4.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "geojson-pydantic" },
+    { name = "geopandas" },
+    { name = "httpx" },
+    { name = "mapbox-vector-tile" },
+    { name = "mercantile" },
+    { name = "pandas" },
+    { name = "pydantic" },
+    { name = "pydantic-settings" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/48/50/a82defa806cd3d8f98c9a18d28df0f0f5bbf0d2e71f9a21c9064a2570ca4/gfw_api_python_client-1.4.0.tar.gz", hash = "sha256:38fd67fe4751972acf18e048942cb3cc00971f7ee72e4d5e1d14b3fd5fbae96c", size = 179369, upload-time = "2026-01-13T10:05:48.413Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/2d/d5/0d457489605a9a374619df8b29eb5234aca4c8d080809dc5e4e7c186d6c5/gfw_api_python_client-1.4.0-py3-none-any.whl", hash = "sha256:e6f446e3f371e47be9cb567ac502595db03ce97545f3a160ad59dce4ebc8386c", size = 135611, upload-time = "2026-01-13T10:05:45.715Z" },
 ]
 
 [[package]]

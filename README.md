@@ -123,6 +123,10 @@ is published to GitHub Pages.
 
 [BSD-3-Clause](LICENSE).
 
+*collekt* does not grant you any rights to the wrapped third party providers - it only simplifies making multiple-queries to the sources you already have the permission to access.
+
+Each wrapped service comes with its own separate "Terms of Use", e.g., [Global Fishing Watch](https://globalfishingwatch.org/terms-of-use/) is for non-commercial use only - others my carry similar restrictions.
+
 ## Copyright
 
 Copyright (c) 2023-2026 [Simula Research Laboratory, Oslo, Norway](https://www.simula.no).
