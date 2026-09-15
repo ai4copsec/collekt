@@ -44,12 +44,16 @@ def test_reporter_renders_warnings_and_summary_without_error():
 
 
 def test_result_render_prints_summary_manifest_and_status_lines(capsys):
+    # Built via Path, not hardcoded as "out/..." strings: Result.__str__ interpolates Path
+    # objects directly, which render with the OS-native separator (backslashes on Windows).
+    manifest_path = Path("out/manifest.json")
+    a_path = Path("out/a.nc")
     result = Result(
         output_dir=Path("out"),
-        manifest_path=Path("out/manifest.json"),
-        files=(Path("out/a.nc"),),
+        manifest_path=manifest_path,
+        files=(a_path,),
         results=(
-            SourceResult(source="a", status=SourceStatus.DOWNLOADED, path=Path("out/a.nc")),
+            SourceResult(source="a", status=SourceStatus.DOWNLOADED, path=a_path),
             SourceResult(source="b", status=SourceStatus.SKIPPED, message="not available"),
         ),
         summary=Summary(downloaded=1, skipped=1),
@@ -58,14 +62,14 @@ def test_result_render_prints_summary_manifest_and_status_lines(capsys):
     text = str(result)
     assert repr(result) == text
     assert "Summary(planned=0, downloaded=1, reused=0, skipped=1, failed=0)" in text
-    assert "manifest: out/manifest.json" in text
-    assert "a: downloaded -> out/a.nc" in text
+    assert f"manifest: {manifest_path}" in text
+    assert f"a: downloaded -> {a_path}" in text
     assert "b: skipped -> not available" in text
 
     result.render()
 
     output = capsys.readouterr().out
     assert "Summary(planned=0, downloaded=1, reused=0, skipped=1, failed=0)" in output
-    assert "manifest: out/manifest.json" in output
-    assert "a: downloaded -> out/a.nc" in output
+    assert f"manifest: {manifest_path}" in output
+    assert f"a: downloaded -> {a_path}" in output
     assert "b: skipped -> not available" in output
