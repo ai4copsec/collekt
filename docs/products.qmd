@@ -19,6 +19,7 @@ source's `kind`.
 | `copernicus_dataspace` | Sentinel / Landsat product files | credentials | product (e.g. `.zip`) |
 | `skytruth` | Oil-slick detections (features) | open | Parquet |
 | `hozint` | Threat-intelligence reports (features) | credentials | Parquet |
+| `gfw` | Fishing / encounter / port-visit / loitering / AIS-gap events (features) | credentials | Parquet |
 | `eodyn` | eOdyn surface currents / drifters | open (preview archive) | NetCDF |
 
 Open sources need no secrets; credential-gated sources resolve their secrets from
@@ -41,6 +42,7 @@ uses, grouped into catalogs under `collekt/conf/source/`:
 | `eodyn` | `eodyn_osmose_currents` |
 | `skytruth` | `skytruth` |
 | `hozint` | `hozint` |
+| `gfw` | `gfw` |
 | `dataspace` | `copernicus_s1_grd`, `copernicus_s2_l2a`, `copernicus_landsat` |
 
 Browse the catalog programmatically instead of reading the tables below:

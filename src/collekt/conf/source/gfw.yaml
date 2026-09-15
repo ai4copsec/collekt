@@ -10,7 +10,10 @@ sources:
   gfw:
     kind: gfw
     path: "gfw"
-    filename_pattern: "gfw_{start:%Y%m%d}_{end:%Y%m%d}_{bbox_hash}.parquet"
+    # {geometry_hash} is "" for a plain bbox request, or an underscore-prefixed hash of the
+    # precise polygon when Region.geometry is set - without it, two different polygons sharing a
+    # bounding box would collide on the same cache path (see gfw.py's _geometry_hash).
+    filename_pattern: "gfw_{start:%Y%m%d}_{end:%Y%m%d}_{bbox_hash}{geometry_hash}.parquet"
     datasets:
       - "public-global-fishing-events:latest"
       - "public-global-port-visits-events:latest"

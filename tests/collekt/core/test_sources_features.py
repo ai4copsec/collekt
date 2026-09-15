@@ -17,6 +17,7 @@ import requests
 
 from collekt import Fetcher
 from collekt.core.config import get_config
+from collekt.core.naming import bbox_hash as bbox_hash_of
 from collekt.core.request import Region, Request
 from collekt.sources import copernicus_dataspace, gfw, hozint, skytruth
 
@@ -261,7 +262,7 @@ GFW = {
     "kind": "gfw",
     "enabled": True,
     "path": "gfw",
-    "filename_pattern": "gfw_{start:%Y%m%d}_{end:%Y%m%d}_{bbox_hash}.parquet",
+    "filename_pattern": "gfw_{start:%Y%m%d}_{end:%Y%m%d}_{bbox_hash}{geometry_hash}.parquet",
     "datasets": ["public-global-fishing-events:latest"],
     "limit": 1000,
 }
@@ -295,6 +296,31 @@ def test_gfw_geometry_uses_precise_geometry_when_given():
     assert geometry["type"] == "Polygon"
     # The precise triangle-ish geometry, not the wider bbox rectangle.
     assert geometry["coordinates"][0][0] == (0.0, 35.0)
+
+
+def test_gfw_output_path_differs_for_same_bbox_different_geometry(tmp_path):
+    # Two distinct polygons sharing a bounding box must not collide on the same output path -
+    # bbox_hash alone can't tell them apart, and _geometry() queries the precise polygon.
+    bbox_only = Region.from_bbox((-6, 20, 35, 45))
+    polygon_a = Region(west=-6, east=20, south=35, north=45, geometry="POLYGON ((0 35, 1 35, 1 36, 0 36, 0 35))")
+    polygon_b = Region(west=-6, east=20, south=35, north=45, geometry="POLYGON ((5 40, 6 40, 6 41, 5 41, 5 40))")
+
+    source = _gfw_source()
+    request_dir = tmp_path
+
+    def _path(region):
+        request = Request(region=region, start="2026-08-01", end="2026-08-07")
+        return gfw._output_path(request, source, request_dir)
+
+    path_bbox, path_a, path_b = _path(bbox_only), _path(polygon_a), _path(polygon_b)
+    assert len({path_bbox, path_a, path_b}) == 3
+
+    # A plain bbox request's filename carries no geometry-hash suffix at all: bbox_hash is
+    # immediately followed by the extension, not an extra "_<hash>" segment.
+    bbox_hash = bbox_hash_of(bbox_only)
+    assert path_bbox.name == f"gfw_20260801_20260807_{bbox_hash}.parquet"
+    assert path_a.name.startswith(f"gfw_20260801_20260807_{bbox_hash}_")
+    assert path_b.name.startswith(f"gfw_20260801_20260807_{bbox_hash}_")
 
 
 def test_gfw_query_window_end_date_is_exclusive_adjusted():

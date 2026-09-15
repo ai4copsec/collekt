@@ -33,6 +33,7 @@ silently dropping data.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import os
 from datetime import timedelta
@@ -74,7 +75,19 @@ def _output_path(request: Request, source: SourceConfig, request_dir: Path) -> P
         start=request.start_datetime,
         end=request.end_datetime,
     )
+    # pattern_values' bbox_hash covers only the bounding box, but _geometry() below queries the
+    # precise Region.geometry polygon when one is given - two different polygons sharing a bbox
+    # would otherwise collide on the same bbox_hash-keyed output path, and should_reuse_cache
+    # would silently serve one polygon's events for the other's request.
+    values["geometry_hash"] = _geometry_hash(request.region)
     return request_dir / source.path / format_pattern(source.filename_pattern, values)
+
+
+def _geometry_hash(region: Region) -> str:
+    """Short, `_`-prefixed hash of `region.geometry`, or `""` when the region is a plain bbox."""
+    if not region.geometry:
+        return ""
+    return "_" + hashlib.sha1(region.geometry.encode("utf-8")).hexdigest()[:8]
 
 
 def _query_window(request: Request) -> tuple[str, str]:
@@ -145,17 +158,24 @@ async def _get_all_events(source: SourceConfig, region: Region, start_date: str,
     import gfwapiclient as gfw
 
     client = gfw.Client(access_token=os.environ.get(GFW_TOKEN_ENV, ""))
-    datasets = list(source.raw.get("datasets", DEFAULT_DATASETS))
-    result = await client.events.get_all_events(
-        datasets=datasets,
-        start_date=start_date,
-        end_date=end_date,
-        geometry=_geometry(region),
-        # No in-code fallback: the shipped default (gfw.yaml) is the single place that sets it -
-        # omitting `limit` here entirely falls through to gfwapiclient's own default (99999).
-        limit=source.raw.get("limit"),
-    )
-    return [_flatten_event(event) for event in result.data()]
+    try:
+        datasets = list(source.raw.get("datasets", DEFAULT_DATASETS))
+        result = await client.events.get_all_events(
+            datasets=datasets,
+            start_date=start_date,
+            end_date=end_date,
+            geometry=_geometry(region),
+            # No in-code fallback: the shipped default (gfw.yaml) is the single place that sets
+            # it - omitting `limit` here entirely falls through to gfwapiclient's own default
+            # (99999).
+            limit=source.raw.get("limit"),
+        )
+        return [_flatten_event(event) for event in result.data()]
+    finally:
+        # gfw.Client has no public close()/aclose() or context-manager support of its own - it
+        # only wraps an httpx.AsyncClient subclass (HTTPClient) as a private attribute. Without
+        # this, each query would leak its connection pool in a long-lived process.
+        await client._http_client.aclose()
 
 
 def _fetch_events(source: SourceConfig, region: Region, start_date: str, end_date: str) -> list[dict[str, Any]]:
@@ -277,6 +297,7 @@ def plan_gfw(request: Request, source: SourceConfig, config: Config, request_dir
             "start_date": start_date,
             "end_date": end_date,
             "geometry": _geometry(request.region),
+            "limit": source.raw.get("limit"),
         },
         "availability": Availability(AvailabilityStatus.NOT_CHECKED, AvailabilityMethod.NOT_CHECKED).as_dict(),
     }
