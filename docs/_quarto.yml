@@ -78,6 +78,7 @@ quartodoc:
         - ERA5
         - GFS
         - eOdyn
+        - Local
         - SkyTruth
         - CopernicusDataSpace
         - Hozint

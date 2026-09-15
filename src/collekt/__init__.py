@@ -18,6 +18,7 @@ from collekt.core.datasets import (
     DatasetConfig,
     ECMWFOpenData,
     Hozint,
+    Local,
     SkyTruth,
     eOdyn,
 )
@@ -45,6 +46,7 @@ __all__ = [
     "GFS",
     "GFW",
     "Hozint",
+    "Local",
     "Region",
     "Request",
     "Result",

@@ -131,6 +131,36 @@ def test_dataset_config_resolves_a_downstream_dataset_via_conf_dir(tmp_path):
         collekt.DatasetConfig(collekt.CMEMS("my_currents", variables=["uo"])).resolve()
 
 
+def test_local_dataset_selection_resolves_via_conf_dir(tmp_path):
+    # `local` has no bundled catalog entry (the archive path is user-specific), so it is
+    # always reached through a conf_dir - like any other downstream-only dataset.
+    conf = tmp_path / "conf"
+    (conf / "source").mkdir(parents=True)
+    (conf / "default.yaml").write_text("source_catalogs: [ais]\n", encoding="utf-8")
+    (conf / "source" / "ais.yaml").write_text(
+        textwrap.dedent(
+            """
+            sources:
+              ais_archive:
+                kind: local
+                filename_pattern: "ais_{dataset_id}_{date:%Y%m%d}_{bbox_hash}.parquet"
+                archive_root: /data/ais
+                layout: "time:timestamp+daily:%Y/%m/%d/ais_%Y_%m_%d"
+                region_columns: [lat, lon]
+                available_variables: [mmsi, timestamp, lat, lon]
+            """
+        ),
+        encoding="utf-8",
+    )
+
+    resolved = collekt.DatasetConfig(collekt.Local("ais_archive", variables=["mmsi", "lat", "lon"])).resolve(
+        conf_dir=conf
+    )
+
+    assert resolved.sources["ais_archive"].raw["archive_root"] == "/data/ais"
+    assert resolved.sources["ais_archive"].variables == ("mmsi", "lat", "lon")
+
+
 def test_dataset_config_validates_variables_and_depth():
     with pytest.raises(ValueError, match="unknown variable"):
         collekt.DatasetConfig(collekt.CMEMS("cmems_duacs_my", variables=["imaginary"])).resolve()

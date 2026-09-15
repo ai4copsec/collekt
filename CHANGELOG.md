@@ -7,6 +7,29 @@ under `[main]`; `just bump` copies them under the new version.
 
 ### Added
 
+- a `local` source adapter and `Local` `DatasetSelection`: relies on damast
+  to interface an existing tabular-data archive (file(s) *.csv, *.parquet).
+  Data can be queried through the normal `Request(region, time)` -> `fetch()` -> manifest
+  pipeline, like any remote source.
+  This is the tabular generalization of eOdyn's `mode: archive`.  Configured
+  per source with `archive_root`, `layout` (a `damast`-style `--save-as`
+  partitioning spec - `damast.core.SaveAs.expected_paths` resolves it back to
+  candidate files for a request's time range, so the naming scheme is shared with
+  `damast` rather than re-derived), and `region_columns` (the lat/lon columns
+  used to row-filter each matched file, since the damast does not offer a file
+  partitioning strategy for a spatial dimension.
+  It must, however, carry a time dimension (`time:`/`time+column:`) - one
+  result is served per request day, which a `column:`-only or plain-path layout
+  has no way to split rows by. Requires a `damast` release carrying
+  `SaveAs.expected_paths`. There is no bundled catalog entry - the archive
+  location is inherently deployment-specific, so a `local` source is always
+  reached via `conf_dir`, same as any other downstream-only dataset.
+  An unpartitioned archive - no per-day filenames at all - is supported as an
+  alternative to `layout`: `file_pattern` (a glob, resolved once per fetch) and
+  `time_column` select a day's rows by filtering the column directly, the same
+  way `region_columns` already does for region; `layout` and `file_pattern` are
+  mutually exclusive.
+
 - `gfw` source adapter and catalog entry: Global Fishing Watch Events API
   (fishing, port visits, encounters, loitering, AIS gaps), filtered by the
   request's region (as a GeoJSON geometry, not a GFW named region id) and time
@@ -20,6 +43,7 @@ under `[main]`; `just bump` copies them under the new version.
   optional `max_events` caps the total across pages, raising
   `GFWTruncatedResultWarning` rather than truncating silently. Public `GFW`
   `DatasetConfig` dataclass.
+
 - `gfs` source adapter and `gfs_analysis` catalog entry: NOAA GFS analysis wind
   from the NOMADS GRIB filter, with server-side region subsetting, one NetCDF per
   day holding that day's available analysis cycles, and heights selected as

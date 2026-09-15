@@ -17,6 +17,7 @@ from collekt.sources import (  # noqa: F401
     gfs,
     gfw,
     hozint,
+    local,
     skytruth,
 )
 from collekt.sources.base import SourceResult, SourceStatus  # noqa: F401
