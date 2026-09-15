@@ -14,11 +14,12 @@ authors = [
 maintainers = [
     { name = "Thomas Roehr", email = "roehr@simula.no" },
 ]
-requires-python = ">=3.13"
+requires-python = ">=3.12"
 classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Development Status :: 3 - Alpha",
     "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
 ]
@@ -39,16 +40,24 @@ dependencies = [
     # gridded assembler + GRIB reading
     "xarray>=2026.4.0",
     "scipy>=1.18.0",
-    "cfgrib>=0.9.15.1",
-    "eccodeslib>=2.47.3.21",
+    # eccodeslib (the compiled ecCodes library cfgrib's `eccodes` bindings load at runtime, via
+    # findlibs) has no Windows wheels, ever - `eccodes` itself does ship a win_amd64 wheel, but
+    # without eccodeslib to provide, it would still fail the moment it's actually used, not at
+    # install. cfgrib is excluded alongside it (not just eccodeslib) so that on Windows `import
+    # cfgrib` itself fails - gridded.py/ecmwf_open_data.py/gfs.py already guard that import and
+    # raise a friendly ImportError, so collekt still installs and runs there, just without GRIB
+    # support, instead of installing a chain that then breaks unpredictably on first use.
+    "cfgrib>=0.9.15.1; sys_platform != 'win32'",
+    "eccodeslib>=2.47.3.21; sys_platform != 'win32'",
     # tabular feature backend (Skytruth)
-    "damast",
+    "damast>=0.3.6",
     "geopandas",
     "polars",
     # provider clients
     "copernicusmarine>=2.4.1",
     "cdsapi>=0.7.7",
     "ecmwf-opendata>=0.3.30",
+    "gfw-api-python-client>=1.4.0",
     "hozint-apiclient",
     "python-dotenv>=1.2.2",
 ]
@@ -64,6 +73,18 @@ collekt = "collekt.cli.main:run"
 [build-system]
 requires = ["uv_build>=0.11.2,<0.12.0"]
 build-backend = "uv_build"
+
+# CI runs macos-latest, which is Apple Silicon (arm64) - GitHub Actions has no
+# Intel macOS runner anymore. Without this, uv's resolver is free to pick
+# eccodeslib's newest version even when that release happens to ship no macOS
+# wheel at all (as 2.48.2.27 currently does - see uv.lock) - `uv sync` then
+# fails at install time on that platform instead of the resolver backtracking
+# to an older, fully-wheeled version up front. Add "... and platform_machine
+# == 'x86_64'" too if an Intel Mac needs to resolve/install this project.
+[tool.uv]
+required-environments = [
+    "sys_platform == 'darwin' and platform_machine == 'arm64'",
+]
 
 [tool.ruff]
 target-version = "py313"

@@ -15,6 +15,7 @@ from collekt.sources import (  # noqa: F401
     eodyn,
     era5,
     gfs,
+    gfw,
     hozint,
     skytruth,
 )

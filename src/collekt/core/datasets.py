@@ -193,10 +193,43 @@ class Hozint(DatasetSelection):
         return {"provider": self.provider, "key": self.key}
 
 
-DatasetLike = CMEMS | ECMWFOpenData | ERA5 | GFS | eOdyn | SkyTruth | CopernicusDataSpace | Hozint
+@dataclass(frozen=True, init=False)
+class GFW(DatasetSelection):
+    """Global Fishing Watch Events API selection (fishing/port visits/encounters/loitering/gaps).
+
+    A credential-gated feature source with no variable selection.
+    """
+
+    provider: ClassVar[str] = "gfw"
+    datasets: tuple[str, ...] = ()
+    limit: int | None = None
+
+    def __init__(self, key: str = "gfw", *, datasets: Iterable[str] | None = None, limit: int | None = None) -> None:
+        super().__init__(key, ())
+        object.__setattr__(self, "datasets", _as_str_tuple(datasets))
+        object.__setattr__(self, "limit", limit)
+
+    def source_overrides(self) -> dict[str, Any]:
+        data: dict[str, Any] = {}
+        if self.datasets:
+            data["datasets"] = list(self.datasets)
+        if self.limit is not None:
+            data["limit"] = self.limit
+        return data
+
+    def as_dict(self) -> dict[str, Any]:
+        data = {"provider": self.provider, "key": self.key}
+        if self.datasets:
+            data["datasets"] = list(self.datasets)
+        if self.limit is not None:
+            data["limit"] = self.limit
+        return data
+
+
+DatasetLike = CMEMS | ECMWFOpenData | ERA5 | GFS | eOdyn | SkyTruth | CopernicusDataSpace | Hozint | GFW
 
 _PROVIDERS: dict[str, type[DatasetLike]] = {
-    cls.provider: cls for cls in (CMEMS, ECMWFOpenData, ERA5, GFS, eOdyn, SkyTruth, CopernicusDataSpace, Hozint)
+    cls.provider: cls for cls in (CMEMS, ECMWFOpenData, ERA5, GFS, eOdyn, SkyTruth, CopernicusDataSpace, Hozint, GFW)
 }
 
 

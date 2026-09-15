@@ -45,7 +45,7 @@ These were agreed up front and the plan assumes them:
 
 | Decision | Choice |
 |---|---|
-| Minimum Python | **3.13** — match tb-rea and current scientific Python support. |
+| Minimum Python | **3.12** — match tb-rea and current scientific Python support. |
 | Request model | **Adopt `Request`/`Region`** as the core model and migrate the CLI. `Query` is retired (collekt is alpha). |
 | Source definition | **YAML source catalogs** describe available sources. `DatasetConfig` / YAML presets select source keys and provider parameters. |
 | Plan scope | **collekt only.** tb-rea slimming is a noted follow-up. |

@@ -43,8 +43,10 @@ src/collekt/
     copernicus_dataspace.py# Sentinel/Landsat product files        (credentials)
     skytruth.py            # oil-slick features -> Parquet          (open)
     hozint.py              # threat-intel reports -> Parquet        (credentials)
+    gfw.py                 # GFW events -> Parquet                  (credentials)
     eodyn.py               # eOdyn ocean-data (archive/api)         (credentials)
     skytruth.spec.yaml     # Skytruth column metadata (damast spec)
+    gfw.spec.yaml          # GFW events column metadata (damast spec)
 
   assemble/
     gridded.py             # Assembler: regrid + time-align -> xarray/NetCDF/Zarr/NumPy
@@ -53,7 +55,7 @@ src/collekt/
     default.yaml           # runtime defaults + source_catalogs
     source/                # curated dataset catalogs: cmems_global, cmems_eur,
                            #   cmems_med, cmems_ibi, cmems_nws, ecmwf, gfs,
-                           #   eodyn, skytruth, dataspace
+                           #   eodyn, skytruth, dataspace, gfw
 
   resources/
     schema/manifest.schema.json   # draft manifest schema (reference; not enforced)
