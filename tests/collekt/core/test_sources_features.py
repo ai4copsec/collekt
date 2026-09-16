@@ -6,6 +6,7 @@ needed. Skytruth's and GFW's Parquet-writing paths need damast and are covered
 separately when it's installed.
 """
 
+import asyncio
 import datetime
 import json
 import types
@@ -384,6 +385,20 @@ def test_gfw_flatten_event_extracts_nested_fields():
     assert json.loads(row["fishing_json"])["total_distance_km"] == 0.8
     assert row["encounter_json"] is None
     assert row["port_visit_json"] is None
+
+
+def test_gfw_fetch_events_works_inside_a_running_event_loop(monkeypatch):
+    # A Jupyter kernel (ipykernel >= 7) runs every cell inside a live event loop, where a bare
+    # asyncio.run() raises RuntimeError. collekt ships notebooks, so the sync wrapper must cope.
+    async def _fake_get_all_events(source, region, start_date, end_date):
+        return [{"id": "evt-1"}]
+
+    monkeypatch.setattr(gfw, "_get_all_events", _fake_get_all_events)
+
+    async def _in_a_loop():
+        return gfw._fetch_events(_gfw_source(), Region.from_bbox((-6, 20, 35, 45)), "2026-08-01", "2026-08-08")
+
+    assert asyncio.run(_in_a_loop()) == [{"id": "evt-1"}]
 
 
 def test_gfw_plan_reports_query_without_network(tmp_path):

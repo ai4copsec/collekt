@@ -36,6 +36,7 @@ import asyncio
 import hashlib
 import json
 import os
+from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from pathlib import Path
 from typing import Any
@@ -180,8 +181,23 @@ async def _get_all_events(source: SourceConfig, region: Region, start_date: str,
 
 def _fetch_events(source: SourceConfig, region: Region, start_date: str, end_date: str) -> list[dict[str, Any]]:
     """Query the GFW Events API. Sync wrapper around the async client, and the network boundary
-    tests stub out (`fetch_gfw` is called synchronously - see test_sources_features.py)."""
-    return asyncio.run(_get_all_events(source, region, start_date, end_date))
+    tests stub out (`fetch_gfw` is called synchronously - see test_sources_features.py).
+
+    `asyncio.run` refuses to run inside an already-running event loop, which is exactly the
+    situation in a Jupyter kernel (ipykernel >= 7 executes every cell inside the loop). collekt's
+    own notebooks call `Fetcher.download()` synchronously, so the query is handed to a worker
+    thread with its own loop whenever one is already running in this thread.
+    """
+
+    def _run() -> list[dict[str, Any]]:
+        return asyncio.run(_get_all_events(source, region, start_date, end_date))
+
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return _run()
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        return pool.submit(_run).result()
 
 
 def fetch_gfw(
