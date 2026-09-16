@@ -1,9 +1,19 @@
 default:
     just --list
 
-# Install all dependencies (runtime + dev + test + docs + notebook groups)
-install:
+# Install all dependencies (runtime + dev + test + docs + notebook groups) + git hooks
+install: hooks
     uv sync --all-groups
+
+# Install the pre-commit git hook (ruff, whitespace, and nbstripout on notebooks).
+# Needed once per clone: git hooks live in .git/, which is not tracked.
+hooks:
+    uv sync --group dev --quiet
+    uv run pre-commit install
+
+# Run every pre-commit hook over the whole repo, not just staged files
+hooks-all:
+    uv run pre-commit run --all-files
 
 # Format code with ruff
 format:
