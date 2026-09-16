@@ -28,6 +28,22 @@ row, matching the event's `type`) as JSON text rather than a typed struct
 column - GFW's response models allow undocumented extra fields (`extra=
 "allow"`), so a fixed struct type would be one field addition away from
 silently dropping data.
+
+The Events endpoint returns one fixed-size page per POST and reports no total,
+so this adapter pages on `offset` until a short page arrives - otherwise a
+result that happened to fill the page would be silently truncated. Two config
+keys shape that, both optional:
+
+- `limit` is the *page size* (GFW's own `limit` parameter), the same meaning the
+  key has in skytruth.py. Left unset it falls through to `gfwapiclient`'s
+  default of 99999, which is the right default here: a query costs 10-20s
+  server-side almost regardless of how many rows it returns, so the cost is per
+  request, not per row. A large page keeps the common case to a single POST and
+  leaves paging as the safety net it should be. Set it smaller only to bound
+  per-response size, at roughly 10-20s per extra page.
+- `max_events` caps the total across pages. Unset (the default) means "collect
+  everything". When a cap does cut a result short the adapter raises
+  `GFWTruncatedResultWarning` - truncation is never silent.
 """
 
 from __future__ import annotations
@@ -36,6 +52,8 @@ import asyncio
 import hashlib
 import json
 import os
+import warnings
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from pathlib import Path
@@ -66,6 +84,34 @@ DEFAULT_DATASETS = (
     "public-global-gaps-events:latest",
 )
 GFW_TOKEN_ENV = "GFW_API_ACCESS_TOKEN"
+# `gfwapiclient`'s own fallback: EventResource._prepare_get_all_events_request_params does
+# `"limit": limit or 99999`, so an unset (or 0) `limit` reaches the API as 99999. The paging
+# loop needs to know the page size actually in force to recognize a short - i.e. final - page.
+CLIENT_DEFAULT_LIMIT = 99999
+# Offset paging is only coherent against a stable order, and the endpoint's default order is
+# unspecified. Verified against the live API: 197 events read 20-at-a-time over 10 pages
+# reassemble to exactly the single-request result, same ids in the same order.
+EVENT_SORT = "+start"
+# Text columns, cast explicitly so an event type absent from this result does not leave a Null
+# column for damast to repair. Mirrors skytruth.py's SKYTRUTH_STRING_COLUMNS.
+GFW_STRING_COLUMNS = (
+    "id",
+    "type",
+    "vessel_id",
+    "vessel_name",
+    "vessel_ssvid",
+    "vessel_flag",
+    "vessel_type",
+    "encounter_json",
+    "fishing_json",
+    "gap_json",
+    "loitering_json",
+    "port_visit_json",
+)
+
+
+class GFWTruncatedResultWarning(UserWarning):
+    """Warns that a configured `max_events` cap cut a GFW result short."""
 
 
 def _output_path(request: Request, source: SourceConfig, request_dir: Path) -> Path:
@@ -81,6 +127,11 @@ def _output_path(request: Request, source: SourceConfig, request_dir: Path) -> P
     # would otherwise collide on the same bbox_hash-keyed output path, and should_reuse_cache
     # would silently serve one polygon's events for the other's request.
     values["geometry_hash"] = _geometry_hash(request.region)
+    # Same reasoning for `max_events`: it changes how many events land in the file, so a capped
+    # and an uncapped run of the same request must not share a cache path - otherwise lifting the
+    # cap would keep serving the truncated file. `limit` is deliberately *not* part of the key:
+    # it is only the page size, and paging to exhaustion makes the contents identical either way.
+    values["cap_suffix"] = _cap_suffix(source)
     return request_dir / source.path / format_pattern(source.filename_pattern, values)
 
 
@@ -89,6 +140,12 @@ def _geometry_hash(region: Region) -> str:
     if not region.geometry:
         return ""
     return "_" + hashlib.sha1(region.geometry.encode("utf-8")).hexdigest()[:8]
+
+
+def _cap_suffix(source: SourceConfig) -> str:
+    """Short, `_`-prefixed tag for a `max_events` cap, or `""` when the query is uncapped."""
+    cap = _max_events(source)
+    return "" if cap is None else f"_max{cap}"
 
 
 def _query_window(request: Request) -> tuple[str, str]:
@@ -155,23 +212,136 @@ def _flatten_event(event: Any) -> dict[str, Any]:
     }
 
 
-async def _get_all_events(source: SourceConfig, region: Region, start_date: str, end_date: str) -> list[dict[str, Any]]:
+def _datasets(source: SourceConfig) -> list[str]:
+    """Return the GFW dataset ids to query."""
+    return list(source.raw.get("datasets", DEFAULT_DATASETS))
+
+
+def _page_size(source: SourceConfig) -> int | None:
+    """Return the configured page size, or `None` to accept the client's own default.
+
+    A non-positive `limit` is treated as unset rather than as "no events", because that is
+    what the client does with it (`limit or 99999`).
+    """
+    limit = source.raw.get("limit")
+    if limit is None:
+        return None
+    limit = int(limit)
+    return limit if limit > 0 else None
+
+
+def _max_events(source: SourceConfig) -> int | None:
+    """Return the configured total cap across pages, or `None` for "collect everything"."""
+    cap = source.raw.get("max_events")
+    if cap is None:
+        return None
+    cap = int(cap)
+    return cap if cap > 0 else None
+
+
+async def _collect_pages(
+    events: Any,
+    *,
+    datasets: list[str],
+    start_date: str,
+    end_date: str,
+    geometry: dict[str, Any],
+    page_size: int | None,
+    max_events: int | None,
+    on_page: Callable[[int, int], None] = lambda _page, _total: None,
+) -> list[dict[str, Any]]:
+    """Page through the Events API on `offset` and return every matching event.
+
+    `events` is the client's events resource (`gfw.Client().events`), taken as a parameter so
+    the loop can be exercised without a client or a network. Paging stops at the first short
+    page - the endpoint reports no total, so a full page is the only signal that more may
+    follow - or at `max_events`, which warns rather than truncating silently.
+
+    Args:
+        events: Events resource exposing `get_all_events`.
+        datasets: GFW dataset ids to query.
+        start_date: Inclusive ISO start date.
+        end_date: Exclusive ISO end date (see the module docstring).
+        geometry: GeoJSON geometry to filter on.
+        page_size: Rows per request, or `None` for the client's default.
+        max_events: Total cap across pages, or `None` for no cap.
+        on_page: Called with (page number, running total) after each page.
+
+    Returns:
+        Flattened event rows, de-duplicated by event id, in the order returned.
+
+    Raises:
+        GFWTruncatedResultWarning: Warned (not raised) when `max_events` cuts the result short.
+    """
+    in_force = page_size or CLIENT_DEFAULT_LIMIT
+    rows: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    offset = 0
+    page_number = 0
+    capped = False
+
+    while True:
+        result = await events.get_all_events(
+            datasets=datasets,
+            start_date=start_date,
+            end_date=end_date,
+            geometry=geometry,
+            limit=page_size,
+            offset=offset,
+            sort=EVENT_SORT,
+        )
+        page = [_flatten_event(event) for event in result.data()]
+        page_number += 1
+        for row in page:
+            # A row without an id cannot be de-duplicated; keep it rather than drop it.
+            identifier = row.get("id")
+            if identifier is not None:
+                if identifier in seen:
+                    continue
+                seen.add(identifier)
+            rows.append(row)
+        on_page(page_number, len(rows))
+
+        if max_events is not None and len(rows) >= max_events:
+            capped = len(rows) > max_events or len(page) == in_force
+            rows = rows[:max_events]
+            break
+        if len(page) < in_force:
+            break
+        offset += len(page)
+
+    if capped:
+        warnings.warn(
+            f"GFW returned at least {max_events} events; stopping at the configured "
+            f"max_events={max_events}. Raise or unset `max_events` on the gfw source, or "
+            f"narrow the region/time window, to collect the rest.",
+            GFWTruncatedResultWarning,
+            stacklevel=2,
+        )
+    return rows
+
+
+async def _get_all_events(
+    source: SourceConfig,
+    region: Region,
+    start_date: str,
+    end_date: str,
+    on_page: Callable[[int, int], None] = lambda _page, _total: None,
+) -> list[dict[str, Any]]:
     import gfwapiclient as gfw
 
     client = gfw.Client(access_token=os.environ.get(GFW_TOKEN_ENV, ""))
     try:
-        datasets = list(source.raw.get("datasets", DEFAULT_DATASETS))
-        result = await client.events.get_all_events(
-            datasets=datasets,
+        return await _collect_pages(
+            client.events,
+            datasets=_datasets(source),
             start_date=start_date,
             end_date=end_date,
             geometry=_geometry(region),
-            # No in-code fallback: the shipped default (gfw.yaml) is the single place that sets
-            # it - omitting `limit` here entirely falls through to gfwapiclient's own default
-            # (99999).
-            limit=source.raw.get("limit"),
+            page_size=_page_size(source),
+            max_events=_max_events(source),
+            on_page=on_page,
         )
-        return [_flatten_event(event) for event in result.data()]
     finally:
         # gfw.Client has no public close()/aclose() or context-manager support of its own - it
         # only wraps an httpx.AsyncClient subclass (HTTPClient) as a private attribute. Without
@@ -179,7 +349,13 @@ async def _get_all_events(source: SourceConfig, region: Region, start_date: str,
         await client._http_client.aclose()
 
 
-def _fetch_events(source: SourceConfig, region: Region, start_date: str, end_date: str) -> list[dict[str, Any]]:
+def _fetch_events(
+    source: SourceConfig,
+    region: Region,
+    start_date: str,
+    end_date: str,
+    on_page: Callable[[int, int], None] = lambda _page, _total: None,
+) -> list[dict[str, Any]]:
     """Query the GFW Events API. Sync wrapper around the async client, and the network boundary
     tests stub out (`fetch_gfw` is called synchronously - see test_sources_features.py).
 
@@ -187,17 +363,31 @@ def _fetch_events(source: SourceConfig, region: Region, start_date: str, end_dat
     situation in a Jupyter kernel (ipykernel >= 7 executes every cell inside the loop). collekt's
     own notebooks call `Fetcher.download()` synchronously, so the query is handed to a worker
     thread with its own loop whenever one is already running in this thread.
+
+    A `GFWTruncatedResultWarning` raised in that worker thread would be invisible to a caller's
+    `warnings.catch_warnings`, so the threaded path collects warnings and re-raises them here.
+    Both paths therefore warn in the caller's thread. Swapping the global filter is safe: this
+    thread is blocked on the result, so nothing else in it can warn meanwhile.
     """
 
     def _run() -> list[dict[str, Any]]:
-        return asyncio.run(_get_all_events(source, region, start_date, end_date))
+        return asyncio.run(_get_all_events(source, region, start_date, end_date, on_page))
+
+    def _run_capturing() -> tuple[list[dict[str, Any]], list[warnings.WarningMessage]]:
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            return _run(), caught
 
     try:
         asyncio.get_running_loop()
     except RuntimeError:
         return _run()
+
     with ThreadPoolExecutor(max_workers=1) as pool:
-        return pool.submit(_run).result()
+        rows, caught = pool.submit(_run_capturing).result()
+    for entry in caught:
+        warnings.warn(entry.message, entry.category, stacklevel=2)
+    return rows
 
 
 def fetch_gfw(
@@ -227,8 +417,14 @@ def fetch_gfw(
 
     start_date, end_date = _query_window(request)
     progress(source.name, "querying the GFW Events API")
+
+    def _on_page(page_number: int, total: int) -> None:
+        # A page costs 10-20s server-side, so a multi-page query is a long silence otherwise.
+        if page_number > 1:
+            progress(source.name, f"querying the GFW Events API (page {page_number}, {total} events so far)")
+
     try:
-        events = _fetch_events(source, request.region, start_date, end_date)
+        events = _fetch_events(source, request.region, start_date, end_date, _on_page)
     except Exception as exc:  # noqa: BLE001 - network/auth/response failures are warnings, not fatal errors
         return [
             SourceResult(
@@ -283,14 +479,22 @@ def _write_parquet(events: list[dict[str, Any]], output_path: Path, source: Sour
     import damast
     import polars as pl
 
-    df = pl.DataFrame(events).with_columns(
+    # infer_schema_length=None scans every row instead of the default first 100. Only one of the
+    # five *_json columns is populated per event, so a rarer event type (loitering, say) can be
+    # absent from the first 100 rows: polars would infer Null for that column and then fail on the
+    # first string it met further down. Paging made this reachable - a truncated result could
+    # easily hold one event type only.
+    df = pl.DataFrame(events, infer_schema_length=None).with_columns(
         pl.col("start").cast(pl.Datetime(time_unit="us", time_zone="UTC")),
         pl.col("end").cast(pl.Datetime(time_unit="us", time_zone="UTC")),
         pl.col("lat").cast(pl.Float64),
         pl.col("lon").cast(pl.Float64),
         pl.col("bounding_box").cast(pl.List(pl.Float64)),
+        # Cast explicitly rather than leave an all-null column as Null: damast repairs those with
+        # a warning, and the same trick keeps skytruth.py's output quiet (SKYTRUTH_STRING_COLUMNS).
+        *[pl.col(column).cast(pl.String) for column in GFW_STRING_COLUMNS],
     )
-    datasets = list(source.raw.get("datasets", DEFAULT_DATASETS))
+    datasets = _datasets(source)
     metadata = damast.core.MetaData.load_yaml(SPEC_YAML)
     metadata.add_annotation(
         damast.core.Annotation(name=damast.core.Annotation.Key.Comment, value=f"Created from GFW datasets: {datasets}")
@@ -309,11 +513,15 @@ def plan_gfw(request: Request, source: SourceConfig, config: Config, request_dir
         "provider": "gfw",
         "method": "events.get_all_events",
         "request": {
-            "datasets": list(source.raw.get("datasets", DEFAULT_DATASETS)),
+            "datasets": _datasets(source),
             "start_date": start_date,
             "end_date": end_date,
             "geometry": _geometry(request.region),
-            "limit": source.raw.get("limit"),
+            # `limit` is the page size actually sent; the query pages on `offset` until a short
+            # page arrives, or until `max_events` (null = collect everything) is reached.
+            "limit": _page_size(source) or CLIENT_DEFAULT_LIMIT,
+            "max_events": _max_events(source),
+            "sort": EVENT_SORT,
         },
         "availability": Availability(AvailabilityStatus.NOT_CHECKED, AvailabilityMethod.NOT_CHECKED).as_dict(),
     }
@@ -349,6 +557,6 @@ register_adapter(
         fetch=fetch_gfw,
         plan=plan_gfw,
         diagnose=diagnose,
-        known_raw_keys=frozenset({"datasets", "limit"}),
+        known_raw_keys=frozenset({"datasets", "limit", "max_events"}),
     )
 )

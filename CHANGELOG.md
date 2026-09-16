@@ -13,7 +13,13 @@ under `[main]`; `just bump` copies them under the new version.
   window, written as one annotated Parquet file per request. Event-type-specific
   detail (`encounter`/`fishing`/`gap`/`loitering`/`port_visit`) is kept as JSON
   text rather than a typed struct, since GFW's response models allow
-  undocumented extra fields. Public `GFW` `DatasetConfig` dataclass.
+  undocumented extra fields. The query pages on `offset` until GFW runs out of
+  events, so a result is complete by default: `limit` is the per-request page
+  size (unset = the client's 99999, keeping the common case to a single request,
+  since a query costs 10-20s server-side almost regardless of row count), and the
+  optional `max_events` caps the total across pages, raising
+  `GFWTruncatedResultWarning` rather than truncating silently. Public `GFW`
+  `DatasetConfig` dataclass.
 - `gfs` source adapter and `gfs_analysis` catalog entry: NOAA GFS analysis wind
   from the NOMADS GRIB filter, with server-side region subsetting, one NetCDF per
   day holding that day's available analysis cycles, and heights selected as

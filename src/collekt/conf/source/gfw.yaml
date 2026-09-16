@@ -3,8 +3,11 @@
 # Queries the Events API (fishing, port visits, encounters, loitering, AIS gaps)
 # for the request's region and time window. Region filtering uses a GeoJSON
 # geometry derived from the request, not a GFW named region id. It takes no
-# variable selection, and `limit` bounds the number of events per request (GFW
-# recommends keeping requests to small regions/short windows manageable).
+# variable selection.
+#
+# The query pages on `offset` until GFW runs out of events, so a result is
+# complete by default. The two knobs below are both left unset on purpose;
+# see gfw.py's module docstring.
 
 sources:
   gfw:
@@ -13,12 +16,21 @@ sources:
     # {geometry_hash} is "" for a plain bbox request, or an underscore-prefixed hash of the
     # precise polygon when Region.geometry is set - without it, two different polygons sharing a
     # bounding box would collide on the same cache path (see gfw.py's _geometry_hash).
-    filename_pattern: "gfw_{start:%Y%m%d}_{end:%Y%m%d}_{bbox_hash}{geometry_hash}.parquet"
+    # {cap_suffix} is "" for an uncapped query, or "_max<N>" when max_events is set - a capped
+    # and an uncapped run of the same request hold different events and must not share a path.
+    filename_pattern: "gfw_{start:%Y%m%d}_{end:%Y%m%d}_{bbox_hash}{geometry_hash}{cap_suffix}.parquet"
     datasets:
       - "public-global-fishing-events:latest"
       - "public-global-port-visits-events:latest"
       - "public-global-encounters-events:latest"
       - "public-global-loitering-events:latest"
       - "public-global-gaps-events:latest"
-    limit: 1000
+    # Page size for one POST, not a cap on the result. Unset means gfwapiclient's own
+    # default (99999). A query costs 10-20s server-side almost regardless of how many rows
+    # it returns, so a large page keeps the common case to a single request; lowering this
+    # buys smaller responses at roughly 10-20s per extra page.
+    limit: null
+    # Total cap across pages. Unset means "collect everything"; when a cap does cut a result
+    # short, the adapter raises GFWTruncatedResultWarning rather than truncating silently.
+    max_events: null
     url: "https://globalfishingwatch.org"

@@ -197,17 +197,41 @@ class Hozint(DatasetSelection):
 class GFW(DatasetSelection):
     """Global Fishing Watch Events API selection (fishing/port visits/encounters/loitering/gaps).
 
-    A credential-gated feature source with no variable selection.
+    A credential-gated feature source with no variable selection. The query pages until GFW
+    runs out of events, so a result is complete unless `max_events` caps it.
+
+    Example:
+
+    ```python
+    collekt.DatasetConfig(collekt.GFW(datasets=["public-global-fishing-events:latest"]))
+    ```
+
+    Args:
+        key: Catalog key to select. Defaults to `gfw`.
+        datasets: GFW dataset ids to query. Defaults to the catalog's five event datasets.
+        limit: Rows per request (GFW's own `limit`), not a cap on the result. `None` uses the
+            client default of 99999, which keeps the common case to a single request.
+        max_events: Total cap across pages. `None` collects everything; when a cap cuts a
+            result short, `GFWTruncatedResultWarning` is raised.
     """
 
     provider: ClassVar[str] = "gfw"
     datasets: tuple[str, ...] = ()
     limit: int | None = None
+    max_events: int | None = None
 
-    def __init__(self, key: str = "gfw", *, datasets: Iterable[str] | None = None, limit: int | None = None) -> None:
+    def __init__(
+        self,
+        key: str = "gfw",
+        *,
+        datasets: Iterable[str] | None = None,
+        limit: int | None = None,
+        max_events: int | None = None,
+    ) -> None:
         super().__init__(key, ())
         object.__setattr__(self, "datasets", _as_str_tuple(datasets))
         object.__setattr__(self, "limit", limit)
+        object.__setattr__(self, "max_events", max_events)
 
     def source_overrides(self) -> dict[str, Any]:
         data: dict[str, Any] = {}
@@ -215,6 +239,8 @@ class GFW(DatasetSelection):
             data["datasets"] = list(self.datasets)
         if self.limit is not None:
             data["limit"] = self.limit
+        if self.max_events is not None:
+            data["max_events"] = self.max_events
         return data
 
     def as_dict(self) -> dict[str, Any]:
@@ -223,6 +249,8 @@ class GFW(DatasetSelection):
             data["datasets"] = list(self.datasets)
         if self.limit is not None:
             data["limit"] = self.limit
+        if self.max_events is not None:
+            data["max_events"] = self.max_events
         return data
 
 

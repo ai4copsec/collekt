@@ -263,7 +263,7 @@ GFW = {
     "kind": "gfw",
     "enabled": True,
     "path": "gfw",
-    "filename_pattern": "gfw_{start:%Y%m%d}_{end:%Y%m%d}_{bbox_hash}{geometry_hash}.parquet",
+    "filename_pattern": "gfw_{start:%Y%m%d}_{end:%Y%m%d}_{bbox_hash}{geometry_hash}{cap_suffix}.parquet",
     "datasets": ["public-global-fishing-events:latest"],
     "limit": 1000,
 }
@@ -322,6 +322,21 @@ def test_gfw_output_path_differs_for_same_bbox_different_geometry(tmp_path):
     assert path_bbox.name == f"gfw_20260801_20260807_{bbox_hash}.parquet"
     assert path_a.name.startswith(f"gfw_20260801_20260807_{bbox_hash}_")
     assert path_b.name.startswith(f"gfw_20260801_20260807_{bbox_hash}_")
+
+
+def test_gfw_cap_changes_the_output_path():
+    # A capped and an uncapped run of the same request hold different events; sharing a cache
+    # path would keep serving the truncated file after the cap is lifted.
+    request = Request(region=Region.from_bbox((-6, 20, 35, 45)), start="2026-08-01", end="2026-08-07")
+    uncapped = _cfg(Path("/tmp"), gfw=GFW).sources["gfw"]
+    capped = _cfg(Path("/tmp"), gfw={**GFW, "max_events": 50}).sources["gfw"]
+
+    uncapped_path = gfw._output_path(request, uncapped, Path("/tmp"))
+    capped_path = gfw._output_path(request, capped, Path("/tmp"))
+
+    assert uncapped_path != capped_path
+    assert uncapped_path.name.endswith("_maxevents.parquet") is False
+    assert capped_path.name.endswith("_max50.parquet")
 
 
 def test_gfw_query_window_end_date_is_exclusive_adjusted():
@@ -390,7 +405,7 @@ def test_gfw_flatten_event_extracts_nested_fields():
 def test_gfw_fetch_events_works_inside_a_running_event_loop(monkeypatch):
     # A Jupyter kernel (ipykernel >= 7) runs every cell inside a live event loop, where a bare
     # asyncio.run() raises RuntimeError. collekt ships notebooks, so the sync wrapper must cope.
-    async def _fake_get_all_events(source, region, start_date, end_date):
+    async def _fake_get_all_events(source, region, start_date, end_date, on_page=None):
         return [{"id": "evt-1"}]
 
     monkeypatch.setattr(gfw, "_get_all_events", _fake_get_all_events)
@@ -399,6 +414,138 @@ def test_gfw_fetch_events_works_inside_a_running_event_loop(monkeypatch):
         return gfw._fetch_events(_gfw_source(), Region.from_bbox((-6, 20, 35, 45)), "2026-08-01", "2026-08-08")
 
     assert asyncio.run(_in_a_loop()) == [{"id": "evt-1"}]
+
+
+class _FakeEvents:
+    """Stand-in for `gfw.Client().events`, returning canned pages and recording each call."""
+
+    def __init__(self, pages):
+        self.pages = list(pages)
+        self.calls = []
+
+    async def get_all_events(self, **kwargs):
+        self.calls.append(kwargs)
+        page = self.pages.pop(0) if self.pages else []
+        return types.SimpleNamespace(data=lambda page=page: [_fake_event(row) for row in page])
+
+
+def _ids(count, start=0, prefix="evt"):
+    return [{"id": f"{prefix}-{i}"} for i in range(start, start + count)]
+
+
+def _collect(events, *, page_size, max_events=None, on_page=None):
+    return asyncio.run(
+        gfw._collect_pages(
+            events,
+            datasets=["public-global-fishing-events:latest"],
+            start_date="2026-08-01",
+            end_date="2026-08-08",
+            geometry={"type": "Polygon", "coordinates": []},
+            page_size=page_size,
+            max_events=max_events,
+            on_page=on_page or (lambda page, total: None),
+        )
+    )
+
+
+def test_gfw_pages_until_a_short_page_arrives():
+    # The endpoint reports no total, so a full page is the only signal that more may follow.
+    events = _FakeEvents([_ids(3, 0), _ids(3, 3), _ids(2, 6)])
+
+    rows = _collect(events, page_size=3)
+
+    assert [row["id"] for row in rows] == [f"evt-{i}" for i in range(8)]
+    assert [call["offset"] for call in events.calls] == [0, 3, 6]
+    assert {call["limit"] for call in events.calls} == {3}
+    assert {call["sort"] for call in events.calls} == {gfw.EVENT_SORT}
+
+
+def test_gfw_single_short_page_issues_one_request():
+    events = _FakeEvents([_ids(2, 0)])
+
+    rows = _collect(events, page_size=10)
+
+    assert len(rows) == 2
+    assert len(events.calls) == 1
+
+
+def test_gfw_unset_page_size_compares_against_the_client_default():
+    # page_size=None reaches the API as gfwapiclient's 99999; a 2-row page is short against
+    # that, so the loop must stop rather than paging forever on `len(page) < None`.
+    events = _FakeEvents([_ids(2, 0)])
+
+    rows = _collect(events, page_size=None)
+
+    assert len(rows) == 2
+    assert len(events.calls) == 1
+    assert events.calls[0]["limit"] is None
+
+
+def test_gfw_max_events_caps_the_result_and_warns():
+    events = _FakeEvents([_ids(3, 0), _ids(3, 3), _ids(3, 6)])
+
+    with pytest.warns(gfw.GFWTruncatedResultWarning, match="max_events=4"):
+        rows = _collect(events, page_size=3, max_events=4)
+
+    assert [row["id"] for row in rows] == ["evt-0", "evt-1", "evt-2", "evt-3"]
+    assert len(events.calls) == 2  # stopped as soon as the cap was reached
+
+
+def test_gfw_max_events_exactly_matching_a_complete_result_does_not_warn():
+    # Hitting the cap on the final short page means nothing was actually dropped.
+    events = _FakeEvents([_ids(3, 0), _ids(1, 3)])
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", gfw.GFWTruncatedResultWarning)
+        rows = _collect(events, page_size=3, max_events=4)
+
+    assert len(rows) == 4
+
+
+def test_gfw_duplicate_ids_across_pages_collapse():
+    events = _FakeEvents([_ids(3, 0), [{"id": "evt-2"}, {"id": "evt-3"}, {"id": "evt-4"}], _ids(1, 5)])
+
+    rows = _collect(events, page_size=3)
+
+    assert [row["id"] for row in rows] == ["evt-0", "evt-1", "evt-2", "evt-3", "evt-4", "evt-5"]
+
+
+def test_gfw_rows_without_an_id_are_kept():
+    events = _FakeEvents([[{"id": None}, {"id": None}]])
+
+    rows = _collect(events, page_size=10)
+
+    assert len(rows) == 2
+
+
+def test_gfw_on_page_reports_running_progress():
+    events = _FakeEvents([_ids(3, 0), _ids(1, 3)])
+    seen = []
+
+    _collect(events, page_size=3, on_page=lambda page, total: seen.append((page, total)))
+
+    assert seen == [(1, 3), (2, 4)]
+
+
+def test_gfw_truncation_warning_crosses_the_worker_thread():
+    # In a notebook the query runs in a worker thread; a warning raised there would be
+    # invisible to the caller's catch_warnings unless it is re-raised in the calling thread.
+    async def _warns(source, region, start_date, end_date, on_page=None):
+        warnings.warn("capped", gfw.GFWTruncatedResultWarning, stacklevel=2)
+        return [{"id": "evt-1"}]
+
+    async def _in_a_loop():
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            rows = gfw._fetch_events(_gfw_source(), Region.from_bbox((-6, 20, 35, 45)), "2026-08-01", "2026-08-08")
+        return rows, [w.category for w in caught]
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(gfw, "_get_all_events", _warns)
+        rows, categories = asyncio.run(_in_a_loop())
+
+    assert rows == [{"id": "evt-1"}]
+    assert gfw.GFWTruncatedResultWarning in categories
 
 
 def test_gfw_plan_reports_query_without_network(tmp_path):
@@ -416,17 +563,30 @@ def test_gfw_limit_has_no_in_code_default(tmp_path):
     # must not silently fall back to some other hardcoded value in gfw.py.
     bare = _cfg(tmp_path, gfw={"kind": "gfw", "path": "gfw"}).sources["gfw"]
     assert bare.raw.get("limit") is None
+    assert gfw._page_size(bare) is None
+    assert gfw._max_events(bare) is None
 
 
-def test_gfw_bundled_catalog_sets_the_default_limit():
+def test_gfw_bundled_catalog_ships_an_uncapped_query():
+    # A page size or a cap in the shipped catalog would silently drop events from any
+    # request busy enough to fill it; paging to exhaustion is the default.
     import collekt
 
-    resolved = collekt.DatasetConfig(collekt.GFW()).resolve()
-    assert resolved.sources["gfw"].raw["limit"] == 1000
+    source = collekt.DatasetConfig(collekt.GFW()).resolve().sources["gfw"]
+    assert source.raw["limit"] is None
+    assert source.raw["max_events"] is None
+
+
+def test_gfw_non_positive_limit_is_treated_as_unset(tmp_path):
+    # The client turns `limit or 99999` into 99999, so 0 means "client default", never
+    # "no events" - the page-size helper has to agree, or the loop never terminates.
+    source = _cfg(tmp_path, gfw={"kind": "gfw", "path": "gfw", "limit": 0, "max_events": 0}).sources["gfw"]
+    assert gfw._page_size(source) is None
+    assert gfw._max_events(source) is None
 
 
 def test_gfw_zero_events_is_a_warning(tmp_path, monkeypatch):
-    monkeypatch.setattr(gfw, "_fetch_events", lambda source, region, start_date, end_date: [])
+    monkeypatch.setattr(gfw, "_fetch_events", lambda source, region, start_date, end_date, on_page=None: [])
     result = Fetcher(_request(), config=_cfg(tmp_path, gfw=GFW)).download()
 
     assert result.summary.skipped == 1
@@ -434,7 +594,7 @@ def test_gfw_zero_events_is_a_warning(tmp_path, monkeypatch):
 
 
 def test_gfw_query_failure_is_a_warning(tmp_path, monkeypatch):
-    def _raise(source, region, start_date, end_date):
+    def _raise(source, region, start_date, end_date, on_page=None):
         raise RuntimeError("401 Unauthorized")
 
     monkeypatch.setattr(gfw, "_fetch_events", _raise)
@@ -445,7 +605,9 @@ def test_gfw_query_failure_is_a_warning(tmp_path, monkeypatch):
 
 
 def test_gfw_write_parquet_failure_is_a_warning(tmp_path, monkeypatch):
-    monkeypatch.setattr(gfw, "_fetch_events", lambda source, region, start_date, end_date: [{"id": "evt-1"}])
+    monkeypatch.setattr(
+        gfw, "_fetch_events", lambda source, region, start_date, end_date, on_page=None: [{"id": "evt-1"}]
+    )
 
     def _raise(events, output_path, source):
         raise ImportError("damast is not installed")
@@ -458,7 +620,7 @@ def test_gfw_write_parquet_failure_is_a_warning(tmp_path, monkeypatch):
 
 
 def test_gfw_reuses_existing_parquet(tmp_path, monkeypatch):
-    def _must_not_query(source, region, start_date, end_date):
+    def _must_not_query(source, region, start_date, end_date, on_page=None):
         raise AssertionError("cached file should be reused without querying")
 
     monkeypatch.setattr(gfw, "_fetch_events", _must_not_query)
@@ -528,6 +690,37 @@ def test_gfw_write_parquet_produces_expected_schema(tmp_path):
     assert schema["start"] == pl.Datetime(time_unit="us", time_zone="UTC")
     assert schema["bounding_box"] == pl.List(pl.Float64)
     assert schema["fishing_json"] == pl.String
+
+
+def test_gfw_write_parquet_handles_a_rare_event_type_beyond_the_inference_window(tmp_path):
+    # Only one *_json column is populated per event, so an event type that first appears past
+    # polars' default 100-row inference window used to make the column infer as Null and then
+    # fail on the first string below it. Reachable in real data: 100+ port visits, then a
+    # loitering event.
+    pl = pytest.importorskip("polars")
+    pytest.importorskip("damast")
+
+    def _event(index, kind):
+        payload = dict.fromkeys(
+            ["id", "type", "start", "end", "position", "regions", "bounding_box", "distances", "vessel"]
+        )
+        payload.update(
+            {"id": f"evt-{index}", "type": kind, "encounter": None, "fishing": None, "gap": None, "port_visit": None}
+        )
+        payload["loitering"] = {"total_time_hours": 135.6} if kind == "loitering" else None
+        if kind == "port_visit":
+            payload["port_visit"] = {"confidence": 4}
+        return gfw._flatten_event(_fake_event(payload))
+
+    events = [_event(i, "port_visit") for i in range(150)] + [_event(150, "loitering")]
+    output_path = tmp_path / "gfw.parquet"
+
+    gfw._write_parquet(events, output_path, _gfw_source())
+
+    table = pl.read_parquet(output_path)
+    assert table.height == 151
+    assert table.schema["loitering_json"] == pl.String
+    assert table.filter(pl.col("loitering_json").is_not_null()).height == 1
 
 
 # --- Copernicus Data Space --------------------------------------------------
