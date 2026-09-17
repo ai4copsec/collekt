@@ -138,7 +138,7 @@ The project uses the tb-rea tooling baseline.
 
 - Switch the build backend to **`uv_build`**; manage the environment and
   dependencies with **uv** (`uv sync`, `uv add`, `uv run`). Never `pip install`.
-- `requires-python = ">=3.13"`.
+- `requires-python = ">=3.12"`.
 - `pyproject.toml` currently uses a batteries-included runtime dependency set:
   provider clients, gridded dependencies, and feature dependencies are installed
   by default. Imports remain lazy at provider boundaries so `import collekt`
