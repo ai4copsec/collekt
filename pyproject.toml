@@ -49,8 +49,8 @@ dependencies = [
     # support, instead of installing a chain that then breaks unpredictably on first use.
     "cfgrib>=0.9.15.1; sys_platform != 'win32'",
     "eccodeslib>=2.47.3.21; sys_platform != 'win32'",
-    # tabular feature backend (Skytruth)
-    "damast>=0.3.6",
+    # tabular feature backend (GFW,Skytruth)
+    "damast>=0.3.7",
     "geopandas",
     "polars",
     # provider clients

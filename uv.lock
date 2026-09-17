@@ -781,7 +781,7 @@ requires-dist = [
     { name = "cdsapi", specifier = ">=0.7.7" },
     { name = "cfgrib", marker = "sys_platform != 'win32'", specifier = ">=0.9.15.1" },
     { name = "copernicusmarine", specifier = ">=2.4.1" },
-    { name = "damast", specifier = ">=0.3.6" },
+    { name = "damast", specifier = ">=0.3.7" },
     { name = "eccodeslib", marker = "sys_platform != 'win32'", specifier = ">=2.47.3.21" },
     { name = "ecmwf-opendata", specifier = ">=0.3.30" },
     { name = "geopandas" },
@@ -1081,7 +1081,7 @@ wheels = [
 
 [[package]]
 name = "damast"
-version = "0.3.6"
+version = "0.3.7"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "astropy" },
@@ -1104,10 +1104,11 @@ dependencies = [
     { name = "scikit-learn" },
     { name = "tables" },
     { name = "tqdm" },
+    { name = "typing-extensions", marker = "python_full_version < '3.13'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/f7/f1/582f536fd95c227cb0b17c6097d2a082e24a801b19f6db885711a3592449/damast-0.3.6.tar.gz", hash = "sha256:30a9e541c97b9d0477c328129c892bbfa207e735695737c2ee0e3767344eeac4", size = 142410, upload-time = "2026-09-14T11:56:56.548Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/f4/7a/2d9ae9b5e583eb51b599368fc5b972066422556082f350881669decc3775/damast-0.3.7.tar.gz", hash = "sha256:aa77f15adfebae333688c097f5bee025b121948dd0fd5f97ec108ebfb682e55d", size = 148582, upload-time = "2026-09-17T19:04:45.561Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/65/52/240f72d00c19a0c344e2821d738846e25a8dcd380e19738c993809e53609/damast-0.3.6-py3-none-any.whl", hash = "sha256:81ce95e0f561f867bbf6b93083bfab04a70625b11756c18ac8e777602c899127", size = 167441, upload-time = "2026-09-14T11:56:54.826Z" },
+    { url = "https://files.pythonhosted.org/packages/bc/b1/bb38d4e82e2a642d6c9cc9cf50c026d7a65a244ad87ff72702ea73e074d5/damast-0.3.7-py3-none-any.whl", hash = "sha256:11084be01a109a2d4b62622cb974120e7f30a9431c7a3433978c646f680e2c60", size = 174142, upload-time = "2026-09-17T19:04:44.101Z" },
 ]
 
 [[package]]
