@@ -49,14 +49,19 @@ jobs:
         run: uv run ruff check src/ tests/
 
   test:
-    name: Test
-    runs-on: ubuntu-latest
+    name: Test (${{ matrix.os }}, py${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: true
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ["3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v6
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
+          python-version: ${{ matrix.python-version }}
 
       - name: Install uv
         run: pip install uv --quiet
@@ -64,9 +69,9 @@ jobs:
       - uses: actions/cache@v6
         with:
           path: ${{ env.UV_CACHE_DIR }}
-          key: uv-test-${{ runner.os }}-${{ hashFiles('uv.lock') }}
+          key: uv-test-${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('uv.lock') }}
           restore-keys: |
-            uv-test-${{ runner.os }}-
+            uv-test-${{ runner.os }}-${{ matrix.python-version }}-
 
       - name: Install dependencies
         run: uv sync --group test --frozen --quiet
@@ -80,7 +85,7 @@ jobs:
         uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: coverage-xml
+          name: coverage-xml-${{ matrix.os }}-${{ matrix.python-version }}
           path: coverage.xml
           retention-days: 7
 

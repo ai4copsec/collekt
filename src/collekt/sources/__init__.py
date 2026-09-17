@@ -15,8 +15,10 @@ from collekt.sources import (  # noqa: F401
     eodyn,
     era5,
     gfs,
+    gfw,
     hozint,
     skytruth,
 )
 from collekt.sources.base import SourceResult, SourceStatus  # noqa: F401
 from collekt.sources.eodyn import eOdynArchiveWarning  # noqa: F401
+from collekt.sources.gfw import GFWTruncatedResultWarning  # noqa: F401

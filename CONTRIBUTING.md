@@ -19,17 +19,26 @@ The 'pre-commit' package is installed as part of the 'dev' dependencies and the 
 package sits in [.pre-commit-config.yaml](.pre-commit-config.yaml). For supported hooks
 visit [https://pre-commit.com/hooks.html](https://pre-commit.com/hooks.html).
 
-To enable the pre-commit hooks execute the following command once:
+Notebooks under `notebooks/` are stripped of their outputs, execution counts and
+kernel metadata by [nbstripout](https://github.com/kynan/nbstripout), so commits
+carry code only. Keep the `ruff-pre-commit` `rev` in step with the `ruff` pin in
+`pyproject.toml`, or the hook and `just lint` will reformat each other's output.
+
+Git hooks live in `.git/`, which is not tracked, so enable them once per clone
+(`just install` does this for you):
 
 ```
-    pre-commit install
+    just hooks
 ```
 
-Afterwards run the following commands to find issue an fix them:
+Afterwards run the following command to find and fix issues across the repo:
 
 ```
-   pre-commit run --all-files
+    just hooks-all
 ```
+
+A hook that rewrites a file (nbstripout, ruff-format) fails the commit on
+purpose: re-`git add` the rewritten file and commit again.
 
 In general please adhere to the existing code style and folder structuring.
 
@@ -76,7 +85,3 @@ Otherwise, please ensure that:
 
 
 Again, if you require help with any of the above. Please contact the developers.
-
-
-
-
