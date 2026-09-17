@@ -299,6 +299,21 @@ def test_gfw_geometry_uses_precise_geometry_when_given():
     assert geometry["coordinates"][0][0] == (0.0, 35.0)
 
 
+def test_gfw_geometry_rejects_a_multipolygon():
+    # Reachable via Region.from_geojson: unary_union of disjoint features yields a MultiPolygon.
+    # gfwapiclient's EventGeometry.type is an untyped str, so this must be caught here rather
+    # than reach the API and fail server-side.
+    region = Region(
+        west=-6,
+        east=20,
+        south=35,
+        north=45,
+        geometry="MULTIPOLYGON (((0 35, 1 35, 1 36, 0 36, 0 35)), ((10 35, 11 35, 11 36, 10 36, 10 35)))",
+    )
+    with pytest.raises(ValueError, match="Polygon"):
+        gfw._geometry(region)
+
+
 def test_gfw_output_path_differs_for_same_bbox_different_geometry(tmp_path):
     # Two distinct polygons sharing a bounding box must not collide on the same output path -
     # bbox_hash alone can't tell them apart, and _geometry() queries the precise polygon.
@@ -721,6 +736,24 @@ def test_gfw_write_parquet_handles_a_rare_event_type_beyond_the_inference_window
     assert table.height == 151
     assert table.schema["loitering_json"] == pl.String
     assert table.filter(pl.col("loitering_json").is_not_null()).height == 1
+
+
+def test_gfw_diagnose_ok_when_token_present(tmp_path, monkeypatch):
+    monkeypatch.setenv(gfw.GFW_TOKEN_ENV, "secret")
+    checks = gfw.diagnose(_cfg(tmp_path, gfw=GFW), online=False)
+
+    assert len(checks) == 1
+    assert checks[0].status == "ok"
+    assert gfw.GFW_TOKEN_ENV in checks[0].message
+
+
+def test_gfw_diagnose_warns_when_token_missing(tmp_path, monkeypatch):
+    monkeypatch.delenv(gfw.GFW_TOKEN_ENV, raising=False)
+    checks = gfw.diagnose(_cfg(tmp_path, gfw=GFW), online=False)
+
+    assert len(checks) == 1
+    assert checks[0].status == "warn"
+    assert gfw.GFW_TOKEN_ENV in checks[0].message
 
 
 # --- Copernicus Data Space --------------------------------------------------

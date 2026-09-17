@@ -156,12 +156,25 @@ def _query_window(request: Request) -> tuple[str, str]:
 
 
 def _geometry(region: Region) -> dict[str, Any]:
-    """Return a GeoJSON Polygon for `region`: its precise geometry if given, else its bbox."""
+    """Return a GeoJSON Polygon for `region`: its precise geometry if given, else its bbox.
+
+    Raises:
+        ValueError: `region.geometry` is WKT for something other than a Polygon (e.g. a
+            MultiPolygon from a multi-feature AOI, unioned by `Region.from_geojson`).
+            `gfwapiclient`'s `EventGeometry.type` is an untyped `str`, so a MultiPolygon would
+            otherwise reach the API unchecked and fail there instead of here.
+    """
     if region.geometry:
         import shapely.wkt
         from shapely.geometry import mapping
 
-        return mapping(shapely.wkt.loads(region.geometry))
+        geometry = shapely.wkt.loads(region.geometry)
+        if geometry.geom_type != "Polygon":
+            raise ValueError(
+                f"gfw requires a Polygon region, got {geometry.geom_type}. Split the area of "
+                "interest into separate Polygon requests."
+            )
+        return mapping(geometry)
     return {
         "type": "Polygon",
         "coordinates": [
