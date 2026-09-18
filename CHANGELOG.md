@@ -7,6 +7,37 @@ under `[main]`; `just bump` copies them under the new version.
 
 ### Added
 
+- a `local` source adapter and `Local` `DatasetSelection`: relies on damast
+  to interface an existing tabular-data archive (file(s) *.csv, *.parquet).
+  Data can be queried through the normal `Request(region, time)` -> `fetch()` -> manifest
+  pipeline, like any remote source.
+  This is the tabular generalization of eOdyn's `mode: archive`.  Configured
+  per source with `archive_root`, `layout` (a `damast`-style `--save-as`
+  partitioning spec - `damast.core.SaveAs.expected_paths` resolves it back to
+  candidate files for a request's time range, so the naming scheme is shared with
+  `damast` rather than re-derived), and `region_columns` (the lat/lon columns
+  used to row-filter each matched file, since damast does not offer a file
+  partitioning strategy for a spatial dimension).
+  It must, however, carry a time dimension (`time:`/`time+column:`) - the column
+  it partitions on is also what scopes each request day, which a `column:`-only
+  or plain-path layout has no way to provide. Requires a `damast` release
+  carrying `SaveAs.expected_paths`. There is no bundled catalog entry - the
+  archive location is inherently deployment-specific, so a `local` source is
+  always reached via `conf_dir`, same as any other downstream-only dataset.
+  An unpartitioned archive - no per-day filenames at all - is supported as an
+  alternative to `layout`: `file_pattern` (a glob, resolved once per fetch) and
+  `time_column` select a day's rows by filtering the column directly, the same
+  way `region_columns` already does for region; `layout` and `file_pattern` are
+  mutually exclusive.
+  Rows are always filtered by both time and region, so `layout` only prunes which
+  files are opened: a partitioning coarser than the request (monthly, say) still
+  yields one day's rows per day rather than repeating the whole bucket. A layout
+  whose files carry a compression suffix (`<name>.zst.parquet`) is matched too,
+  and a `region_columns`/`time_column` entry the archive does not have is raised
+  as a configuration error instead of skipping every day as if it held no data.
+  Only Parquet archives are read lazily; damast's NetCDF, CSV and HDF readers
+  load each file in full.
+
 - `gfw` source adapter and catalog entry: Global Fishing Watch Events API
   (fishing, port visits, encounters, loitering, AIS gaps), filtered by the
   request's region (as a GeoJSON geometry, not a GFW named region id) and time
@@ -20,6 +51,7 @@ under `[main]`; `just bump` copies them under the new version.
   optional `max_events` caps the total across pages, raising
   `GFWTruncatedResultWarning` rather than truncating silently. Public `GFW`
   `DatasetConfig` dataclass.
+
 - `gfs` source adapter and `gfs_analysis` catalog entry: NOAA GFS analysis wind
   from the NOMADS GRIB filter, with server-side region subsetting, one NetCDF per
   day holding that day's available analysis cycles, and heights selected as

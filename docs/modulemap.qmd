@@ -45,6 +45,7 @@ src/collekt/
     hozint.py              # threat-intel reports -> Parquet        (credentials)
     gfw.py                 # GFW events -> Parquet                  (credentials)
     eodyn.py               # eOdyn ocean-data (archive/api)         (credentials)
+    local.py               # local damast-managed tabular archive   (no catalog entry)
     skytruth.spec.yaml     # Skytruth column metadata (damast spec)
     gfw.spec.yaml          # GFW events column metadata (damast spec)
 

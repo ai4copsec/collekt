@@ -21,11 +21,14 @@ source's `kind`.
 | `hozint` | Threat-intelligence reports (features) | credentials | Parquet |
 | `gfw` | Fishing / encounter / port-visit / loitering / AIS-gap events (features) | credentials | Parquet |
 | `eodyn` | eOdyn surface currents / drifters | open (preview archive) | NetCDF |
+| `local` | Row-filtered subset of a local `damast`-managed tabular archive (features) | none — local filesystem | Parquet |
 
 Open sources need no secrets; credential-gated sources resolve their secrets from
 the environment or provider tools — see [Credentials](credentials.qmd). The eOdyn
 adapter serves a historical preview archive (`mode: archive`) until the
-production API ships (`mode: api`).
+production API ships (`mode: api`). The `local` adapter reads an archive that
+already exists on disk rather than fetching from a remote provider — see
+[Local data collections](#local-data-collections).
 
 ## Bundled catalog
 
@@ -224,6 +227,121 @@ collekt fetch --bbox -6 20 35 45 --start 2023-06-15 \
 selected key must exist in the merged catalog, so a brick's presets can reference
 both bundled and its own datasets. Adding a new *provider* (a new adapter `kind`)
 is a larger extension and is not configured this way.
+
+## Local data collections
+
+The `local` adapter serves a tabular archive that already exists on disk as a
+collekt source, without fetching anything remotely. Each requested day's rows
+are filtered to the request's region and written out as Parquet; a day with no
+matching file, or no in-region rows, is skipped rather than treated as an
+error. Two ways to locate a day's rows are supported, depending on whether the
+archive is already day-partitioned.
+
+Because `archive_root` is a machine-local path, `local` sources are typically
+declared in a downstream `conf_dir` rather than the bundled catalog (see
+[Extending the catalog downstream](#extending-the-catalog-downstream)).
+
+### Day-partitioned archives (`layout`)
+
+If the archive is already split into one file (or file set) per day — e.g.
+built with `damast convert --save-as` or
+`AnnotatedDataFrame.export_partitioned` — point `layout` at its partitioning
+spec; a day's file(s) are then resolved from the filename alone, with nothing
+read until a match is found:
+
+```yaml
+# my_brick/conf/source/ais.yaml
+sources:
+  ais_archive:
+    kind: local
+    path: "local/ais"
+    dataset_id: "ais-daily-archive"
+    archive_root: "/data/ais/daily"
+    layout: "time:timestamp+daily:%Y-%m-%d"
+    region_columns: [lat, lon]
+    temporal_sampling: 24h
+```
+
+- `path` — like any source, where *collekt writes this source's output*,
+  relative to the collection's output directory (`request_dir / path`). It has
+  nothing to do with the archive being read.
+- `archive_root` — root of the pre-existing on-disk archive to *read from*.
+  Unrelated to `path`: `path` is collekt's own output layout, `archive_root` is
+  the source's input.
+- `layout` — the archive's partitioning spec, as produced by
+  `damast.core.SaveAs` / `AnnotatedDataFrame.export_partitioned` (a `time:` or
+  `time+column:` spec; `local` reads the time column out of it to scope each
+  request day).
+- `region_columns` — `[lat_column, lon_column]` used to filter rows to the
+  request's bounding box.
+
+Rows are filtered by time as well as region in both modes, so `layout` only
+decides which files are opened — a partitioning coarser than the request (one
+file per month, say) still yields just that day's rows for each day. If the
+archive's files carry a compression suffix (`AIS_2026-01-01.zst.parquet`),
+they are matched despite `expected_paths` naming only `AIS_2026-01-01.parquet`.
+A `region_columns` or `time_column` entry the archive doesn't actually have
+raises rather than skipping every day, which would otherwise be
+indistinguishable from an archive holding no data.
+
+### Unpartitioned archives (`file_pattern` + `time_column`)
+
+If the archive is a flat set of files with no time-encoded naming, use
+`file_pattern` (a glob, resolved once per fetch rather than once per day) and
+`time_column` instead of `layout`; a day's rows are then selected by filtering
+`time_column`, the same way `region_columns` filters by region:
+
+```yaml
+sources:
+  ais_flat:
+    kind: local
+    path: "local/ais"
+    dataset_id: "ais-flat-archive"
+    archive_root: "/data/ais/flat"
+    file_pattern: "*.parquet"
+    time_column: timestamp
+    region_columns: [lat, lon]
+    temporal_sampling: 24h
+```
+
+`layout` and `file_pattern` are mutually exclusive; exactly one is required.
+Every matching file is scanned for every request day, so this mode leans on
+Parquet row-group statistics on `time_column` to skip irrelevant data — an
+unsorted archive, or one made of very few, very large files, is scanned in
+full for each day. Prefer `layout` when the archive can be (re-)partitioned
+(e.g. `damast convert --save-as "time:timestamp+daily:%Y-%m-%d"`); reach for
+`file_pattern` when it can't.
+
+That pushdown is Parquet-only: damast reads Parquet through
+`polars.scan_parquet`, but its NetCDF, CSV and HDF readers load each file
+in full, and `file_pattern` re-reads every matched file once per request day.
+For a non-Parquet archive of any size — especially NetCDF holding a dense,
+padded grid rather than a row per observation — convert it once
+(`damast convert --save-as "time:<time_column>+daily:%Y-%m-%d"`) and point
+`layout` at the result.
+
+Select either the same way:
+
+```python
+config = collekt.DatasetConfig(
+    collekt.Local("ais_archive", variables=["mmsi", "timestamp", "lat", "lon"]),
+)
+```
+
+or as a preset:
+
+```yaml
+datasets:
+  - provider: local
+    key: ais_archive
+    variables: [mmsi, timestamp, lat, lon]
+```
+
+```bash
+collekt fetch --bbox -6 20 35 45 --start 2026-01-01 \
+  --conf-dir my_brick/conf --dataset-config presets/ais.yaml \
+  --output-dir data/collections
+```
 
 ## Dependencies
 

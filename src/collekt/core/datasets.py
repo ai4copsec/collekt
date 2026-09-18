@@ -126,6 +126,21 @@ class eOdyn(DatasetSelection):
 
 
 @dataclass(frozen=True, init=False)
+class Local(DatasetSelection):
+    """Local, tabular-archive dataset selection.
+
+    The archive's location (``archive_root``, ``region_columns``) and how a day's rows are
+    located within it - either ``layout`` (already day-partitioned) or ``file_pattern`` +
+    ``time_column`` (unpartitioned, filtered by column) - are catalog-level facts, declared
+    once for the ``local`` source kind via `conf_dir` (see the "Local data collections"
+    section of the docs) - not part of this selection. This picks which catalog entry and
+    which variables (columns) to read for a given request, like any other source.
+    """
+
+    provider: ClassVar[str] = "local"
+
+
+@dataclass(frozen=True, init=False)
 class SkyTruth(DatasetSelection):
     """SkyTruth Cerulean slick selection."""
 
@@ -254,10 +269,11 @@ class GFW(DatasetSelection):
         return data
 
 
-DatasetLike = CMEMS | ECMWFOpenData | ERA5 | GFS | eOdyn | SkyTruth | CopernicusDataSpace | Hozint | GFW
+DatasetLike = CMEMS | ECMWFOpenData | ERA5 | GFS | GFW | eOdyn | Local | SkyTruth | CopernicusDataSpace | Hozint
 
 _PROVIDERS: dict[str, type[DatasetLike]] = {
-    cls.provider: cls for cls in (CMEMS, ECMWFOpenData, ERA5, GFS, eOdyn, SkyTruth, CopernicusDataSpace, Hozint, GFW)
+    cls.provider: cls
+    for cls in (CMEMS, ECMWFOpenData, ERA5, GFS, eOdyn, Local, SkyTruth, CopernicusDataSpace, Hozint, GFW)
 }
 
 
