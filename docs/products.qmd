@@ -270,10 +270,19 @@ sources:
   the source's input.
 - `layout` — the archive's partitioning spec, as produced by
   `damast.core.SaveAs` / `AnnotatedDataFrame.export_partitioned` (a `time:` or
-  `time+column:` spec; `local` needs a time dimension to split rows into one
-  result per request day).
+  `time+column:` spec; `local` reads the time column out of it to scope each
+  request day).
 - `region_columns` — `[lat_column, lon_column]` used to filter rows to the
   request's bounding box.
+
+Rows are filtered by time as well as region in both modes, so `layout` only
+decides which files are opened — a partitioning coarser than the request (one
+file per month, say) still yields just that day's rows for each day. If the
+archive's files carry a compression suffix (`AIS_2026-01-01.zst.parquet`),
+they are matched despite `expected_paths` naming only `AIS_2026-01-01.parquet`.
+A `region_columns` or `time_column` entry the archive doesn't actually have
+raises rather than skipping every day, which would otherwise be
+indistinguishable from an archive holding no data.
 
 ### Unpartitioned archives (`file_pattern` + `time_column`)
 
@@ -302,6 +311,14 @@ unsorted archive, or one made of very few, very large files, is scanned in
 full for each day. Prefer `layout` when the archive can be (re-)partitioned
 (e.g. `damast convert --save-as "time:timestamp+daily:%Y-%m-%d"`); reach for
 `file_pattern` when it can't.
+
+That pushdown is Parquet-only: damast reads Parquet through
+`polars.scan_parquet`, but its NetCDF, CSV and HDF readers load each file
+in full, and `file_pattern` re-reads every matched file once per request day.
+For a non-Parquet archive of any size — especially NetCDF holding a dense,
+padded grid rather than a row per observation — convert it once
+(`damast convert --save-as "time:<time_column>+daily:%Y-%m-%d"`) and point
+`layout` at the result.
 
 Select either the same way:
 
