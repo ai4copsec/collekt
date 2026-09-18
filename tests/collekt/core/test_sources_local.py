@@ -315,3 +315,169 @@ def test_local_time_plus_column_layout_globs_within_the_day(tmp_path):
     assert result.summary.downloaded == 1
     loaded = damast.core.AnnotatedDataFrame.from_files([str(result.files[0])], metadata_required=False)
     assert loaded.dataframe.collected().height == 2
+
+
+def _write_monthly_archive(archive_root):
+    """Write an archive partitioned *coarser* than a day - one file for the whole month."""
+    import datetime as dt
+
+    import polars
+
+    df = polars.DataFrame(
+        {
+            "mmsi": [1, 2, 3],
+            "timestamp": [dt.datetime(2026, 1, 1, 3), dt.datetime(2026, 1, 2, 3), dt.datetime(2026, 1, 20, 3)],
+            "lat": [40.0, 41.0, 42.0],
+            "lon": [4.0, 5.0, 6.0],
+        }
+    )
+    columns = [damast.core.DataSpecification(name=n) for n in ("mmsi", "timestamp", "lat", "lon")]
+    adf = damast.core.AnnotatedDataFrame(df, damast.core.MetaData(columns=columns))
+    adf.export_partitioned(archive_root, damast.core.ByTime("timestamp", every="1mo"))
+
+
+def test_local_layout_coarser_than_a_day_still_splits_rows_per_day(tmp_path):
+    # A monthly `time:` layout resolves every request day to the same month file. Row filtering
+    # is what scopes a day, so each day must still get only its own rows - not the whole bucket.
+    archive = tmp_path / "archive"
+    _write_monthly_archive(archive)
+    cfg = _config(tmp_path, archive, layout="time:timestamp+1mo:%Y-%m-%d")
+
+    result = Fetcher(_request(start="2026-01-01", end="2026-01-02"), config=cfg).download()
+
+    assert result.summary.downloaded == 2
+    import polars
+
+    per_day = {f.name: polars.read_parquet(f) for f in result.files}
+    assert [d.height for d in per_day.values()] == [1, 1]
+    # 2026-01-20 shares the month file but lies outside the request entirely.
+    for frame in per_day.values():
+        assert frame["timestamp"].to_list()[0].day in {1, 2}
+    assert len({f.name for f in result.files}) == 2
+
+
+def test_local_keeps_the_last_instant_of_a_day(tmp_path):
+    # The day filter is half-open [start, next_day), so the last instant of a day belongs to that
+    # day and the first instant of the next one does not, at any column resolution. Pins the
+    # boundary against a future switch back to an explicit end bound, which has to be spelled
+    # 23:59:59.999999999 to be right for a nanosecond column.
+    import datetime as dt
+
+    import polars
+
+    epoch = dt.datetime(1970, 1, 1)
+
+    def _ns(moment, extra=0):
+        return int((moment - epoch).total_seconds()) * 1_000_000_000 + extra
+
+    archive = tmp_path / "archive"
+    archive.mkdir()
+    df = polars.DataFrame(
+        {
+            "mmsi": [1, 2],
+            "timestamp": polars.Series(
+                [_ns(dt.datetime(2026, 1, 1, 23, 59, 59), 999_999_999), _ns(dt.datetime(2026, 1, 2))]
+            ).cast(polars.Datetime("ns")),
+            "lat": [40.0, 41.0],
+            "lon": [4.0, 5.0],
+        }
+    )
+    columns = [damast.core.DataSpecification(name=n) for n in ("mmsi", "timestamp", "lat", "lon")]
+    damast.core.AnnotatedDataFrame(df, damast.core.MetaData(columns=columns)).export(archive / "all.parquet")
+    cfg = _glob_config(tmp_path, archive)
+
+    result = Fetcher(_request(start="2026-01-01"), config=cfg).download()
+
+    assert result.summary.downloaded == 1
+    rows = polars.read_parquet(result.files[0])
+    assert rows.height == 1
+    assert rows["mmsi"].to_list() == [1]
+
+
+def test_local_selects_only_the_requested_variables(tmp_path):
+    # A `variables` subset narrows the frame, so the archive's metadata has to be narrowed with
+    # it - `AnnotatedDataFrame` rejects metadata describing a column the frame no longer has.
+    import polars
+
+    archive = tmp_path / "archive"
+    _write_archive(archive)
+    cfg = _config(tmp_path, archive, variables=["mmsi", "lat", "lon"])
+
+    result = Fetcher(_request(), config=cfg).download()
+
+    assert result.summary.downloaded == 1
+    rows = polars.read_parquet(result.files[0])
+    assert rows.columns == ["mmsi", "lat", "lon"]
+    assert rows.height == 2
+
+
+def test_local_glob_selects_only_the_requested_variables(tmp_path):
+    import polars
+
+    archive = tmp_path / "archive"
+    _write_flat_archive(archive)
+    cfg = _glob_config(tmp_path, archive, variables=["mmsi", "lat", "lon"])
+
+    result = Fetcher(_request(), config=cfg).download()
+
+    assert result.summary.downloaded == 1
+    assert polars.read_parquet(result.files[0]).columns == ["mmsi", "lat", "lon"]
+
+
+def test_local_layout_matches_compression_suffixed_files(tmp_path):
+    # `SaveAs.expected_paths` appends damast's own extension, so an archive written as
+    # `<name>.zst.parquet` has to be matched despite the extra suffix.
+    import datetime as dt
+
+    import polars
+
+    archive = tmp_path / "archive"
+    archive.mkdir()
+    df = polars.DataFrame(
+        {
+            "mmsi": [1],
+            "timestamp": [dt.datetime(2026, 1, 1, 3)],
+            "lat": [40.0],
+            "lon": [4.0],
+        }
+    )
+    columns = [damast.core.DataSpecification(name=n) for n in ("mmsi", "timestamp", "lat", "lon")]
+    adf = damast.core.AnnotatedDataFrame(df, damast.core.MetaData(columns=columns))
+    adf.export(archive / "2026-01-01.zst.parquet")
+    cfg = _config(tmp_path, archive)
+
+    result = Fetcher(_request(start="2026-01-01"), config=cfg).download()
+
+    assert result.summary.downloaded == 1
+    assert polars.read_parquet(result.files[0]).height == 1
+
+
+def test_local_layout_ignores_unrelated_files_with_a_similar_name(tmp_path):
+    # The compression fallback allows one extra dot-separated segment - not an arbitrary suffix.
+    import datetime as dt
+
+    import polars
+
+    archive = tmp_path / "archive"
+    archive.mkdir()
+    df = polars.DataFrame({"mmsi": [1], "timestamp": [dt.datetime(2026, 1, 1, 3)], "lat": [40.0], "lon": [4.0]})
+    columns = [damast.core.DataSpecification(name=n) for n in ("mmsi", "timestamp", "lat", "lon")]
+    adf = damast.core.AnnotatedDataFrame(df, damast.core.MetaData(columns=columns))
+    adf.export(archive / "2026-01-01_v2.parquet")
+    cfg = _config(tmp_path, archive)
+
+    result = Fetcher(_request(start="2026-01-01"), config=cfg).download()
+
+    assert result.summary.skipped == 1
+    assert "no archive file matches" in result.results[0].message
+
+
+def test_local_raises_when_a_configured_column_is_missing(tmp_path):
+    # A column the archive does not have is a misconfiguration affecting every day, so it is
+    # raised rather than reported as a per-day skip indistinguishable from "no data here".
+    archive = tmp_path / "archive"
+    _write_archive(archive)
+    cfg = _config(tmp_path, archive, region_columns=["latitude", "lon"])
+
+    with pytest.raises(ValueError, match="latitude not found in the archive"):
+        Fetcher(_request(), config=cfg).download()
