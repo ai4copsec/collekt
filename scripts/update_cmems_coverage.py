@@ -61,7 +61,9 @@ def _coverage_for_dataset(describe, dataset_id: str) -> Coverage | None:
 
 
 def _coverage_block(source_name: str, coverage: Coverage) -> list[str]:
-    kind = "archive" if source_name.endswith("_my") else "rolling"
+    # ``_my`` marks a reanalysis/multi-year source; it is not always the last
+    # segment (e.g. ``cmems_med_currents_my_hourly``).
+    kind = "archive" if "my" in source_name.split("_") else "rolling"
     end = f'"{coverage.end.isoformat()}"' if kind == "archive" and coverage.end else "null"
     return [
         "    coverage:\n",

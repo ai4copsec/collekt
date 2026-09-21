@@ -41,6 +41,15 @@ def test_default_config_loads_the_bundled_catalog():
     assert cfg.sources["cmems_med_currents_nrt_15min"].temporal_sampling == "15min"
     assert cfg.sources["cmems_med_currents_nrt_2d_hourly"].has_depth is False
     assert cfg.sources["cmems_med_currents_nrt_3d_hourly"].has_depth is True
+    # The hourly multi-year Med currents dataset is surface-only and subdaily,
+    # unlike its daily sibling; both otherwise offer the same variables.
+    hourly_my = cfg.sources["cmems_med_currents_my_hourly"]
+    assert hourly_my.dataset_id == "cmems_mod_med_phy-cur_my_4.2km_PT1H-m"
+    assert hourly_my.temporal_sampling == "1h"
+    assert hourly_my.raw["time_selection"] == "full_day"
+    assert hourly_my.has_depth is False
+    assert hourly_my.available_variables == cfg.sources["cmems_med_currents_my"].available_variables
+    assert hourly_my.path == cfg.sources["cmems_med_currents_my"].path
     assert cfg.sources["cmems_ibi_currents"].available_variables == (
         "bottomT",
         "mlotst",
@@ -62,6 +71,21 @@ def test_default_config_loads_the_bundled_catalog():
     assert "skytruth" in cfg.sources
     assert cfg.cache.reuse_existing is True
     assert cfg.output.manifest_name == "manifest.json"
+
+
+def test_multi_year_cmems_sources_declare_a_closed_archive_range():
+    # Reanalysis sources carry `_my` as a name segment, not necessarily as a
+    # suffix, and their coverage must stay a closed archive range: an open end
+    # would let planning accept days the archive does not reach.
+    cfg = get_config()
+    multi_year = [
+        source for source in cfg.sources.values() if source.kind == "cmems" and "my" in source.name.split("_")
+    ]
+    assert multi_year
+    for source in multi_year:
+        temporal = source.raw["coverage"]["temporal"]
+        assert temporal["kind"] == "archive", source.name
+        assert temporal["end"], source.name
 
 
 def test_dataset_config_resolves_selected_catalog_entries(tmp_path):

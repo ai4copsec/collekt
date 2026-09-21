@@ -57,6 +57,11 @@ under `[main]`; `just bump` copies them under the new version.
   day holding that day's available analysis cycles, and heights selected as
   `{height}u`/`{height}v` mnemonics. Cycles the provider has not published yet are
   skipped rather than failing the day.
+- `cmems_med_currents_my_hourly` catalog entry
+  (`cmems_mod_med_phy-cur_my_4.2km_PT1H-m`): the hourly cadence of the
+  Mediterranean multi-year currents reanalysis, alongside the existing daily
+  `cmems_med_currents_my`. Like the other CMEMS subdaily currents datasets it is
+  surface-only, so it takes no `depth` where its daily sibling requires one.
 - Catalog entries for the European high-resolution DUACS sea-level products
   (`cmems_duacs_eur_nrt` / `cmems_duacs_eur_my`, 0.0625°) in a new `cmems_eur`
   source catalog, and for the CMEMS hourly L4 near-real-time global wind
@@ -132,6 +137,11 @@ under `[main]`; `just bump` copies them under the new version.
 
 ### Fixed
 
+- `scripts/update_cmems_coverage.py` classified a source as a multi-year archive
+  only when its name ended in `_my`, so refreshing a source such as
+  `cmems_med_currents_my_hourly` would have rewritten its coverage as
+  `kind: rolling` with an open `end`, letting offline planning accept days past
+  the end of the archive. `_my` is now matched as a name segment.
 - ECMWF Open Data always serves the full global grid (no server-side region
   subsetting). The adapter now crops downloaded GRIB2 files to the padded
   request region and writes them out as NetCDF, matching the region-scoped
