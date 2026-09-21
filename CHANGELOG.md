@@ -57,11 +57,29 @@ under `[main]`; `just bump` copies them under the new version.
   day holding that day's available analysis cycles, and heights selected as
   `{height}u`/`{height}v` mnemonics. Cycles the provider has not published yet are
   skipped rather than failing the day.
-- `cmems_med_currents_my_hourly` catalog entry
-  (`cmems_mod_med_phy-cur_my_4.2km_PT1H-m`): the hourly cadence of the
-  Mediterranean multi-year currents reanalysis, alongside the existing daily
-  `cmems_med_currents_my`. Like the other CMEMS subdaily currents datasets it is
-  surface-only, so it takes no `depth` where its daily sibling requires one.
+- Subdaily CMEMS currents entries, so every model-currents product in the
+  catalog now offers its native cadences and not only the daily mean. Each maps
+  to one provider dataset and one cadence, and shares its `path`, grid and
+  region with the daily sibling, so switching is a one-key change:
+  - `cmems_med_currents_my_hourly` (`cmems_mod_med_phy-cur_my_4.2km_PT1H-m`) —
+    hourly Mediterranean multi-year reanalysis, next to daily
+    `cmems_med_currents_my`.
+  - `cmems_ibi_currents_2d_hourly` / `cmems_ibi_currents_3d_hourly` — hourly IBI
+    analysis/forecast, surface and depth-resolved.
+  - `cmems_nws_currents_2d_hourly` / `cmems_nws_currents_3d_hourly` — hourly
+    North-West Shelf analysis/forecast, surface and depth-resolved.
+  - `cmems_glorys_nrt_2d_hourly` (hourly global surface fields),
+    `cmems_glorys_nrt_6h` (6-hourly depth-resolved currents), and
+    `cmems_glorys_nrt_total_currents` (hourly total surface currents, adding
+    tide and Stokes-drift components to the model's own `uo`/`vo`).
+
+  `has_depth` now consistently means a real depth *selection*: CMEMS ships its
+  `-2D` and `merged-uv` datasets with a single degenerate depth level, and those
+  declare `has_depth: false` rather than asking a caller to pick a range out of
+  one value.
+- `scripts/update_products_table.py`, which regenerates both CMEMS tables in
+  `docs/products.qmd` from the bundled catalog, so a 35-row derived table cannot
+  drift from the YAML it describes.
 - Catalog entries for the European high-resolution DUACS sea-level products
   (`cmems_duacs_eur_nrt` / `cmems_duacs_eur_my`, 0.0625°) in a new `cmems_eur`
   source catalog, and for the CMEMS hourly L4 near-real-time global wind
@@ -137,6 +155,14 @@ under `[main]`; `just bump` copies them under the new version.
 
 ### Fixed
 
+- Declared CMEMS coverage refreshed against the Copernicus Marine catalogue for
+  14 entries whose start or end had drifted (`cmems_glorys_my`,
+  `cmems_global_sst_my`, the global/Atlantic/Mediterranean ocean-colour sources,
+  the Mediterranean NRT currents, and the North-West Shelf currents, waves and
+  BGC sources). `collekt doctor --online` now reports no CMEMS coverage or
+  variable mismatches.
+- `docs/products.qmd` was missing the `cmems_eur` catalog from both its catalog
+  listing and its dataset snapshot.
 - `scripts/update_cmems_coverage.py` classified a source as a multi-year archive
   only when its name ended in `_my`, so refreshing a source such as
   `cmems_med_currents_my_hourly` would have rewritten its coverage as

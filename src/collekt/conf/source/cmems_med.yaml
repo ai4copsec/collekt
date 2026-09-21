@@ -13,7 +13,7 @@ sources:
       longitude: [-17.291666, 36.291668]
       latitude: [30.1875, 45.979168]
       temporal:
-        start: "2024-03-30"
+        start: "2024-08-27"
         end: null
         kind: rolling
     coordinates_selection_method: inside
@@ -31,7 +31,7 @@ sources:
       longitude: [-17.291666, 36.291668]
       latitude: [30.1875, 45.979168]
       temporal:
-        start: "2024-03-28"
+        start: "2024-08-23"
         end: null
         kind: rolling
     time_selection: full_day
@@ -50,7 +50,7 @@ sources:
       longitude: [-17.291666, 36.291668]
       latitude: [30.1875, 45.979168]
       temporal:
-        start: "2024-03-29"
+        start: "2024-08-25"
         end: null
         kind: rolling
     time_selection: full_day
@@ -140,7 +140,7 @@ sources:
       longitude: [-5.993576, 36.493576]
       latitude: [30.005064, 45.994938]
       temporal:
-        start: "2026-06-24"
+        start: "2026-09-13"
         end: null
         kind: rolling
     available_variables: [CHL, CRYPTO, DIATO, DINO, GREEN, HAPTO, MICRO, NANO, PICO, PROKAR, QI_CHL, SENSORMASK, WTM]
@@ -156,7 +156,7 @@ sources:
       longitude: [-5.541667, 36.291668]
       latitude: [30.1875, 45.979168]
       temporal:
-        start: "2024-02-26"
+        start: "2024-07-23"
         end: null
         kind: rolling
     coordinates_selection_method: inside

@@ -59,6 +59,16 @@ def test_default_config_loads_the_bundled_catalog():
         "vo",
         "zos",
     )
+    assert cfg.sources["cmems_ibi_currents_2d_hourly"].has_depth is False
+    assert cfg.sources["cmems_ibi_currents_3d_hourly"].has_depth is True
+    assert cfg.sources["cmems_nws_currents_2d_hourly"].available_variables == ("uo", "vo")
+    assert cfg.sources["cmems_nws_currents_3d_hourly"].has_depth is True
+    assert cfg.sources["cmems_glorys_nrt_6h"].temporal_sampling == "6h"
+    # The merged total-surface-current dataset adds tide and Stokes-drift
+    # components on top of the model's own `uo`/`vo`.
+    assert {"utotal", "vtotal", "utide", "vsdx"} <= set(
+        cfg.sources["cmems_glorys_nrt_total_currents"].available_variables
+    )
     assert cfg.sources["cmems_ibi_waves"].temporal_sampling == "1h"
     assert cfg.sources["cmems_ibi_waves"].raw["coverage"]["longitude"] == [-19.0, 5.000736]
     assert cfg.sources["cmems_atl_chl_obs_my"].doi == "10.48670/moi-00286"
@@ -86,6 +96,18 @@ def test_multi_year_cmems_sources_declare_a_closed_archive_range():
         temporal = source.raw["coverage"]["temporal"]
         assert temporal["kind"] == "archive", source.name
         assert temporal["end"], source.name
+
+
+def test_subdaily_cmems_sources_select_the_full_day():
+    # A subdaily dataset without `time_selection: full_day` is fetched at a
+    # single instant, silently dropping the rest of the day's timestamps.
+    cfg = get_config()
+    subdaily = [
+        source for source in cfg.sources.values() if source.kind == "cmems" and source.temporal_sampling != "24h"
+    ]
+    assert subdaily
+    for source in subdaily:
+        assert source.raw.get("time_selection") == "full_day", source.name
 
 
 def test_dataset_config_resolves_selected_catalog_entries(tmp_path):
