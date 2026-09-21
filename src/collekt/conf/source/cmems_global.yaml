@@ -6,6 +6,19 @@
 # Marine catalogue); choosing which to fetch — and, for `has_depth` sources, a
 # `depth: [min, max]` — is left to downstream. Refresh the harvested lists with
 # `collekt doctor --online`.
+#
+# `has_depth` marks a real depth *selection*, not merely the presence of a depth
+# coordinate. CMEMS ships its surface datasets (`-2D`, `merged-uv`) with a single
+# degenerate depth level, so those declare `has_depth: false` rather than asking
+# a caller to pick a range out of one value.
+#
+# Naming: the daily mean is the unsuffixed base entry (`cmems_glorys_nrt`), and
+# every subdaily variant of it carries both its dimensionality and its cadence
+# (`..._2d_hourly`, `..._3d_6h`) — dimensionality is what decides whether a
+# caller must pass a `depth`, so it belongs in the key. A dataset holding a
+# different quantity rather than another cadence of the same field is named for
+# the quantity instead (`cmems_glorys_nrt_total_currents`).
+# `cmems_med_currents_nrt_15min` predates this rule and keeps its released name.
 
 sources:
   cmems_glorys_nrt:
@@ -26,6 +39,61 @@ sources:
     url: "https://data.marine.copernicus.eu/product/GLOBAL_ANALYSISFORECAST_PHY_001_024/description"
     doi: "10.48670/moi-00016"
 
+  cmems_glorys_nrt_2d_hourly:
+    kind: cmems
+    path: "cmems/global/glorys"
+    dataset_id: "cmems_mod_glo_phy_anfc_0.083deg_PT1H-m"
+    temporal_sampling: 1h
+    coverage:
+      longitude: [-180, 179.916687]
+      latitude: [-80, 90]
+      temporal:
+        start: "2022-06-01"
+        end: null
+        kind: rolling
+    time_selection: full_day
+    coordinates_selection_method: inside
+    available_variables: [so, thetao, uo, vo, zos]
+    url: "https://data.marine.copernicus.eu/product/GLOBAL_ANALYSISFORECAST_PHY_001_024/description"
+    doi: "10.48670/moi-00016"
+
+  cmems_glorys_nrt_3d_6h:
+    kind: cmems
+    path: "cmems/global/glorys"
+    dataset_id: "cmems_mod_glo_phy-cur_anfc_0.083deg_PT6H-i"
+    temporal_sampling: 6h
+    coverage:
+      longitude: [-180, 179.916687]
+      latitude: [-80, 90]
+      temporal:
+        start: "2022-06-01"
+        end: null
+        kind: rolling
+    time_selection: full_day
+    coordinates_selection_method: inside
+    has_depth: true
+    available_variables: [uo, vo]
+    url: "https://data.marine.copernicus.eu/product/GLOBAL_ANALYSISFORECAST_PHY_001_024/description"
+    doi: "10.48670/moi-00016"
+
+  cmems_glorys_nrt_total_currents:
+    kind: cmems
+    path: "cmems/global/glorys"
+    dataset_id: "cmems_mod_glo_phy_anfc_merged-uv_PT1H-i"
+    temporal_sampling: 1h
+    coverage:
+      longitude: [-180, 179.916672]
+      latitude: [-80, 90]
+      temporal:
+        start: "2020-11-01"
+        end: null
+        kind: rolling
+    time_selection: full_day
+    coordinates_selection_method: inside
+    available_variables: [uo, utide, utotal, vo, vsdx, vsdy, vtide, vtotal]
+    url: "https://data.marine.copernicus.eu/product/GLOBAL_ANALYSISFORECAST_PHY_001_024/description"
+    doi: "10.48670/moi-00016"
+
   cmems_glorys_my:
     kind: cmems
     path: "cmems/global/glorys"
@@ -36,7 +104,7 @@ sources:
       latitude: [-80, 90]
       temporal:
         start: "1993-01-01"
-        end: "2026-05-26"
+        end: "2026-06-23"
         kind: archive
     coordinates_selection_method: inside
     has_depth: true
@@ -102,7 +170,7 @@ sources:
       latitude: [-89.974998, 89.974998]
       temporal:
         start: "1981-10-01"
-        end: "2025-12-18"
+        end: "2026-03-31"
         kind: archive
     available_variables: [analysed_sst, analysis_error, mask, sea_ice_fraction]
     url: "https://data.marine.copernicus.eu/product/SST_GLO_SST_L4_REP_OBSERVATIONS_010_011/description"
@@ -134,7 +202,7 @@ sources:
       longitude: [-179.979172, 179.979172]
       latitude: [-89.979172, 89.979164]
       temporal:
-        start: "2026-06-17"
+        start: "2026-09-05"
         end: null
         kind: rolling
     available_variables: [CHL, CHL_uncertainty, flags]
@@ -151,7 +219,7 @@ sources:
       latitude: [-89.979172, 89.979164]
       temporal:
         start: "1997-09-04"
-        end: "2026-06-25"
+        end: "2026-09-13"
         kind: archive
     available_variables: [CHL, CHL_uncertainty, DIATO, DIATO_uncertainty, DINO, DINO_uncertainty, GREEN, GREEN_uncertainty, HAPTO, HAPTO_uncertainty, MICRO, MICRO_uncertainty, NANO, NANO_uncertainty, PICO, PICO_uncertainty, PROCHLO, PROCHLO_uncertainty, PROKAR, PROKAR_uncertainty, flags]
     url: "https://data.marine.copernicus.eu/product/OCEANCOLOUR_GLO_BGC_L3_MY_009_103/description"

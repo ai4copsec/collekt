@@ -23,6 +23,43 @@ sources:
     url: "https://data.marine.copernicus.eu/product/IBI_ANALYSISFORECAST_PHY_005_001/description"
     doi: "10.48670/moi-00027"
 
+  cmems_ibi_currents_2d_hourly:
+    kind: cmems
+    path: "cmems/atlantic/ibi/currents"
+    dataset_id: "cmems_mod_ibi_phy_anfc_0.027deg-2D_PT1H-m"
+    temporal_sampling: 1h
+    coverage:
+      longitude: [-19.082841, 5.084567]
+      latitude: [26.165357, 56.082942]
+      temporal:
+        start: "2022-11-23"
+        end: null
+        kind: rolling
+    time_selection: full_day
+    coordinates_selection_method: inside
+    available_variables: [mlotst, thetao, ubar, uo, vbar, vo, zos]
+    url: "https://data.marine.copernicus.eu/product/IBI_ANALYSISFORECAST_PHY_005_001/description"
+    doi: "10.48670/moi-00027"
+
+  cmems_ibi_currents_3d_hourly:
+    kind: cmems
+    path: "cmems/atlantic/ibi/currents"
+    dataset_id: "cmems_mod_ibi_phy_anfc_0.027deg-3D_PT1H-m"
+    temporal_sampling: 1h
+    coverage:
+      longitude: [-19.082842, 5.084567]
+      latitude: [26.165358, 56.082943]
+      temporal:
+        start: "2024-11-10"
+        end: null
+        kind: rolling
+    time_selection: full_day
+    coordinates_selection_method: inside
+    has_depth: true
+    available_variables: [so, thetao, uo, vo]
+    url: "https://data.marine.copernicus.eu/product/IBI_ANALYSISFORECAST_PHY_005_001/description"
+    doi: "10.48670/moi-00027"
+
   cmems_ibi_waves:
     kind: cmems
     path: "cmems/atlantic/ibi/waves"
@@ -50,7 +87,7 @@ sources:
       longitude: [-45.994793, 12.994794]
       latitude: [20.005207, 65.994789]
       temporal:
-        start: "2026-06-16"
+        start: "2026-09-04"
         end: null
         kind: rolling
     coordinates_selection_method: outside
@@ -68,7 +105,7 @@ sources:
       latitude: [20.005207, 65.994789]
       temporal:
         start: "1997-09-04"
-        end: "2026-06-25"
+        end: "2026-09-13"
         kind: archive
     coordinates_selection_method: outside
     available_variables: [CHL, CHL_uncertainty, DIATO, DIATO_uncertainty, DINO, DINO_uncertainty, GREEN, GREEN_uncertainty, HAPTO, HAPTO_uncertainty, MICRO, MICRO_uncertainty, NANO, NANO_uncertainty, PICO, PICO_uncertainty, PROCHLO, PROCHLO_uncertainty, PROKAR, PROKAR_uncertainty, flags]

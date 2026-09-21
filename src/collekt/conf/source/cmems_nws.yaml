@@ -10,9 +10,46 @@ sources:
       longitude: [-16, 13]
       latitude: [46, 62.74324]
       temporal:
-        start: "2024-03-01"
+        start: "2024-08-02"
         end: null
         kind: rolling
+    coordinates_selection_method: inside
+    has_depth: true
+    available_variables: [ubar, uo, vbar, vo, wo]
+    url: "https://data.marine.copernicus.eu/product/NWSHELF_ANALYSISFORECAST_PHY_004_013/description"
+    doi: "10.48670/moi-00054"
+
+  cmems_nws_currents_2d_hourly:
+    kind: cmems
+    path: "cmems/nws/currents"
+    dataset_id: "cmems_mod_nws_phy-cur_anfc_1.5km-2D_PT1H-i"
+    temporal_sampling: 1h
+    coverage:
+      longitude: [-16, 13]
+      latitude: [46, 62.74324]
+      temporal:
+        start: "2024-08-04"
+        end: null
+        kind: rolling
+    time_selection: full_day
+    coordinates_selection_method: inside
+    available_variables: [uo, vo]
+    url: "https://data.marine.copernicus.eu/product/NWSHELF_ANALYSISFORECAST_PHY_004_013/description"
+    doi: "10.48670/moi-00054"
+
+  cmems_nws_currents_3d_hourly:
+    kind: cmems
+    path: "cmems/nws/currents"
+    dataset_id: "cmems_mod_nws_phy-cur_anfc_1.5km-3D_PT1H-i"
+    temporal_sampling: 1h
+    coverage:
+      longitude: [-16, 13]
+      latitude: [46, 62.74324]
+      temporal:
+        start: "2024-09-17"
+        end: null
+        kind: rolling
+    time_selection: full_day
     coordinates_selection_method: inside
     has_depth: true
     available_variables: [ubar, uo, vbar, vo, wo]
@@ -28,7 +65,7 @@ sources:
       longitude: [-16, 13]
       latitude: [46, 62.74324]
       temporal:
-        start: "2024-03-03"
+        start: "2024-08-06"
         end: null
         kind: rolling
     time_selection: full_day
@@ -63,7 +100,7 @@ sources:
       longitude: [-19.888889, 12.99967]
       latitude: [40.066669, 65.001251]
       temporal:
-        start: "2024-02-28"
+        start: "2024-07-29"
         end: null
         kind: rolling
     coordinates_selection_method: inside
