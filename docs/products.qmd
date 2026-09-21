@@ -37,9 +37,9 @@ uses, grouped into catalogs under `collekt/conf/source/`:
 
 | Catalog | Sources |
 |---|---|
-| `cmems_global` | `cmems_glorys_nrt`, `cmems_glorys_nrt_2d_hourly`, `cmems_glorys_nrt_6h`, `cmems_glorys_nrt_total_currents`, `cmems_glorys_my`, `cmems_duacs_nrt`, `cmems_duacs_my`, `cmems_global_sst_nrt`, `cmems_global_sst_my`, `cmems_global_waves`, `cmems_global_chl_obs_nrt`, `cmems_global_chl_obs_my`, `cmems_global_bgc_model`, `cmems_global_wind_nrt` |
+| `cmems_global` | `cmems_glorys_nrt`, `cmems_glorys_nrt_2d_hourly`, `cmems_glorys_nrt_3d_6h`, `cmems_glorys_nrt_total_currents`, `cmems_glorys_my`, `cmems_duacs_nrt`, `cmems_duacs_my`, `cmems_global_sst_nrt`, `cmems_global_sst_my`, `cmems_global_waves`, `cmems_global_chl_obs_nrt`, `cmems_global_chl_obs_my`, `cmems_global_bgc_model`, `cmems_global_wind_nrt` |
 | `cmems_eur` | `cmems_duacs_eur_nrt`, `cmems_duacs_eur_my` |
-| `cmems_med` | `cmems_med_currents_nrt`, `cmems_med_currents_nrt_15min`, `cmems_med_currents_nrt_2d_hourly`, `cmems_med_currents_nrt_3d_hourly`, `cmems_med_currents_my`, `cmems_med_currents_my_hourly`, `cmems_med_waves`, `cmems_med_chl_obs`, `cmems_med_bgc_model` |
+| `cmems_med` | `cmems_med_currents_nrt`, `cmems_med_currents_nrt_15min`, `cmems_med_currents_nrt_2d_hourly`, `cmems_med_currents_nrt_3d_hourly`, `cmems_med_currents_my`, `cmems_med_currents_my_2d_hourly`, `cmems_med_waves`, `cmems_med_chl_obs`, `cmems_med_bgc_model` |
 | `cmems_ibi` | `cmems_ibi_currents`, `cmems_ibi_currents_2d_hourly`, `cmems_ibi_currents_3d_hourly`, `cmems_ibi_waves`, `cmems_atl_chl_obs_nrt`, `cmems_atl_chl_obs_my`, `cmems_ibi_bgc_model` |
 | `cmems_nws` | `cmems_nws_currents`, `cmems_nws_currents_2d_hourly`, `cmems_nws_currents_3d_hourly`, `cmems_nws_waves`, `cmems_nws_chl_obs`, `cmems_nws_bgc_model` |
 | `ecmwf` | `ecmwf_open_data_forecast`, `era5_reanalysis` |
@@ -80,7 +80,7 @@ are generated — run `scripts/update_products_table.py` rather than editing the
 |---|---|---|---|---|---|---|---|---|
 | `cmems_glorys_nrt` | `cmems_mod_glo_phy-cur_anfc_0.083deg_P1D-m` | 0.083 deg | `24h` | -180.0/179.9 -80.0/90.0 | from `2022-06-01` (rolling/open on 2026-09-21) | `uo`, `vo` | yes | [10.48670/moi-00016](https://doi.org/10.48670/moi-00016)<br>[product](https://data.marine.copernicus.eu/product/GLOBAL_ANALYSISFORECAST_PHY_001_024/description) |
 | `cmems_glorys_nrt_2d_hourly` | `cmems_mod_glo_phy_anfc_0.083deg_PT1H-m` | 0.083 deg | `1h` | -180.0/179.9 -80.0/90.0 | from `2022-06-01` (rolling/open on 2026-09-21) | `so`, `thetao`, `uo`, `vo`, `zos` | no | [10.48670/moi-00016](https://doi.org/10.48670/moi-00016)<br>[product](https://data.marine.copernicus.eu/product/GLOBAL_ANALYSISFORECAST_PHY_001_024/description) |
-| `cmems_glorys_nrt_6h` | `cmems_mod_glo_phy-cur_anfc_0.083deg_PT6H-i` | 0.083 deg | `6h` | -180.0/179.9 -80.0/90.0 | from `2022-06-01` (rolling/open on 2026-09-21) | `uo`, `vo` | yes | [10.48670/moi-00016](https://doi.org/10.48670/moi-00016)<br>[product](https://data.marine.copernicus.eu/product/GLOBAL_ANALYSISFORECAST_PHY_001_024/description) |
+| `cmems_glorys_nrt_3d_6h` | `cmems_mod_glo_phy-cur_anfc_0.083deg_PT6H-i` | 0.083 deg | `6h` | -180.0/179.9 -80.0/90.0 | from `2022-06-01` (rolling/open on 2026-09-21) | `uo`, `vo` | yes | [10.48670/moi-00016](https://doi.org/10.48670/moi-00016)<br>[product](https://data.marine.copernicus.eu/product/GLOBAL_ANALYSISFORECAST_PHY_001_024/description) |
 | `cmems_glorys_nrt_total_currents` | `cmems_mod_glo_phy_anfc_merged-uv_PT1H-i` | not declared | `1h` | -180.0/179.9 -80.0/90.0 | from `2020-11-01` (rolling/open on 2026-09-21) | `uo`, `utide`, `utotal`, `vo`, `vsdx`, `vsdy`, `vtide`, `vtotal` | no | [10.48670/moi-00016](https://doi.org/10.48670/moi-00016)<br>[product](https://data.marine.copernicus.eu/product/GLOBAL_ANALYSISFORECAST_PHY_001_024/description) |
 | `cmems_glorys_my` | `cmems_mod_glo_phy_my_0.083deg_P1D-m` | 0.083 deg | `24h` | -180.0/179.9 -80.0/90.0 | `1993-01-01` to `2026-06-23` | `bottomT`, `mlotst`, `siconc`, `sithick`, `so`, `thetao`, `uo`, `usi`, `vo`, `vsi`, `zos` | yes | [10.48670/moi-00021](https://doi.org/10.48670/moi-00021)<br>[product](https://data.marine.copernicus.eu/product/GLOBAL_MULTIYEAR_PHY_001_030/description) |
 | `cmems_duacs_nrt` | `cmems_obs-sl_glo_phy-ssh_nrt_allsat-l4-duacs-0.125deg_P1D` | 0.125 deg | `24h` | -179.9/179.9 -89.9/89.9 | from `2024-07-01` (rolling/open on 2026-09-21) | `adt`, `err_sla`, `err_ugosa`, `err_vgosa`, `flag_ice`, `sla`, `ugos`, `ugosa`, `vgos`, `vgosa` | no | [10.48670/moi-00149](https://doi.org/10.48670/moi-00149)<br>[product](https://data.marine.copernicus.eu/product/SEALEVEL_GLO_PHY_L4_NRT_008_046/description) |
@@ -121,7 +121,7 @@ are generated — run `scripts/update_products_table.py` rather than editing the
 | `cmems_med_currents_nrt_2d_hourly` | `cmems_mod_med_phy-cur_anfc_4.2km-2D_PT1H-m` | 4.2 km | `1h` | -17.3/36.3 30.2/46.0 | from `2024-08-25` (rolling/open on 2026-09-21) | `uo`, `vo` | no | [10.48670/mds-00359](https://doi.org/10.48670/mds-00359)<br>[product](https://data.marine.copernicus.eu/product/MEDSEA_ANALYSISFORECAST_PHY_006_013/description) |
 | `cmems_med_currents_nrt_3d_hourly` | `cmems_mod_med_phy-cur_anfc_4.2km-3D_PT1H-m` | 4.2 km | `1h` | -17.3/36.3 30.2/46.0 | from `2025-10-06` (rolling/open on 2026-09-21) | `uo`, `vo` | yes | [10.48670/mds-00359](https://doi.org/10.48670/mds-00359)<br>[product](https://data.marine.copernicus.eu/product/MEDSEA_ANALYSISFORECAST_PHY_006_013/description) |
 | `cmems_med_currents_my` | `cmems_mod_med_phy-cur_my_4.2km_P1D-m` | 4.2 km | `24h` | -6.0/36.3 30.2/46.0 | `1987-01-01` to `2026-08-31` | `uo`, `vo` | yes | [10.48670/mds-00375](https://doi.org/10.48670/mds-00375)<br>[product](https://data.marine.copernicus.eu/product/MEDSEA_MULTIYEAR_PHY_006_004/description) |
-| `cmems_med_currents_my_hourly` | `cmems_mod_med_phy-cur_my_4.2km_PT1H-m` | 4.2 km | `1h` | -6.0/36.3 30.2/46.0 | `1987-01-01` to `2026-08-31` | `uo`, `vo` | no | [10.48670/mds-00375](https://doi.org/10.48670/mds-00375)<br>[product](https://data.marine.copernicus.eu/product/MEDSEA_MULTIYEAR_PHY_006_004/description) |
+| `cmems_med_currents_my_2d_hourly` | `cmems_mod_med_phy-cur_my_4.2km_PT1H-m` | 4.2 km | `1h` | -6.0/36.3 30.2/46.0 | `1987-01-01` to `2026-08-31` | `uo`, `vo` | no | [10.48670/mds-00375](https://doi.org/10.48670/mds-00375)<br>[product](https://data.marine.copernicus.eu/product/MEDSEA_MULTIYEAR_PHY_006_004/description) |
 | `cmems_med_waves` | `cmems_mod_med_wav_anfc_4.2km_PT1H-i` | 4.2 km | `1h` | -18.1/36.3 30.2/46.0 | from `2021-11-30` (rolling/open on 2026-09-21) | `VCMX`, `VHM0`, `VHM0_SW1`, `VHM0_SW2`, `VHM0_WW`, `VMDR`, `VMDR_SW1`, `VMDR_SW2`, `VMDR_WW`, `VMXL`, `VPED`, `VSDX`, `VSDY`, `VTM01_SW1`, `VTM01_SW2`, `VTM01_WW`, `VTM02`, `VTM10`, `VTPK` | no | [10.48670/mds-00373](https://doi.org/10.48670/mds-00373)<br>[product](https://data.marine.copernicus.eu/product/MEDSEA_ANALYSISFORECAST_WAV_006_017/description) |
 | `cmems_med_chl_obs` | `cmems_obs-oc_med_bgc-plankton_nrt_l3-multi-1km_P1D` | 1 km | `24h` | -6.0/36.5 30.0/46.0 | from `2026-09-13` (rolling/open on 2026-09-21) | `CHL`, `CRYPTO`, `DIATO`, `DINO`, `GREEN`, `HAPTO`, `MICRO`, `NANO`, `PICO`, `PROKAR`, `QI_CHL`, `SENSORMASK`, `WTM` | no | [10.48670/moi-00297](https://doi.org/10.48670/moi-00297)<br>[product](https://data.marine.copernicus.eu/product/OCEANCOLOUR_MED_BGC_L3_NRT_009_141/description) |
 | `cmems_med_bgc_model` | `cmems_mod_med_bgc-bio_anfc_4.2km_P1D-m` | 4.2 km | `24h` | -5.5/36.3 30.2/46.0 | from `2024-07-23` (rolling/open on 2026-09-21) | `nppv`, `o2` | yes | [10.48670/mds-00358](https://doi.org/10.48670/mds-00358)<br>[product](https://data.marine.copernicus.eu/product/MEDSEA_ANALYSISFORECAST_BGC_006_014/description) |
@@ -189,20 +189,27 @@ alongside the daily one:
 
 | Region | Daily | Subdaily |
 |---|---|---|
-| Global NRT | `cmems_glorys_nrt` | `cmems_glorys_nrt_2d_hourly`, `cmems_glorys_nrt_6h`, `cmems_glorys_nrt_total_currents` |
+| Global NRT | `cmems_glorys_nrt` | `cmems_glorys_nrt_2d_hourly`, `cmems_glorys_nrt_3d_6h`, `cmems_glorys_nrt_total_currents` |
 | Mediterranean NRT | `cmems_med_currents_nrt` | `cmems_med_currents_nrt_15min`, `cmems_med_currents_nrt_2d_hourly`, `cmems_med_currents_nrt_3d_hourly` |
-| Mediterranean reanalysis | `cmems_med_currents_my` | `cmems_med_currents_my_hourly` |
+| Mediterranean reanalysis | `cmems_med_currents_my` | `cmems_med_currents_my_2d_hourly` |
 | IBI | `cmems_ibi_currents` | `cmems_ibi_currents_2d_hourly`, `cmems_ibi_currents_3d_hourly` |
 | North-West Shelf | `cmems_nws_currents` | `cmems_nws_currents_2d_hourly`, `cmems_nws_currents_3d_hourly` |
 
-Switching between cadences of the same product is a one-key change: the sources
-share a `path`, resolve the same region on the same grid, and each output file is
-prefixed with its source name, so a daily and an hourly variant can also be
-collected side by side. Only the depth dimension differs — CMEMS ships its `-2D`
-and total-currents datasets as surface fields, so `cmems_med_currents_my` needs a
-`depth` while `cmems_med_currents_my_hourly` does not, and the assembled dataset
-gains or loses its `depth` axis accordingly. Where a product offers both, the
-`_2d_` and `_3d_` variants make that choice explicit.
+The daily mean is the unsuffixed base entry, and every subdaily variant of it
+carries both its dimensionality and its cadence (`_2d_hourly`, `_3d_6h`).
+Dimensionality is in the key because it decides whether a caller must pass a
+`depth`: CMEMS ships its `-2D` datasets as surface fields, so
+`cmems_med_currents_my` needs a `depth` while `cmems_med_currents_my_2d_hourly`
+does not. A dataset holding a different quantity rather than another cadence of
+the same field is named for the quantity instead
+(`cmems_glorys_nrt_total_currents`). `cmems_med_currents_nrt_15min` predates
+this rule and keeps its released name.
+
+Switching between cadences of the same product is then a one-key change: the
+sources share a `path`, resolve the same region on the same grid, and each
+output file is prefixed with its source name, so a daily and an hourly variant
+can also be collected side by side. Only the depth dimension differs, and the
+assembled dataset gains or loses its `depth` axis accordingly.
 
 Regional Atlantic products use the CMEMS regional names: IBI (`cmems_ibi`) and
 European North-West Shelf (`cmems_nws`) are separate catalogs. Basin-level

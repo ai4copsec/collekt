@@ -96,7 +96,7 @@ sources:
     url: "https://data.marine.copernicus.eu/product/MEDSEA_MULTIYEAR_PHY_006_004/description"
     doi: "10.48670/mds-00375"
 
-  cmems_med_currents_my_hourly:
+  cmems_med_currents_my_2d_hourly:
     kind: cmems
     path: "cmems/med/currents"
     dataset_id: "cmems_mod_med_phy-cur_my_4.2km_PT1H-m"

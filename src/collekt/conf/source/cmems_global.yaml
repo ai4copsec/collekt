@@ -11,6 +11,14 @@
 # coordinate. CMEMS ships its surface datasets (`-2D`, `merged-uv`) with a single
 # degenerate depth level, so those declare `has_depth: false` rather than asking
 # a caller to pick a range out of one value.
+#
+# Naming: the daily mean is the unsuffixed base entry (`cmems_glorys_nrt`), and
+# every subdaily variant of it carries both its dimensionality and its cadence
+# (`..._2d_hourly`, `..._3d_6h`) — dimensionality is what decides whether a
+# caller must pass a `depth`, so it belongs in the key. A dataset holding a
+# different quantity rather than another cadence of the same field is named for
+# the quantity instead (`cmems_glorys_nrt_total_currents`).
+# `cmems_med_currents_nrt_15min` predates this rule and keeps its released name.
 
 sources:
   cmems_glorys_nrt:
@@ -49,7 +57,7 @@ sources:
     url: "https://data.marine.copernicus.eu/product/GLOBAL_ANALYSISFORECAST_PHY_001_024/description"
     doi: "10.48670/moi-00016"
 
-  cmems_glorys_nrt_6h:
+  cmems_glorys_nrt_3d_6h:
     kind: cmems
     path: "cmems/global/glorys"
     dataset_id: "cmems_mod_glo_phy-cur_anfc_0.083deg_PT6H-i"

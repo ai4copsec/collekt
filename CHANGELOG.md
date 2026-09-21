@@ -61,7 +61,7 @@ under `[main]`; `just bump` copies them under the new version.
   catalog now offers its native cadences and not only the daily mean. Each maps
   to one provider dataset and one cadence, and shares its `path`, grid and
   region with the daily sibling, so switching is a one-key change:
-  - `cmems_med_currents_my_hourly` (`cmems_mod_med_phy-cur_my_4.2km_PT1H-m`) —
+  - `cmems_med_currents_my_2d_hourly` (`cmems_mod_med_phy-cur_my_4.2km_PT1H-m`) —
     hourly Mediterranean multi-year reanalysis, next to daily
     `cmems_med_currents_my`.
   - `cmems_ibi_currents_2d_hourly` / `cmems_ibi_currents_3d_hourly` — hourly IBI
@@ -69,9 +69,14 @@ under `[main]`; `just bump` copies them under the new version.
   - `cmems_nws_currents_2d_hourly` / `cmems_nws_currents_3d_hourly` — hourly
     North-West Shelf analysis/forecast, surface and depth-resolved.
   - `cmems_glorys_nrt_2d_hourly` (hourly global surface fields),
-    `cmems_glorys_nrt_6h` (6-hourly depth-resolved currents), and
+    `cmems_glorys_nrt_3d_6h` (6-hourly depth-resolved currents), and
     `cmems_glorys_nrt_total_currents` (hourly total surface currents, adding
     tide and Stokes-drift components to the model's own `uo`/`vo`).
+
+  Naming follows one rule: the daily mean is the unsuffixed base entry and every
+  subdaily variant of it carries both its dimensionality and its cadence, since
+  dimensionality is what decides whether a caller must pass a `depth`. The
+  released `cmems_med_currents_nrt_15min` predates the rule and keeps its name.
 
   `has_depth` now consistently means a real depth *selection*: CMEMS ships its
   `-2D` and `merged-uv` datasets with a single degenerate depth level, and those
@@ -165,7 +170,7 @@ under `[main]`; `just bump` copies them under the new version.
   listing and its dataset snapshot.
 - `scripts/update_cmems_coverage.py` classified a source as a multi-year archive
   only when its name ended in `_my`, so refreshing a source such as
-  `cmems_med_currents_my_hourly` would have rewritten its coverage as
+  `cmems_med_currents_my_2d_hourly` would have rewritten its coverage as
   `kind: rolling` with an open `end`, letting offline planning accept days past
   the end of the archive. `_my` is now matched as a name segment.
 - ECMWF Open Data always serves the full global grid (no server-side region

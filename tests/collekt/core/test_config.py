@@ -43,7 +43,7 @@ def test_default_config_loads_the_bundled_catalog():
     assert cfg.sources["cmems_med_currents_nrt_3d_hourly"].has_depth is True
     # The hourly multi-year Med currents dataset is surface-only and subdaily,
     # unlike its daily sibling; both otherwise offer the same variables.
-    hourly_my = cfg.sources["cmems_med_currents_my_hourly"]
+    hourly_my = cfg.sources["cmems_med_currents_my_2d_hourly"]
     assert hourly_my.dataset_id == "cmems_mod_med_phy-cur_my_4.2km_PT1H-m"
     assert hourly_my.temporal_sampling == "1h"
     assert hourly_my.raw["time_selection"] == "full_day"
@@ -63,7 +63,7 @@ def test_default_config_loads_the_bundled_catalog():
     assert cfg.sources["cmems_ibi_currents_3d_hourly"].has_depth is True
     assert cfg.sources["cmems_nws_currents_2d_hourly"].available_variables == ("uo", "vo")
     assert cfg.sources["cmems_nws_currents_3d_hourly"].has_depth is True
-    assert cfg.sources["cmems_glorys_nrt_6h"].temporal_sampling == "6h"
+    assert cfg.sources["cmems_glorys_nrt_3d_6h"].temporal_sampling == "6h"
     # The merged total-surface-current dataset adds tide and Stokes-drift
     # components on top of the model's own `uo`/`vo`.
     assert {"utotal", "vtotal", "utide", "vsdx"} <= set(
