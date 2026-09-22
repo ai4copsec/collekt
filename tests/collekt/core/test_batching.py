@@ -371,31 +371,29 @@ def test_gfw_global_cap_and_overlapping_events(tmp_path, monkeypatch):
 
 def test_published_event_file_survives_a_checkpoint_cleanup_failure(tmp_path, monkeypatch):
     """Discarding the completed queries is cleanup, not part of publishing the file."""
-    locked = []
+    import shutil
+
+    obstruction = []
 
     def write(rows, path, url):
-        # Every checkpoint has been written by now; make their directory
-        # undeletable so only the cleanup that follows the export can fail.
-        directory = path.parent.parent / ".batch-queries"
-        directory.chmod(0o500)
-        locked.append(directory)
+        # Every checkpoint has been read by now. Put a plain file where the
+        # checkpoint directory was, so the cleanup that follows this export
+        # fails on every platform without relying on directory permissions.
+        checkpoints = path.parent.parent / ".batch-queries" / path.name
+        shutil.rmtree(checkpoints)
+        checkpoints.write_text("not a directory")
+        obstruction.append(checkpoints)
         path.write_text("complete parquet")
 
     monkeypatch.setattr(skytruth, "_fetch_pages", lambda url, params: ([{"id": params["datetime"]}], url))
     monkeypatch.setattr(skytruth, "_write_parquet", write)
-    try:
-        result = Fetcher(
-            request(end="2023-01-04"),
-            config=config(tmp_path, "skytruth", filename_pattern="events.parquet"),
-            batch_days=2,
-        ).download()
-        assert result.summary.downloaded == 1
-        assert Path(result.files[0]).read_text() == "complete parquet"
-        # The interrupted cleanup left its directory behind; the export still stands.
-        assert list(locked[0].iterdir())
-    finally:
-        for directory in locked:
-            directory.chmod(0o700)
+    result = Fetcher(
+        request(end="2023-01-04"), config=config(tmp_path, "skytruth", filename_pattern="events.parquet"), batch_days=2
+    ).download()
+    assert result.summary.downloaded == 1
+    assert Path(result.files[0]).read_text() == "complete parquet"
+    # The obstruction is untouched, so the cleanup did fail and was ignored.
+    assert obstruction[0].read_text() == "not a directory"
 
 
 def test_gfw_batch_caps_refuse_an_unexpected_provider_sort(tmp_path, monkeypatch):
