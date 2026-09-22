@@ -7,12 +7,45 @@ import json
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import replace
+from datetime import UTC, date, datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any
 
 from collekt.core.config import Config, SourceConfig
+from collekt.core.naming import format_pattern
 from collekt.sources.base import SourceResult, SourceStatus, should_reuse_cache
+
+_PROBE_VALUES = {
+    "source": "probe",
+    "dataset_id": "probe",
+    "start": datetime(2001, 1, 1, tzinfo=UTC),
+    "end": datetime(2001, 1, 2, tzinfo=UTC),
+    "bbox_hash": "00000000",
+    "west": 0.0,
+    "east": 1.0,
+    "south": 0.0,
+    "north": 1.0,
+}
+
+
+def daily_output_errors(source: SourceConfig) -> list[str]:
+    """Reject filename patterns that give two days of a batch the same output file.
+
+    Splitting a multi-day retrieval writes one file per day, so a pattern that
+    does not vary with `date` would have each day overwrite the previous one.
+    The two probe dates only exercise the pattern; no day of the request is
+    formatted here.
+    """
+    try:
+        names = {
+            format_pattern(source.filename_pattern, _PROBE_VALUES | {"date": date(2001, 1, day)}) for day in (1, 2)
+        }
+    except Exception:  # noqa: BLE001 - an unformattable pattern is reported by the adapter itself
+        return []
+    if len(names) == 1:
+        return [f"filename_pattern {source.filename_pattern!r} does not vary per day, which batch splitting requires"]
+    return []
 
 
 def batch_details(

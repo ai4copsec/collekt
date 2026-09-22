@@ -14,6 +14,15 @@ from collekt.sources.base import ProgressCallback, SourceResult, SourceStatus, s
 from collekt.sources.batching.common import batch_details, checkpoint_query, failed
 
 
+def product_batch_errors(source: SourceConfig) -> list[str]:
+    """Report configurations the windowed catalogue search cannot honour."""
+    try:
+        cap = int(source.raw.get("max_records", 100))
+    except (TypeError, ValueError):
+        return [f"max_records must be an integer, not {source.raw.get('max_records')!r}"]
+    return [] if cap >= 1 else ["max_records must be positive for batch downloads"]
+
+
 def run_product_batch(
     request: Request,
     source: SourceConfig,
@@ -50,8 +59,6 @@ def run_product_batch(
         for batch in batches
     ]
     cap = int(source.raw.get("max_records", 100))
-    if cap < 1:
-        raise ValueError("max_records must be positive for batch downloads")
     if dry_run:
         return [replace(base, details=base.details | {"batches": batches, "max_records": cap})]
     out_dir = request_dir / source.path

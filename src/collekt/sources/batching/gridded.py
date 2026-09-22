@@ -12,7 +12,18 @@ from typing import Any
 from collekt.core.config import Config, SourceConfig
 from collekt.core.request import Request
 from collekt.sources.base import ProgressCallback, SourceResult, SourceStatus, get_adapter
-from collekt.sources.batching.common import batch_details, cached, failed, staged_output
+from collekt.sources.batching.common import batch_details, cached, daily_output_errors, failed, staged_output
+
+
+def grid_batch_errors(source: SourceConfig) -> list[str]:
+    """Report configurations a grid batch cannot split back into daily files."""
+    errors = daily_output_errors(source)
+    if source.kind == "era5" and (
+        str(source.raw.get("data_format", "netcdf")) != "netcdf"
+        or str(source.raw.get("download_format", "unarchived")) != "unarchived"
+    ):
+        errors.append("batch downloads require data_format='netcdf' and download_format='unarchived'")
+    return errors
 
 
 def daily_groups(
@@ -61,8 +72,6 @@ def _payload(kind: str, members: list[SourceResult]) -> dict[str, Any]:
     body = dict(members[0].details["request"])
     if kind == "era5":
         body["day"] = [day for item in members for day in item.details["request"]["day"]]
-        if body["data_format"] != "netcdf" or body["download_format"] != "unarchived":
-            raise ValueError("ERA5 batch downloads require data_format='netcdf' and download_format='unarchived'")
     elif kind == "ecmwf_open_data":
         body["date"] = [item.details["request"]["date"] for item in members]
     else:
@@ -91,7 +100,12 @@ def run_grid_batch(
     )
     for indices in groups:
         members = [results[index] for index in indices]
-        payload = _payload(source.kind, members)
+        try:
+            payload = _payload(source.kind, members)
+        except Exception as exc:  # noqa: BLE001 - an unbuildable group must not abort the collection
+            for index in indices:
+                results[index] = failed(results[index], exc)
+            continue
         batch = batch_details(
             source,
             members[0].day,
@@ -110,18 +124,23 @@ def run_grid_batch(
             with TemporaryDirectory(prefix=".collekt-batch-", dir=out_dir) as directory:
                 path = Path(directory) / "batch.nc"
                 message = _retrieve(request, source, payload, path)
+                if len(indices) == 1 and payload == members[0].details["request"]:
+                    # The group asked the provider for exactly one day's own
+                    # request, so there is nothing to split: publishing the
+                    # provider's file untouched keeps it byte-for-byte identical
+                    # to the same day downloaded without `batch_days`.
+                    item = results[indices[0]]
+                    with staged_output(item.path) as staged:
+                        path.replace(staged)
+                    results[indices[0]] = replace(item, status=SourceStatus.DOWNLOADED, message=message)
+                    continue
                 import xarray as xr
 
                 with xr.open_dataset(path) as dataset:
                     for index in indices:
                         item = results[index]
                         try:
-                            daily = (
-                                dataset
-                                if len(indices) == 1 and source.kind == "cmems"
-                                else _split(dataset, item, source.kind)
-                            )
-                            daily = _prepare_daily(daily)
+                            daily = _prepare_daily(_split(dataset, item, source.kind))
                             with staged_output(item.path) as staged:
                                 daily.to_netcdf(staged)
                             results[index] = replace(item, status=SourceStatus.DOWNLOADED, message=message)
@@ -212,24 +231,71 @@ def _cmems_slice(dataset: Any, payload: dict[str, Any]) -> Any:
     if "time" not in dataset.dims or dataset.sizes["time"] == 0:
         raise ValueError("CMEMS batch requires a nonempty time dimension")
     index = dataset.indexes["time"]
+    # `get_indexer` needs an ascending index, while `sel(slice(...))` needs the
+    # bounds in the dataset's own order. Keep the two apart instead of swapping
+    # the bounds and then looking them up in an index pandas would reject.
+    if index.is_monotonic_increasing:
+        ascending, descending = index, False
+    elif index.is_monotonic_decreasing:
+        ascending, descending = index[::-1], True
+    else:
+        raise ValueError("CMEMS batch requires a monotonic time coordinate")
     start = np.datetime64(payload["start_datetime"])
     end = np.datetime64(payload["end_datetime"])
-    if not index.is_monotonic_increasing:
-        start, end = end, start
     method = payload["coordinates_selection_method"]
     if method in {"outside", "nearest"}:
         adjusted = []
         for value, side in [(start, "pad"), (end, "backfill")]:
-            if index.min() <= value <= index.max():
-                position = index.get_indexer([value], method="nearest" if method == "nearest" else side)[0]
-                value = index[position]
+            if ascending.min() <= value <= ascending.max():
+                position = ascending.get_indexer([value], method="nearest" if method == "nearest" else side)[0]
+                value = ascending[position]
             adjusted.append(value)
         start, end = adjusted
-    selected = dataset.sel(time=slice(start, end))
+    bounds = (end, start) if descending else (start, end)
+    selected = dataset.sel(time=slice(*bounds))
     if selected.sizes["time"] == 0:
-        nearest = index[index.get_indexer([start], method="nearest")[0]]
+        nearest = ascending[ascending.get_indexer([start], method="nearest")[0]]
         selected = dataset.sel(time=slice(nearest, nearest))
     return selected
+
+
+def _like(original: str, value: Any) -> str:
+    """Render `value` with the precision and zone suffix the provider used.
+
+    A narrowed `time_coverage_start` is still the provider's attribute, so it
+    keeps the provider's spelling. Nanosecond precision is only used where the
+    original carried it.
+    """
+    import numpy as np
+
+    text = str(original).strip()
+    suffix = "Z" if text.endswith(("Z", "z")) else ""
+    body = text.rstrip("Zz")
+    if "T" not in body:
+        return f"{np.datetime_as_string(value, unit='D')}{suffix}"
+    fraction = body.partition("T")[2].partition(".")[2]
+    unit = {3: "ms", 6: "us", 9: "ns"}.get(len(fraction), "s" if not fraction else "ns")
+    return f"{np.datetime_as_string(value, unit=unit)}{suffix}"
+
+
+def _iso_duration(seconds: float) -> str:
+    """Render a span of seconds as an ISO 8601 duration, not a raw second count.
+
+    `time_coverage_duration` is a duration string, so consumers expect `P1D` or
+    `PT23H` rather than `PT82800S`.
+    """
+    if seconds <= 0:
+        return "PT0S"
+    days, remainder = divmod(round(seconds, 6), 86400)
+    if not remainder:
+        return f"P{int(days)}D"
+    hours, remainder = divmod(remainder, 3600)
+    minutes, remainder = divmod(remainder, 60)
+    parts = [f"{int(days)}D"] if days else []
+    time_parts = [f"{int(value)}{unit}" for value, unit in ((hours, "H"), (minutes, "M")) if value]
+    if remainder:
+        time_parts.append(f"{remainder:g}S")
+    return "P" + "".join(parts) + "T" + "".join(time_parts)
 
 
 def _prepare_daily(dataset: Any) -> Any:
@@ -243,10 +309,9 @@ def _prepare_daily(dataset: Any) -> Any:
         start, end = np.min(times), np.max(times)
         for name, value in (("time_coverage_start", start), ("time_coverage_end", end)):
             if name in daily.attrs:
-                daily.attrs[name] = str(np.datetime_as_string(value, unit="ns", timezone="UTC"))
+                daily.attrs[name] = _like(daily.attrs[name], value)
         if "time_coverage_duration" in daily.attrs:
-            seconds = float((end - start) / np.timedelta64(1, "s"))
-            daily.attrs["time_coverage_duration"] = f"PT{seconds:g}S"
+            daily.attrs["time_coverage_duration"] = _iso_duration(float((end - start) / np.timedelta64(1, "s")))
     for variable in daily.variables.values():
         chunks = variable.encoding.get("chunksizes")
         if chunks is not None:

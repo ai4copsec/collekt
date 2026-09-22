@@ -6,11 +6,12 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol
 
 if TYPE_CHECKING:
     from collekt.core.config import Config, SourceConfig
     from collekt.core.diagnostics import DoctorCheck
+    from collekt.core.request import Request
 
 
 class SourceStatus(StrEnum):
@@ -93,6 +94,29 @@ def missing_after_fetch(
     )
 
 
+class BatchHandler(Protocol):
+    """Call signature every `SourceAdapter.batch` implementation shares.
+
+    A handler covers both planning and execution so that a dry run reports the
+    same grouping the download will use. It returns the same `SourceResult`
+    records `fetch` and `plan` return, at the same output paths.
+    """
+
+    def __call__(
+        self,
+        request: Request,
+        source: SourceConfig,
+        config: Config,
+        request_dir: Path,
+        *,
+        batch_days: int,
+        dry_run: bool,
+        progress: ProgressCallback,
+    ) -> list[SourceResult]:
+        """Group up to `batch_days` UTC calendar days of retrieval work."""
+        ...
+
+
 @dataclass(frozen=True)
 class SourceAdapter:
     """A registered source adapter.
@@ -111,9 +135,12 @@ class SourceAdapter:
             `SourceConfig.raw`. `collekt doctor` warns about any other key on a
             source of this kind, since a typo in one is otherwise silently
             ignored (the adapter just falls back to its default).
-        batch: Optional opt-in handler accepting the fetch arguments plus
-            `batch_days` and `dry_run`. It must preserve output semantics and
-            use the same grouping for planning and execution.
+        batch: Optional opt-in `BatchHandler`. It must preserve output
+            semantics and use the same grouping for planning and execution.
+        batch_check: Optional ``(source) -> list[str]`` hook returning the
+            reasons this source cannot be batched. `run_collection` calls it
+            before any download so a rejected configuration never leaves a
+            half-finished collection behind.
     """
 
     kind: str
@@ -121,7 +148,8 @@ class SourceAdapter:
     plan: Callable[..., list[SourceResult]]
     diagnose: Callable[[Config, bool], list[DoctorCheck]] | None = None
     known_raw_keys: frozenset[str] = frozenset()
-    batch: Callable[..., list[SourceResult]] | None = None
+    batch: BatchHandler | None = None
+    batch_check: Callable[[SourceConfig], list[str]] | None = None
 
 
 _ADAPTERS: dict[str, SourceAdapter] = {}

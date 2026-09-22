@@ -49,6 +49,12 @@ request: provider SDKs, pagination, and product downloads can make several.
 Summary counters continue to count files/results. On reuse, the original batch
 provenance is retained instead of being replaced by the current batch setting.
 
+A batched download also reports the planner's `provider`, `method`, `request`,
+and `availability` for each file, where the same file downloaded without
+`batch_days` carries only `temporal`. A collection filled in over several runs
+can therefore hold both shapes. Consumers should read `details` keys by name
+rather than assuming a fixed set — which is what the flexible block is for.
+
 This is optional metadata within the existing flexible `details` block; the
 manifest version remains `0.1`. See [Batch downloads](batching.qmd).
 

@@ -83,11 +83,7 @@ def run_collection(
     selected = list(_selected_sources(cfg))
     errors = [message for source in selected if (message := selection_error(source))]
     if batch_days is not None:
-        errors.extend(
-            f"source kind {source.kind!r} does not support batch_days"
-            for source in selected
-            if (adapter := get_adapter(source.kind)) is not None and adapter.batch is None
-        )
+        errors.extend(_batch_errors(selected))
     if errors:
         raise ValueError("; ".join(errors))
     if not dry_run and not use_cache and request_dir.exists() and request_dir != cfg.output.root:
@@ -148,6 +144,25 @@ def run_collection(
         results=result_tuple,
         summary=summary,
     )
+
+
+def _batch_errors(selected):
+    """Collect every reason batching is impossible, before anything is downloaded.
+
+    A source that cannot be batched is a configuration error, not a provider
+    failure: reporting it up front keeps a rejected run from leaving files from
+    the other sources behind with no manifest describing them.
+    """
+    errors = []
+    for source in selected:
+        adapter = get_adapter(source.kind)
+        if adapter is None:
+            continue
+        if adapter.batch is None:
+            errors.append(f"source kind {source.kind!r} does not support batch_days")
+        elif adapter.batch_check is not None:
+            errors.extend(f"source {source.name!r}: {reason}" for reason in adapter.batch_check(source))
+    return errors
 
 
 def _restore_batch_provenance(results, request_dir, manifest_name):

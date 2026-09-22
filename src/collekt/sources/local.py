@@ -46,6 +46,7 @@ from collekt.sources.base import (
     register_adapter,
     should_reuse_cache,
 )
+from collekt.sources.batching.common import daily_output_errors
 from collekt.sources.batching.files import run_local_batch
 from collekt.sources.planning import plan_source, static_source_coverage
 
@@ -444,6 +445,7 @@ register_adapter(
     SourceAdapter(
         kind="local",
         batch=run_local_batch,
+        batch_check=daily_output_errors,
         fetch=fetch_local,
         plan=plan_local,
         known_raw_keys=frozenset({"archive_root", "layout", "region_columns", "file_pattern", "time_column"}),

@@ -27,7 +27,13 @@ def run_file_batch(
     dry_run: bool,
     progress: ProgressCallback,
 ) -> list[SourceResult]:
-    """Expose logical batches for archives/providers with one URL per native file."""
+    """Expose logical batches for archives/providers with one URL per native file.
+
+    The grouping is provenance only: each native file still has its own URL and
+    transfer. An adapter routed here must accept the private `_days` keyword on
+    its `fetch`, which restricts the daily loop to the days this plan still
+    needs while keeping the full request as the naming and cadence anchor.
+    """
     planned, groups = daily_groups(request, source, config, request_dir, batch_days)
     provenance = {}
     for indices in groups:

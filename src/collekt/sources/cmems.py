@@ -32,7 +32,7 @@ from collekt.sources.base import (
     register_adapter,
     should_reuse_cache,
 )
-from collekt.sources.batching.gridded import run_grid_batch
+from collekt.sources.batching.gridded import grid_batch_errors, run_grid_batch
 from collekt.sources.planning import plan_source
 
 
@@ -404,6 +404,7 @@ register_adapter(
     SourceAdapter(
         kind="cmems",
         batch=run_grid_batch,
+        batch_check=grid_batch_errors,
         fetch=fetch_cmems,
         plan=plan_cmems,
         diagnose=diagnose,

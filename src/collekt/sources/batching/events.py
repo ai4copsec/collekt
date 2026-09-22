@@ -85,6 +85,11 @@ def run_event_batch(
                         row[key] = datetime.fromisoformat(row[key].replace("Z", "+00:00"))
             rows.sort(key=lambda row: row["start"].timestamp() if row.get("start") else float("-inf"))
             cap = gfw._max_events(source)
+            if cap is not None and gfw.EVENT_SORT != "+start":
+                # Each window returns its own first `cap` events, so merging and
+                # re-truncating by start time only reproduces the unbatched
+                # selection while the API sorts ascending by start.
+                raise ValueError(f"batched max_events assumes a '+start' sort, not {gfw.EVENT_SORT!r}")
             if cap is not None and (len(rows) > cap or any(response["capped"] for response in responses)):
                 warnings.warn(
                     f"GFW results truncated at max_events={cap} across all batches",
@@ -100,10 +105,12 @@ def run_event_batch(
             rows.sort(key=lambda row: str((row.get("properties") or {}).get("slick_timestamp", "")), reverse=True)
             with staged_output(item.path) as staged:
                 skytruth._write_parquet(rows, staged, "; ".join(response["url"] for response in responses))
-        shutil.rmtree(checkpoint_dir)
-        return [replace(item, status=SourceStatus.DOWNLOADED, details=item.details | {"records": len(rows)})]
     except Exception as exc:  # noqa: BLE001 - retain checkpoints if assembly fails
         return [failed(item, exc)]
+    # Only discard the completed queries once the collection file is published,
+    # and never let a cleanup error turn a published file into a failure.
+    shutil.rmtree(checkpoint_dir, ignore_errors=True)
+    return [replace(item, status=SourceStatus.DOWNLOADED, details=item.details | {"records": len(rows)})]
 
 
 def _query(source: SourceConfig, region: Region, payload: dict[str, Any], progress: ProgressCallback) -> dict[str, Any]:

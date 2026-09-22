@@ -13,7 +13,10 @@ under `[main]`; `just bump` copies them under the new version.
   forecast runs, event metadata, global record caps, and existing filenames
   are preserved. Batch plans/provenance distinguish retrieval groups from
   output files, with resumable event queries and isolated HOZINT windows.
-  The default (`None`) keeps the existing download behavior.
+  A configuration that cannot be batched is rejected before anything is
+  downloaded. A group covering a single day publishes the provider's file
+  untouched, and narrowed `time_coverage_*` attributes keep the provider's own
+  spelling. The default (`None`) keeps the existing download behavior.
 
 - a `local` source adapter and `Local` `DatasetSelection`: relies on damast
   to interface an existing tabular-data archive (file(s) *.csv, *.parquet).

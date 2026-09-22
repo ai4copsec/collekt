@@ -46,6 +46,11 @@ a window further. `batch_days=1` enables the batch machinery with one-day groups
 it is distinct from the default `None`, since event sources normally query the
 whole collection at once.
 
+A source whose configuration cannot be batched — an ERA5 source asking for GRIB,
+a filename pattern that does not vary per day, a nonpositive `max_records` — is
+rejected before anything is downloaded, so a rejected run never leaves files from
+the other sources behind with no manifest describing them.
+
 There is no universal best size. Larger requests reduce per-request overhead but
 can increase provider queue time, memory use, and the work repeated after a
 failure. Provider volume limits still apply; collekt does not automatically retry
@@ -57,7 +62,7 @@ request may need **more** calls when explicit windows are enabled.
 | Source | Retrieval with `batch_days` | Output |
 |---|---|---|
 | ERA5 | One CDS request per compatible group. Groups stay within one year/month and share the same hour selection. Partial first/last days can form smaller groups. Requires unarchived NetCDF. | Original daily NetCDF files. |
-| CMEMS | Multi-day `subset` calls for `outside` and `nearest` coordinate selection. Daily slices reproduce the Toolbox's selection, including boundary neighbours. `inside` and `strict-inside` retain daily calls because their empty-selection fallback needs the provider's full time index. | Original daily NetCDF files. |
+| CMEMS | Multi-day `subset` calls for `outside` and `nearest` coordinate selection. Daily slices reproduce the Toolbox's selection, including boundary neighbours. `inside` and `strict-inside` retain daily calls because their empty-selection fallback needs the provider's full time index, so batching gains nothing for them. | Original daily NetCDF files. |
 | ECMWF Open Data | One client call for compatible forecast dates/steps. The SDK may still download multiple remote files. Splitting uses forecast run time and retains lead times and valid times. | Original file per forecast run/day. |
 | GFS | Logical groups of analysis cycles; each native cycle still has its own URL and transfer. | Original daily NetCDF files. |
 | eOdyn | Logical groups of the existing daily archive reads. The production API remains unavailable. | Original daily NetCDF files. |
@@ -81,6 +86,12 @@ missing consecutive days are grouped. Changing `batch_days` does not invalidate
 completed daily files. As before, cache reuse assumes that files at their expected
 paths are complete; it is not a content-integrity check.
 
+When a group covers a single day and therefore asks the provider for exactly
+that day's own request — every `inside`/`strict-inside` CMEMS day, and any day
+left alone by a cache gap or a boundary — the provider's file is published
+untouched and is byte-for-byte identical to the same day fetched without
+`batch_days`. Only a genuinely multi-day retrieval is opened and split.
+
 New grid slices and assembled event/local files are written to temporary files
 and published after successful writing. Failed grid batches do not prevent later
 batches from running. A missing ERA5 timestamp prevents that daily slice from
@@ -102,8 +113,11 @@ changes the batch size or returns to default downloading. Summary counters remai
 
 Provider history and job metadata describe the batch that produced the data.
 Standard `time_coverage_start`, `time_coverage_end`, and `time_coverage_duration`
-attributes, when present, are narrowed to each daily grid slice. Other provider
-attributes are retained; bespoke provider attributes are not interpreted.
+attributes, when present, are narrowed to each daily grid slice and keep the
+provider's own spelling: the narrowed timestamps reuse its precision and `Z`
+suffix, and the duration stays an ISO 8601 duration (`P1D`, `PT23H`) rather than
+becoming a second count. Other provider attributes are retained; bespoke provider
+attributes are not interpreted.
 
 ## Small ERA5 benchmark
 
@@ -118,10 +132,12 @@ Two three-day comparisons reversed the order of daily and batch runs:
 | Batch first (21–23 November) | 146.98 s | 56.93 s |
 | Combined | 238.77 s | 176.26 s |
 
-The combined batch time was **26.2% lower**, but one trial was slower because of
-the CDS queue. Total server processing in the matched trials fell from 79.32 s
-to 29.92 s. Daily data values, coordinates, dimensions, and variable attributes
-matched after splitting.
+The measurement that isolates the effect is server processing, which fell from
+**79.32 s to 29.92 s** across the matched trials. Elapsed time is dominated by
+the CDS queue: combined it was 26.2% lower, but one of the two trials was
+*slower* when batched. With two matched pairs, treat the elapsed figures as
+noise around the processing result rather than as a speedup. Daily data values,
+coordinates, dimensions, and variable attributes matched after splitting.
 
 An additional ten-day batch took **119.20 s**, including **0.494 s** to split the
 daily files. There was no matched ten-day daily baseline and no 150-day request.

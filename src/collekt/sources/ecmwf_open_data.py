@@ -30,7 +30,7 @@ from collekt.sources.base import (
     register_adapter,
     should_reuse_cache,
 )
-from collekt.sources.batching.gridded import run_grid_batch
+from collekt.sources.batching.gridded import grid_batch_errors, run_grid_batch
 from collekt.sources.planning import plan_source, static_source_coverage
 
 DEFAULT_DATASET_ID = "ecmwf-open-data-ifs"
@@ -310,6 +310,7 @@ register_adapter(
     SourceAdapter(
         kind="ecmwf_open_data",
         batch=run_grid_batch,
+        batch_check=grid_batch_errors,
         fetch=fetch_ecmwf_open_data,
         plan=plan_ecmwf_open_data,
         diagnose=diagnose,
