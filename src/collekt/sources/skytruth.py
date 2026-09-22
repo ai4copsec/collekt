@@ -27,6 +27,7 @@ from collekt.sources.base import (
     register_adapter,
     should_reuse_cache,
 )
+from collekt.sources.batching.events import run_event_batch
 
 logger = logging.getLogger(__name__)
 
@@ -269,6 +270,7 @@ def plan_skytruth(request: Request, source: SourceConfig, config: Config, reques
 register_adapter(
     SourceAdapter(
         kind="skytruth",
+        batch=run_event_batch,
         fetch=fetch_skytruth,
         plan=plan_skytruth,
         known_raw_keys=frozenset({"limit", "api_url"}),

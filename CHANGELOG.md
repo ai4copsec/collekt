@@ -7,6 +7,14 @@ under `[main]`; `just bump` copies them under the new version.
 
 ### Added
 
+- Opt-in `Fetcher(..., batch_days=N)` and `collekt fetch --batch-days N` for
+  provider-aware retrieval groups across all ten built-in source kinds. ERA5
+  and compatible CMEMS requests are split back into daily NetCDF files;
+  forecast runs, event metadata, global record caps, and existing filenames
+  are preserved. Batch plans/provenance distinguish retrieval groups from
+  output files, with resumable event queries and isolated HOZINT windows.
+  The default (`None`) keeps the existing download behavior.
+
 - a `local` source adapter and `Local` `DatasetSelection`: relies on damast
   to interface an existing tabular-data archive (file(s) *.csv, *.parquet).
   Data can be queried through the normal `Request(region, time)` -> `fetch()` -> manifest

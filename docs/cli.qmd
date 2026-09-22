@@ -89,6 +89,12 @@ collekt fetch \
 The dry-run table reports each source, requested day, availability status,
 dataset ID, variables, and planned output path.
 
+Add `--batch-days 7` to group retrieval work into at most seven UTC calendar
+days. The default leaves source behavior unchanged. With batching enabled,
+`--dry-run` also shows retrieval groups separately from output files; each group
+may involve several provider requests. Daily sources retain daily output files.
+See [Batch downloads](batching.qmd) for provider-specific behavior and limits.
+
 ## Cache and Strict Mode
 
 By default, `fetch` reuses files already present under the output directory.

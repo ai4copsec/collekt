@@ -32,6 +32,7 @@ from collekt.sources.base import (
     register_adapter,
     should_reuse_cache,
 )
+from collekt.sources.batching.gridded import run_grid_batch
 from collekt.sources.planning import plan_source
 
 
@@ -402,6 +403,7 @@ def diagnose(config: Config, online: bool) -> list[DoctorCheck]:
 register_adapter(
     SourceAdapter(
         kind="cmems",
+        batch=run_grid_batch,
         fetch=fetch_cmems,
         plan=plan_cmems,
         diagnose=diagnose,

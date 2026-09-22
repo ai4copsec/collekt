@@ -24,6 +24,7 @@ from collekt.sources.base import (
     register_adapter,
     should_reuse_cache,
 )
+from collekt.sources.batching.files import run_hozint_batch
 
 TIME_FORMAT = "%Y-%m-%d"
 DEFAULT_COMMAND = ("hozint-apiclient", "query", "--output-format", "parquet")
@@ -129,6 +130,7 @@ def diagnose(config: Config, online: bool) -> list[DoctorCheck]:
 register_adapter(
     SourceAdapter(
         kind="hozint",
+        batch=run_hozint_batch,
         fetch=fetch_hozint,
         plan=plan_hozint,
         diagnose=diagnose,

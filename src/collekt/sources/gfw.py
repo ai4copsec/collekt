@@ -73,6 +73,7 @@ from collekt.sources.base import (
     register_adapter,
     should_reuse_cache,
 )
+from collekt.sources.batching.events import run_event_batch
 
 SPEC_YAML = Path(__file__).parent / "gfw.spec.yaml"
 DEFAULT_DATASET_ID = "gfw-events"
@@ -567,6 +568,7 @@ def diagnose(config: Config, online: bool) -> list[DoctorCheck]:
 register_adapter(
     SourceAdapter(
         kind="gfw",
+        batch=run_event_batch,
         fetch=fetch_gfw,
         plan=plan_gfw,
         diagnose=diagnose,

@@ -30,6 +30,7 @@ from collekt.sources.base import (
     register_adapter,
     should_reuse_cache,
 )
+from collekt.sources.batching.files import run_file_batch
 from collekt.sources.planning import plan_source, static_source_coverage
 
 DEFAULT_DATASET_ID = "EODYN-OS-VELOCITY-L4"
@@ -132,6 +133,7 @@ def fetch_eodyn(
     request_dir: Path,
     *,
     progress: ProgressCallback = null_progress,
+    _days: tuple[date, ...] | None = None,
 ) -> list[SourceResult]:
     """Serve eOdyn surface currents.
 
@@ -174,7 +176,7 @@ def fetch_eodyn(
     out_dir = request_dir / source.path
     out_dir.mkdir(parents=True, exist_ok=True)
     plan = sampling_plan(request, source)
-    for day in request.iter_days():
+    for day in request.iter_days() if _days is None else _days:
         temporal = plan.day_dict(day)
         if _day_out_of_coverage(day, coverage):
             results.append(
@@ -353,6 +355,7 @@ def plan_eodyn(request: Request, source: SourceConfig, config: Config, request_d
 register_adapter(
     SourceAdapter(
         kind="eodyn",
+        batch=run_file_batch,
         fetch=fetch_eodyn,
         plan=plan_eodyn,
         known_raw_keys=frozenset({"archive_root", "day_pattern", "mode"}),

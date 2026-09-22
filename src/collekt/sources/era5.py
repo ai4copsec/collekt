@@ -23,6 +23,7 @@ from collekt.sources.base import (
     register_adapter,
     should_reuse_cache,
 )
+from collekt.sources.batching.gridded import run_grid_batch
 from collekt.sources.planning import plan_source, static_source_coverage
 
 DEFAULT_DATASET_ID = "reanalysis-era5-single-levels"
@@ -190,6 +191,7 @@ def diagnose(config: Config, online: bool) -> list[DoctorCheck]:
 register_adapter(
     SourceAdapter(
         kind="era5",
+        batch=run_grid_batch,
         fetch=fetch_era5,
         plan=plan_era5,
         diagnose=diagnose,

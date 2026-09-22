@@ -30,6 +30,7 @@ from collekt.sources.base import (
     register_adapter,
     should_reuse_cache,
 )
+from collekt.sources.batching.products import run_product_batch
 
 logger = logging.getLogger(__name__)
 
@@ -232,6 +233,7 @@ def diagnose(config: Config, online: bool) -> list[DoctorCheck]:
 register_adapter(
     SourceAdapter(
         kind="copernicus_dataspace",
+        batch=run_product_batch,
         fetch=fetch_copernicus_dataspace,
         plan=plan_copernicus_dataspace,
         diagnose=diagnose,

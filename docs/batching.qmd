@@ -1,0 +1,135 @@
+---
+title: "Batch downloads"
+toc: true
+---
+
+`Fetcher(..., batch_days=7)` groups retrieval work into windows of up to seven
+UTC calendar days. Daily sources still produce their usual daily files. Omitting
+the option (`batch_days=None`) keeps the existing behavior.
+
+```python
+import collekt
+
+config = collekt.DatasetConfig(
+    collekt.ERA5("era5_reanalysis", variables=["10m_u_component_of_wind", "10m_v_component_of_wind"]),
+)
+request = collekt.Request(
+    region=collekt.Region.from_bbox((4.75, 8.25, 39.75, 42.75)),
+    start="2022-11-01",
+    end="2022-11-07",
+)
+fetcher = collekt.Fetcher(
+    request=request,
+    config=config,
+    output_dir="data/collections",
+    batch_days=7,
+)
+plan = fetcher.plan()       # inspect retrieval groups before downloading
+result = fetcher.download()
+```
+
+For this complete, uncached ERA5 week, one CDS retrieval produces seven daily
+NetCDF files. Their filenames, variable attributes, coordinates, native hourly
+sampling, and per-day temporal metadata follow the existing output contract.
+`Assembler` works with them in the same way as with daily downloads.
+
+## Choosing a size
+
+`batch_days` accepts a positive Python integer. Booleans, zero, negative values,
+fractions, and duration strings such as `"7d"` or `"48h"` are rejected. Use
+`batch_days=2` for two UTC calendar days. This setting controls retrieval windows;
+it does not multiply the dataset's sampling interval.
+
+Windows begin on the first requested UTC date and are clipped to the original
+request. Provider constraints, cache gaps, and incompatible selections can split
+a window further. `batch_days=1` enables the batch machinery with one-day groups;
+it is distinct from the default `None`, since event sources normally query the
+whole collection at once.
+
+There is no universal best size. Larger requests reduce per-request overhead but
+can increase provider queue time, memory use, and the work repeated after a
+failure. Provider volume limits still apply; collekt does not automatically retry
+an oversized batch as smaller batches. Event APIs that already accept the whole
+request may need **more** calls when explicit windows are enabled.
+
+## Behavior by source
+
+| Source | Retrieval with `batch_days` | Output |
+|---|---|---|
+| ERA5 | One CDS request per compatible group. Groups stay within one year/month and share the same hour selection. Partial first/last days can form smaller groups. Requires unarchived NetCDF. | Original daily NetCDF files. |
+| CMEMS | Multi-day `subset` calls for `outside` and `nearest` coordinate selection. Daily slices reproduce the Toolbox's selection, including boundary neighbours. `inside` and `strict-inside` retain daily calls because their empty-selection fallback needs the provider's full time index. | Original daily NetCDF files. |
+| ECMWF Open Data | One client call for compatible forecast dates/steps. The SDK may still download multiple remote files. Splitting uses forecast run time and retains lead times and valid times. | Original file per forecast run/day. |
+| GFS | Logical groups of analysis cycles; each native cycle still has its own URL and transfer. | Original daily NetCDF files. |
+| eOdyn | Logical groups of the existing daily archive reads. The production API remains unavailable. | Original daily NetCDF files. |
+| Local | Consecutive days sharing the same archive files can be read together, then partitioned by UTC day. Different archive file sets start new groups. | Original daily annotated Parquet files. |
+| SkyTruth | Paginated queries for each window; duplicate feature IDs are removed across windows. | One annotated Parquet file for the collection. |
+| Global Fishing Watch | Paginated queries for each window; duplicate event IDs are removed, events are sorted by start time, and `max_events` caps the combined result with a truncation warning. | One annotated Parquet file for the collection. |
+| HOZINT | One isolated CLI invocation per window, with a completion marker for reliable retries. | CLI-generated Parquet files under `batches/<id>/` within the source directory. |
+| Copernicus Data Space | Date-window searches with pagination and product deduplication. `max_records` caps unique catalogue records across all windows. Each product still downloads separately. | Original product filenames. |
+
+SkyTruth and Data Space query windows overlap at midnight to avoid dropping
+fractional-second timestamps when serializing inclusive endpoints. Records with
+the same provider identifier are emitted once. GFW uses its native exclusive end
+date convention. For Data Space, a dry run lists all candidate searches; execution
+stops early if `max_records` is reached.
+
+## Cache, failures, and metadata
+
+Collection directories remain keyed by the original region and time range.
+Existing daily files are reused, including files from a non-batched run. Only
+missing consecutive days are grouped. Changing `batch_days` does not invalidate
+completed daily files. As before, cache reuse assumes that files at their expected
+paths are complete; it is not a content-integrity check.
+
+New grid slices and assembled event/local files are written to temporary files
+and published after successful writing. Failed grid batches do not prevent later
+batches from running. A missing ERA5 timestamp prevents that daily slice from
+being treated as complete. Event queries checkpoint completed windows; if another
+window fails, no partial collection file is published, and the next run can reuse
+the completed queries. Data Space also caches completed searches. These checkpoints
+live inside the collection directory; `download(use_cache=False)` ignores them.
+
+HOZINT stores each window separately so a file from the first window cannot make
+later windows appear cached. A failed CLI invocation's temporary output is
+discarded. Existing output from a non-batched HOZINT run has no window completion
+markers and is therefore not used as a batch cache.
+
+Per-file `details.batch`, or `details.batches` for an assembled event file,
+records the retrieval IDs, bounds, transport type, and provider parameters.
+Cached files retain their recorded retrieval provenance even if a subsequent run
+changes the batch size or returns to default downloading. Summary counters remain
+**file/result counts**, not network-request counts. See [Manifest](manifest.qmd).
+
+Provider history and job metadata describe the batch that produced the data.
+Standard `time_coverage_start`, `time_coverage_end`, and `time_coverage_duration`
+attributes, when present, are narrowed to each daily grid slice. Other provider
+attributes are retained; bespoke provider attributes are not interpreted.
+
+## Small ERA5 benchmark
+
+A live benchmark on 22 September 2026 compared sequential daily CDS requests
+with batches over the same small western Mediterranean area. It requested both
+10 m wind components, all 24 hours, unarchived NetCDF, over dates in November 2022.
+Two three-day comparisons reversed the order of daily and batch runs:
+
+| Comparison | Three daily downloads | One batch, including daily splitting |
+|---|---:|---:|
+| Daily first (14–16 November) | 91.79 s | 119.33 s |
+| Batch first (21–23 November) | 146.98 s | 56.93 s |
+| Combined | 238.77 s | 176.26 s |
+
+The combined batch time was **26.2% lower**, but one trial was slower because of
+the CDS queue. Total server processing in the matched trials fell from 79.32 s
+to 29.92 s. Daily data values, coordinates, dimensions, and variable attributes
+matched after splitting.
+
+An additional ten-day batch took **119.20 s**, including **0.494 s** to split the
+daily files. There was no matched ten-day daily baseline and no 150-day request.
+These small measurements support making batching optional; they do not establish
+a dependable speedup for larger regions or long periods. Provider caching was
+not disabled. Nine jobs transferred approximately 0.82 MB in total.
+
+The benchmark used cdsapi 0.7.7, ecmwf-datastores-client 0.5.3, and xarray
+2026.7.0, with CDS area `[42.75, 4.75, 39.75, 8.25]` (north, west, south, east).
+Provider queue and polling delays make elapsed time variable even when the
+retrieval work is identical.

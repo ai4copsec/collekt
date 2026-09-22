@@ -46,6 +46,7 @@ from collekt.sources.base import (
     register_adapter,
     should_reuse_cache,
 )
+from collekt.sources.batching.files import run_local_batch
 from collekt.sources.planning import plan_source, static_source_coverage
 
 DEFAULT_DATASET_ID = "local-archive"
@@ -210,6 +211,7 @@ def _read_day_subset(
     day: date,
     region: Region,
     variables: tuple[str, ...],
+    end_day: date | None = None,
 ):
     """Read `files` and return (rows for `day` within `region`, damast metadata).
 
@@ -230,6 +232,8 @@ def _read_day_subset(
         )
 
     start, end = _day_range(day)
+    if end_day is not None:
+        end = _day_range(end_day)[1]
     if getattr(schema.get(time_column), "time_zone", None) is None:
         # A naive `time_column` is treated as already UTC (collekt's own datetime parsing does
         # the same, see `_parse_datetime`), not as a value to localize.
@@ -439,6 +443,7 @@ def plan_local(request: Request, source: SourceConfig, config: Config, request_d
 register_adapter(
     SourceAdapter(
         kind="local",
+        batch=run_local_batch,
         fetch=fetch_local,
         plan=plan_local,
         known_raw_keys=frozenset({"archive_root", "layout", "region_columns", "file_pattern", "time_column"}),

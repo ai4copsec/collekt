@@ -65,6 +65,12 @@ dataset = assembler.to_xarray(grid="lowest_resolution", time="lowest_resolution"
 (`Region.from_point_radius(lat, lon, radius_km)`) or a GeoJSON file
 (`Region.from_geojson(path)`).
 
+For longer requests, pass `batch_days=7` to `Fetcher` (or `--batch-days 7` to
+`collekt fetch`). This groups compatible retrievals while retaining daily files
+for daily sources. The default behavior is unchanged; provider capabilities
+determine whether a group reduces network requests. See
+[batch downloads](https://ai4copsec.github.io/collekt/batching.html).
+
 ### Command line
 
 ```bash

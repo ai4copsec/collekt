@@ -111,6 +111,9 @@ class SourceAdapter:
             `SourceConfig.raw`. `collekt doctor` warns about any other key on a
             source of this kind, since a typo in one is otherwise silently
             ignored (the adapter just falls back to its default).
+        batch: Optional opt-in handler accepting the fetch arguments plus
+            `batch_days` and `dry_run`. It must preserve output semantics and
+            use the same grouping for planning and execution.
     """
 
     kind: str
@@ -118,6 +121,7 @@ class SourceAdapter:
     plan: Callable[..., list[SourceResult]]
     diagnose: Callable[[Config, bool], list[DoctorCheck]] | None = None
     known_raw_keys: frozenset[str] = frozenset()
+    batch: Callable[..., list[SourceResult]] | None = None
 
 
 _ADAPTERS: dict[str, SourceAdapter] = {}
