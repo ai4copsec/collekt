@@ -37,8 +37,14 @@ sampling, and per-day temporal metadata follow the existing output contract.
 
 `batch_days` accepts a positive Python integer. Booleans, zero, negative values,
 fractions, and duration strings such as `"7d"` or `"48h"` are rejected. Use
-`batch_days=2` for two UTC calendar days. This setting controls retrieval windows;
-it does not multiply the dataset's sampling interval.
+`batch_days=2` for two UTC calendar days.
+
+`batch_days` sets the retrieval window, not the sampling cadence: `batch_days=2`
+asks the provider for two calendar days in one call, it does not change a
+source's `temporal_sampling` from `1h` to `2h`. The two compound, which is why
+batching pays off most for subdaily sources — a seven-day batch of an hourly
+source carries 168 timestamps in one retrieval, where the same batch of a daily
+source carries seven. The output stays daily either way.
 
 Windows begin on the first requested UTC date and are clipped to the original
 request. Provider constraints, cache gaps, and incompatible selections can split
