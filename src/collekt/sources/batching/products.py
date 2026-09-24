@@ -10,7 +10,7 @@ from urllib.parse import urljoin, urlsplit
 from collekt.core.batching import request_windows
 from collekt.core.config import Config, SourceConfig
 from collekt.core.request import Request
-from collekt.sources.base import ProgressCallback, SourceResult, SourceStatus, should_reuse_cache
+from collekt.sources.base import BatchOptions, SourceResult, SourceStatus, should_reuse_cache
 from collekt.sources.batching.common import batch_details, checkpoint_query, failed
 
 
@@ -28,10 +28,7 @@ def run_product_batch(
     source: SourceConfig,
     config: Config,
     request_dir: Path,
-    *,
-    batch_days: int,
-    dry_run: bool,
-    progress: ProgressCallback,
+    options: BatchOptions,
 ) -> list[SourceResult]:
     """Search windows, paginate, and apply max_records once across unique products."""
     from collekt.sources import copernicus_dataspace as cds
@@ -40,7 +37,7 @@ def run_product_batch(
     base = cds.plan_copernicus_dataspace(request, source, config, request_dir)[0]
     if not collection:
         return [failed(base, "no collection configured for source")]
-    windows = request_windows(request, batch_days)
+    windows = request_windows(request, options.days)
     batches = [
         batch_details(
             source,
@@ -59,7 +56,7 @@ def run_product_batch(
         for batch in batches
     ]
     cap = int(source.raw.get("max_records", 100))
-    if dry_run:
+    if options.dry_run:
         return [replace(base, details=base.details | {"batches": batches, "max_records": cap})]
     out_dir = request_dir / source.path
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -77,7 +74,7 @@ def run_product_batch(
         if len(seen) >= cap:
             break
         item = replace(base, details=base.details | {"batch": batch})
-        progress(source.name, f"searching batch {batch['start']} to {batch['end']}")
+        options.progress(source.name, f"searching batch {batch['start']} to {batch['end']}")
         try:
             features = checkpoint_query(
                 out_dir / ".batch-searches",

@@ -20,6 +20,7 @@ from collekt.core.reporting import summarize
 from collekt.core.request import Request
 from collekt.core.result import Result
 from collekt.sources.base import (
+    BatchOptions,
     ProgressCallback,
     SourceResult,
     SourceStatus,
@@ -110,9 +111,7 @@ def run_collection(
                     source,
                     cfg,
                     request_dir,
-                    batch_days=batch_days,
-                    dry_run=dry_run,
-                    progress=progress,
+                    BatchOptions(days=batch_days, dry_run=dry_run, progress=progress),
                 )
             )
         elif dry_run:

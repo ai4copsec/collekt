@@ -21,7 +21,7 @@ from typing import Any
 from collekt.core.batching import request_windows
 from collekt.core.config import Config, SourceConfig
 from collekt.core.request import Region, Request
-from collekt.sources.base import ProgressCallback, SourceResult, SourceStatus, get_adapter
+from collekt.sources.base import BatchOptions, ProgressCallback, SourceResult, SourceStatus, get_adapter
 from collekt.sources.batching.common import batch_details, cached, checkpoint_query, deduplicate, failed, staged_output
 
 EventQuery = Callable[[SourceConfig, Region, dict[str, Any], ProgressCallback], dict[str, Any]]
@@ -39,10 +39,8 @@ def run_event_batch(
     source: SourceConfig,
     config: Config,
     request_dir: Path,
+    options: BatchOptions,
     *,
-    batch_days: int,
-    dry_run: bool,
-    progress: ProgressCallback,
     query: EventQuery,
     write: EventWrite,
     adjust: PayloadAdjust | None = None,
@@ -52,7 +50,7 @@ def run_event_batch(
     item = cached(adapter.plan(request, source, config, request_dir)[0], config)
     if item.status == SourceStatus.REUSED:
         return [item]
-    windows = request_windows(request, batch_days)
+    windows = request_windows(request, options.days)
     payloads = [adapter.plan(window, source, config, request_dir)[0].details["request"] for window in windows]
     if adjust is not None:
         adjust(payloads, windows)
@@ -61,20 +59,20 @@ def run_event_batch(
         for window, payload in zip(windows, payloads, strict=True)
     ]
     item = replace(item, details=item.details | {"batches": batches})
-    if dry_run:
+    if options.dry_run:
         return [item]
     checkpoint_dir = item.path.parent / ".batch-queries" / item.path.name
     responses = []
     errors = []
     for batch in batches:
-        progress(source.name, f"querying batch {batch['start']} to {batch['end']}")
+        options.progress(source.name, f"querying batch {batch['start']} to {batch['end']}")
         try:
             responses.append(
                 checkpoint_query(
                     checkpoint_dir,
                     batch,
                     config,
-                    lambda batch=batch: query(source, request.region, batch["request"], progress),
+                    lambda batch=batch: query(source, request.region, batch["request"], options.progress),
                 )
             )
         except Exception as exc:  # noqa: BLE001 - save other completed windows for retry

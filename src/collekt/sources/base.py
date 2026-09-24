@@ -94,6 +94,24 @@ def missing_after_fetch(
     )
 
 
+@dataclass(frozen=True)
+class BatchOptions:
+    """Batch-specific settings shared by every `BatchHandler`.
+
+    The request, source, config, and request directory stay separate
+    arguments, as for an adapter's `fetch` and `plan`.
+
+    Attributes:
+        days: Maximum number of consecutive UTC calendar days per retrieval group.
+        dry_run: Plan the groups without downloading anything.
+        progress: Callback receiving progress messages.
+    """
+
+    days: int
+    dry_run: bool = False
+    progress: ProgressCallback = null_progress
+
+
 class BatchHandler(Protocol):
     """Call signature every `SourceAdapter.batch` implementation shares.
 
@@ -108,12 +126,9 @@ class BatchHandler(Protocol):
         source: SourceConfig,
         config: Config,
         request_dir: Path,
-        *,
-        batch_days: int,
-        dry_run: bool,
-        progress: ProgressCallback,
+        options: BatchOptions,
     ) -> list[SourceResult]:
-        """Group up to `batch_days` UTC calendar days of retrieval work."""
+        """Group up to `options.days` UTC calendar days of retrieval work."""
         ...
 
 

@@ -11,7 +11,7 @@ from typing import Any
 
 from collekt.core.config import Config, SourceConfig
 from collekt.core.request import Request
-from collekt.sources.base import ProgressCallback, SourceResult, SourceStatus, get_adapter
+from collekt.sources.base import BatchOptions, SourceResult, SourceStatus, get_adapter
 from collekt.sources.batching.common import batch_details, cached, daily_output_errors, failed, staged_output
 
 
@@ -84,10 +84,7 @@ def run_grid_batch(
     source: SourceConfig,
     config: Config,
     request_dir: Path,
-    *,
-    batch_days: int,
-    dry_run: bool,
-    progress: ProgressCallback,
+    options: BatchOptions,
 ) -> list[SourceResult]:
     """Plan and execute identical provider groups, splitting each into daily files."""
     results, groups = daily_groups(
@@ -95,7 +92,7 @@ def run_grid_batch(
         source,
         config,
         request_dir,
-        batch_days,
+        options.days,
         compatible=lambda item: _compatibility(source.kind, item),
     )
     for indices in groups:
@@ -115,9 +112,9 @@ def run_grid_batch(
         )
         for index in indices:
             results[index] = replace(results[index], details=results[index].details | {"batch": batch})
-        if dry_run:
+        if options.dry_run:
             continue
-        progress(source.name, f"downloading batch {batch['start']} to {batch['end']}")
+        options.progress(source.name, f"downloading batch {batch['start']} to {batch['end']}")
         out_dir = request_dir / source.path
         out_dir.mkdir(parents=True, exist_ok=True)
         try:

@@ -12,7 +12,13 @@ from tempfile import TemporaryDirectory
 from collekt.core.batching import request_windows
 from collekt.core.config import Config, SourceConfig
 from collekt.core.request import Request
-from collekt.sources.base import ProgressCallback, SourceResult, SourceStatus, get_adapter, should_reuse_cache
+from collekt.sources.base import (
+    BatchOptions,
+    SourceResult,
+    SourceStatus,
+    get_adapter,
+    should_reuse_cache,
+)
 from collekt.sources.batching.common import batch_details, failed, staged_output
 from collekt.sources.batching.gridded import daily_groups
 
@@ -22,10 +28,7 @@ def run_file_batch(
     source: SourceConfig,
     config: Config,
     request_dir: Path,
-    *,
-    batch_days: int,
-    dry_run: bool,
-    progress: ProgressCallback,
+    options: BatchOptions,
 ) -> list[SourceResult]:
     """Expose logical batches for archives/providers with one URL per native file.
 
@@ -34,7 +37,7 @@ def run_file_batch(
     its `fetch`, which restricts the daily loop to the days this plan still
     needs while keeping the full request as the naming and cadence anchor.
     """
-    planned, groups = daily_groups(request, source, config, request_dir, batch_days)
+    planned, groups = daily_groups(request, source, config, request_dir, options.days)
     provenance = {}
     for indices in groups:
         members = [planned[index] for index in indices]
@@ -48,7 +51,7 @@ def run_file_batch(
         for index in indices:
             planned[index] = replace(planned[index], details=planned[index].details | {"batch": batch})
             provenance[planned[index].day] = batch
-    if dry_run or not groups:
+    if options.dry_run or not groups:
         return planned
     # Preserve the full request: restarting daily loops on clipped requests
     # would change cadence anchors and filename patterns using start/end.
@@ -57,7 +60,7 @@ def run_file_batch(
         source,
         config,
         request_dir,
-        progress=progress,
+        progress=options.progress,
         _days=tuple(date.fromisoformat(day) for day in provenance),
     )
     if any(item.day is None for item in results):
@@ -76,10 +79,7 @@ def run_local_batch(
     source: SourceConfig,
     config: Config,
     request_dir: Path,
-    *,
-    batch_days: int,
-    dry_run: bool,
-    progress: ProgressCallback,
+    options: BatchOptions,
 ) -> list[SourceResult]:
     """Read a shared archive partition once per batch, preserving daily row files."""
     from collekt.sources import local
@@ -95,7 +95,7 @@ def run_local_batch(
         source,
         config,
         request_dir,
-        batch_days,
+        options.days,
         compatible=lambda item: matched[item.day],
     )
     for indices in groups:
@@ -110,9 +110,9 @@ def run_local_batch(
         )
         for index in indices:
             results[index] = replace(results[index], details=results[index].details | {"batch": batch})
-        if dry_run:
+        if options.dry_run:
             continue
-        progress(source.name, f"reading archive batch {first.day} to {last.day}")
+        options.progress(source.name, f"reading archive batch {first.day} to {last.day}")
         try:
             import damast
             import polars as pl
@@ -169,16 +169,13 @@ def run_hozint_batch(
     source: SourceConfig,
     config: Config,
     request_dir: Path,
-    *,
-    batch_days: int,
-    dry_run: bool,
-    progress: ProgressCallback,
+    options: BatchOptions,
 ) -> list[SourceResult]:
     """Isolate each CLI invocation and cache only successfully completed windows."""
     from collekt.sources import hozint
 
     results = []
-    for window in request_windows(request, batch_days):
+    for window in request_windows(request, options.days):
         item = hozint.plan_hozint(window, source, config, request_dir)[0]
         batch = batch_details(source, window.start_datetime, window.end_datetime, item.details["request"])
         directory = request_dir / source.path / "batches" / batch["id"]
@@ -199,10 +196,10 @@ def run_hozint_batch(
             if not paths:
                 results.append(failed(item, "hozint-apiclient produced no parquet output (cached completed query)"))
             continue
-        if dry_run:
+        if options.dry_run:
             results.append(item)
             continue
-        progress(source.name, f"querying HOZINT batch {batch['start']} to {batch['end']}")
+        options.progress(source.name, f"querying HOZINT batch {batch['start']} to {batch['end']}")
         directory.parent.mkdir(parents=True, exist_ok=True)
         try:
             with TemporaryDirectory(prefix=".collekt-", dir=directory.parent) as temporary:
