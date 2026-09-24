@@ -53,9 +53,10 @@ it is distinct from the default `None`, since event sources normally query the
 whole collection at once.
 
 A source whose configuration cannot be batched — an ERA5 source asking for GRIB,
-a filename pattern that does not vary per day, a nonpositive `max_records` — is
-rejected before anything is downloaded, so a rejected run never leaves files from
-the other sources behind with no manifest describing them.
+a filename pattern that does not give every day its own file (such as one using
+only the day of the month), a nonpositive `max_records` — is rejected before
+anything is downloaded, so a rejected run never leaves files from the other
+sources behind with no manifest describing them.
 
 There is no universal best size. Larger requests reduce per-request overhead but
 can increase provider queue time, memory use, and the work repeated after a

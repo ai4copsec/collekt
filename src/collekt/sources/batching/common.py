@@ -7,7 +7,7 @@ import json
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import replace
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any
@@ -16,35 +16,41 @@ from collekt.core.config import Config, SourceConfig
 from collekt.core.naming import format_pattern
 from collekt.sources.base import SourceResult, SourceStatus, should_reuse_cache
 
+# Stand-ins for every placeholder except `date`, which is the only one that
+# changes between the daily files of a batch.
 _PROBE_VALUES = {
     "source": "probe",
     "dataset_id": "probe",
-    "start": datetime(2001, 1, 1, tzinfo=UTC),
-    "end": datetime(2001, 1, 2, tzinfo=UTC),
+    "start": datetime(2000, 1, 1, tzinfo=UTC),
+    "end": datetime(2002, 1, 1, tzinfo=UTC),
     "bbox_hash": "00000000",
     "west": 0.0,
     "east": 1.0,
     "south": 0.0,
     "north": 1.0,
 }
+# Two full years, one of them a leap year: long enough for a pattern that
+# repeats with the month (`%d`) or the year (`%j`, `%m-%d`) to collide.
+_PROBE_DAYS = tuple(date(2000, 1, 1) + timedelta(days=offset) for offset in range(731))
 
 
 def daily_output_errors(source: SourceConfig) -> list[str]:
-    """Reject filename patterns that give two days of a batch the same output file.
+    """Reject filename patterns that give two different days the same output file.
 
     Splitting a multi-day retrieval writes one file per day, so a pattern that
-    does not vary with `date` would have each day overwrite the previous one.
-    The two probe dates only exercise the pattern; no day of the request is
-    formatted here.
+    repeats - never varying with `date`, or using only part of it such as the
+    day of the month - would have one day overwrite another. The probe days
+    only exercise the pattern; no day of the request is formatted here.
     """
     try:
-        names = {
-            format_pattern(source.filename_pattern, _PROBE_VALUES | {"date": date(2001, 1, day)}) for day in (1, 2)
-        }
+        names = {format_pattern(source.filename_pattern, _PROBE_VALUES | {"date": day}) for day in _PROBE_DAYS}
     except Exception:  # noqa: BLE001 - an unformattable pattern is reported by the adapter itself
         return []
-    if len(names) == 1:
-        return [f"filename_pattern {source.filename_pattern!r} does not vary per day, which batch splitting requires"]
+    if len(names) < len(_PROBE_DAYS):
+        return [
+            f"filename_pattern {source.filename_pattern!r} does not give every day its own file, "
+            "which batch splitting requires"
+        ]
     return []
 
 

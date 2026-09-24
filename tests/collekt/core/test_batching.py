@@ -729,7 +729,10 @@ def test_unsupported_custom_adapter_fails_before_removing_cached_data(tmp_path, 
     [
         ({"data_format": "grib"}, "data_format='netcdf'"),
         ({"download_format": "zip"}, "download_format='unarchived'"),
-        ({"filename_pattern": "same.nc"}, "does not vary per day"),
+        ({"filename_pattern": "same.nc"}, "does not give every day its own file"),
+        ({"filename_pattern": "{date:%d}.nc"}, "does not give every day its own file"),
+        ({"filename_pattern": "{date:%m-%d}.nc"}, "does not give every day its own file"),
+        ({"filename_pattern": "{date:%j}.nc"}, "does not give every day its own file"),
     ],
 )
 def test_unsupported_daily_output_configuration_rejected_in_plan(tmp_path, raw, message):
