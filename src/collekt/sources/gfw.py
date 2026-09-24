@@ -55,7 +55,8 @@ import os
 import warnings
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
-from datetime import timedelta
+from datetime import datetime, timedelta
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -565,10 +566,59 @@ def diagnose(config: Config, online: bool) -> list[DoctorCheck]:
     ]
 
 
+def _query_batch(
+    source: SourceConfig, region: Region, payload: dict[str, Any], progress: ProgressCallback
+) -> dict[str, Any]:
+    """Query one batch window, recording whether `max_events` truncated it."""
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always", GFWTruncatedResultWarning)
+        rows = _fetch_events(
+            source,
+            region,
+            payload["start_date"],
+            payload["end_date"],
+            lambda page, total: progress(source.name, f"GFW page {page}: {total} events"),
+        )
+    capped = False
+    for warning in caught:
+        if issubclass(warning.category, GFWTruncatedResultWarning):
+            capped = True
+        else:
+            warnings.warn(warning.message, warning.category, stacklevel=2)
+    return {"rows": rows, "capped": capped}
+
+
+def _write_batch(
+    rows: list[dict[str, Any]], responses: list[dict[str, Any]], source: SourceConfig, output_path: Path
+) -> int:
+    """Re-apply `max_events` across all windows and write the merged events."""
+    # Checkpointed responses come back from JSON with string timestamps.
+    for row in rows:
+        for key in ("start", "end"):
+            if isinstance(row.get(key), str):
+                row[key] = datetime.fromisoformat(row[key].replace("Z", "+00:00"))
+    rows.sort(key=lambda row: row["start"].timestamp() if row.get("start") else float("-inf"))
+    cap = _max_events(source)
+    if cap is not None and EVENT_SORT != "+start":
+        # Each window returns its own first `cap` events, so merging and
+        # re-truncating by start time only reproduces the unbatched
+        # selection while the API sorts ascending by start.
+        raise ValueError(f"batched max_events assumes a '+start' sort, not {EVENT_SORT!r}")
+    if cap is not None and (len(rows) > cap or any(response["capped"] for response in responses)):
+        warnings.warn(
+            f"GFW results truncated at max_events={cap} across all batches",
+            GFWTruncatedResultWarning,
+            stacklevel=2,
+        )
+        rows = rows[:cap]
+    _write_parquet(rows, output_path, source)
+    return len(rows)
+
+
 register_adapter(
     SourceAdapter(
         kind="gfw",
-        batch=run_event_batch,
+        batch=partial(run_event_batch, query=_query_batch, write=_write_batch),
         fetch=fetch_gfw,
         plan=plan_gfw,
         diagnose=diagnose,

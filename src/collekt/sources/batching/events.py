@@ -1,11 +1,20 @@
-"""Windowed event queries assembled into the original collection-level file."""
+"""Windowed event queries assembled into the original collection-level file.
+
+The windowing, checkpointing, resume, and deduplication here are shared by all
+event sources. Everything provider-specific - how one window is queried, how
+the merged events are written, and any adjustment to the window payloads - is
+supplied by the adapter, which binds its own steps with `functools.partial`:
+
+```python
+batch = partial(run_event_batch, query=_query_batch, write=_write_batch)
+```
+"""
 
 from __future__ import annotations
 
 import shutil
-import warnings
+from collections.abc import Callable
 from dataclasses import replace
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +23,15 @@ from collekt.core.config import Config, SourceConfig
 from collekt.core.request import Region, Request
 from collekt.sources.base import ProgressCallback, SourceResult, SourceStatus, get_adapter
 from collekt.sources.batching.common import batch_details, cached, checkpoint_query, deduplicate, failed, staged_output
+
+EventQuery = Callable[[SourceConfig, Region, dict[str, Any], ProgressCallback], dict[str, Any]]
+"""Query one window's payload; return a JSON-serialisable dict with a `rows` list."""
+
+EventWrite = Callable[[list[dict[str, Any]], list[dict[str, Any]], SourceConfig, Path], int]
+"""Write the deduplicated rows (given every window's response) and return the record count."""
+
+PayloadAdjust = Callable[[list[dict[str, Any]], list[Request]], None]
+"""Adjust the per-window payloads in place before they are queried."""
 
 
 def run_event_batch(
@@ -25,6 +43,9 @@ def run_event_batch(
     batch_days: int,
     dry_run: bool,
     progress: ProgressCallback,
+    query: EventQuery,
+    write: EventWrite,
+    adjust: PayloadAdjust | None = None,
 ) -> list[SourceResult]:
     """Query independent windows, resume failures, and deduplicate overlapping events."""
     adapter = get_adapter(source.kind)
@@ -32,22 +53,13 @@ def run_event_batch(
     if item.status == SourceStatus.REUSED:
         return [item]
     windows = request_windows(request, batch_days)
+    payloads = [adapter.plan(window, source, config, request_dir)[0].details["request"] for window in windows]
+    if adjust is not None:
+        adjust(payloads, windows)
     batches = [
-        batch_details(
-            source,
-            window.start_datetime,
-            window.end_datetime,
-            adapter.plan(window, source, config, request_dir)[0].details["request"],
-        )
-        for window in windows
+        batch_details(source, window.start_datetime, window.end_datetime, payload)
+        for window, payload in zip(windows, payloads, strict=True)
     ]
-    if source.kind == "skytruth":
-        # The API payload has second precision. Overlap at midnight so a
-        # fractional timestamp in the preceding second is never lost.
-        for batch, following in zip(batches, windows[1:], strict=False):
-            start = batch["request"]["datetime"].split("/", 1)[0]
-            batch["request"]["datetime"] = f"{start}/{following.start_datetime:%Y-%m-%dT%H:%M:%SZ}"
-        batches = [batch_details(source, batch["start"], batch["end"], batch["request"]) for batch in batches]
     item = replace(item, details=item.details | {"batches": batches})
     if dry_run:
         return [item]
@@ -62,7 +74,7 @@ def run_event_batch(
                     checkpoint_dir,
                     batch,
                     config,
-                    lambda batch=batch: _query(source, request.region, batch["request"], progress),
+                    lambda batch=batch: query(source, request.region, batch["request"], progress),
                 )
             )
         except Exception as exc:  # noqa: BLE001 - save other completed windows for retry
@@ -76,65 +88,11 @@ def run_event_batch(
         )
         if not rows:
             return [failed(item, "the API returned 0 events for this query")]
-        if source.kind == "gfw":
-            from collekt.sources import gfw
-
-            for row in rows:
-                for key in ("start", "end"):
-                    if isinstance(row.get(key), str):
-                        row[key] = datetime.fromisoformat(row[key].replace("Z", "+00:00"))
-            rows.sort(key=lambda row: row["start"].timestamp() if row.get("start") else float("-inf"))
-            cap = gfw._max_events(source)
-            if cap is not None and gfw.EVENT_SORT != "+start":
-                # Each window returns its own first `cap` events, so merging and
-                # re-truncating by start time only reproduces the unbatched
-                # selection while the API sorts ascending by start.
-                raise ValueError(f"batched max_events assumes a '+start' sort, not {gfw.EVENT_SORT!r}")
-            if cap is not None and (len(rows) > cap or any(response["capped"] for response in responses)):
-                warnings.warn(
-                    f"GFW results truncated at max_events={cap} across all batches",
-                    gfw.GFWTruncatedResultWarning,
-                    stacklevel=2,
-                )
-                rows = rows[:cap]
-            with staged_output(item.path) as staged:
-                gfw._write_parquet(rows, staged, source)
-        else:
-            from collekt.sources import skytruth
-
-            rows.sort(key=lambda row: str((row.get("properties") or {}).get("slick_timestamp", "")), reverse=True)
-            with staged_output(item.path) as staged:
-                skytruth._write_parquet(rows, staged, "; ".join(response["url"] for response in responses))
+        with staged_output(item.path) as staged:
+            records = write(rows, responses, source, staged)
     except Exception as exc:  # noqa: BLE001 - retain checkpoints if assembly fails
         return [failed(item, exc)]
     # Only discard the completed queries once the collection file is published,
     # and never let a cleanup error turn a published file into a failure.
     shutil.rmtree(checkpoint_dir, ignore_errors=True)
-    return [replace(item, status=SourceStatus.DOWNLOADED, details=item.details | {"records": len(rows)})]
-
-
-def _query(source: SourceConfig, region: Region, payload: dict[str, Any], progress: ProgressCallback) -> dict[str, Any]:
-    if source.kind == "skytruth":
-        from collekt.sources import skytruth
-
-        url = (source.raw.get("api_url") or skytruth.CERULEAN_API_SLICK) + "?sortby=%2Dslick_timestamp"
-        rows, url = skytruth._fetch_pages(url, payload)
-        return {"rows": rows, "url": url}
-    from collekt.sources import gfw
-
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always", gfw.GFWTruncatedResultWarning)
-        rows = gfw._fetch_events(
-            source,
-            region,
-            payload["start_date"],
-            payload["end_date"],
-            lambda page, total: progress(source.name, f"GFW page {page}: {total} events"),
-        )
-    capped = False
-    for warning in caught:
-        if issubclass(warning.category, gfw.GFWTruncatedResultWarning):
-            capped = True
-        else:
-            warnings.warn(warning.message, warning.category, stacklevel=2)
-    return {"rows": rows, "capped": capped}
+    return [replace(item, status=SourceStatus.DOWNLOADED, details=item.details | {"records": records})]
