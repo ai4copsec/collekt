@@ -1,20 +1,16 @@
 """Windowed event queries assembled into the original collection-level file.
 
 The windowing, checkpointing, resume, and deduplication here are shared by all
-event sources. Everything provider-specific - how one window is queried, how
-the merged events are written, and any adjustment to the window payloads - is
-supplied by the adapter, which binds its own steps with `functools.partial`:
-
-```python
-batch = partial(run_event_batch, query=_query_batch, write=_write_batch)
-```
+event sources. How one window is queried, how the merged events are written,
+and any adjustment to the window payloads is supplied by each adapter as an
+`EventSteps`.
 """
 
 from __future__ import annotations
 
 import shutil
 from collections.abc import Callable
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -24,14 +20,23 @@ from collekt.core.request import Region, Request
 from collekt.sources.base import BatchOptions, ProgressCallback, SourceResult, SourceStatus, get_adapter
 from collekt.sources.batching.common import batch_details, cached, checkpoint_query, deduplicate, failed, staged_output
 
-EventQuery = Callable[[SourceConfig, Region, dict[str, Any], ProgressCallback], dict[str, Any]]
-"""Query one window's payload; return a JSON-serialisable dict with a `rows` list."""
 
-EventWrite = Callable[[list[dict[str, Any]], list[dict[str, Any]], SourceConfig, Path], int]
-"""Write the deduplicated rows (given every window's response) and return the record count."""
+@dataclass(frozen=True)
+class EventSteps:
+    """The provider-specific steps of an event batch.
 
-PayloadAdjust = Callable[[list[dict[str, Any]], list[Request]], None]
-"""Adjust the per-window payloads in place before they are queried."""
+    Attributes:
+        query: Query one window `(source, region, payload, progress)` and return
+            a JSON-serialisable dict with a `rows` list, so it can be checkpointed.
+        write: Write the deduplicated rows `(rows, responses, source, path)`,
+            given every window's response, and return the number of records.
+        adjust: Adjust the per-window payloads `(payloads, windows)` in place
+            before they are queried.
+    """
+
+    query: Callable[[SourceConfig, Region, dict[str, Any], ProgressCallback], dict[str, Any]]
+    write: Callable[[list[dict[str, Any]], list[dict[str, Any]], SourceConfig, Path], int]
+    adjust: Callable[[list[dict[str, Any]], list[Request]], None] | None = None
 
 
 def run_event_batch(
@@ -41,9 +46,7 @@ def run_event_batch(
     request_dir: Path,
     options: BatchOptions,
     *,
-    query: EventQuery,
-    write: EventWrite,
-    adjust: PayloadAdjust | None = None,
+    steps: EventSteps,
 ) -> list[SourceResult]:
     """Query independent windows, resume failures, and deduplicate overlapping events."""
     adapter = get_adapter(source.kind)
@@ -52,8 +55,8 @@ def run_event_batch(
         return [item]
     windows = request_windows(request, options.days)
     payloads = [adapter.plan(window, source, config, request_dir)[0].details["request"] for window in windows]
-    if adjust is not None:
-        adjust(payloads, windows)
+    if steps.adjust is not None:
+        steps.adjust(payloads, windows)
     batches = [
         batch_details(source, window.start_datetime, window.end_datetime, payload)
         for window, payload in zip(windows, payloads, strict=True)
@@ -72,7 +75,7 @@ def run_event_batch(
                     checkpoint_dir,
                     batch,
                     config,
-                    lambda batch=batch: query(source, request.region, batch["request"], options.progress),
+                    lambda batch=batch: steps.query(source, request.region, batch["request"], options.progress),
                 )
             )
         except Exception as exc:  # noqa: BLE001 - save other completed windows for retry
@@ -87,7 +90,7 @@ def run_event_batch(
         if not rows:
             return [failed(item, "the API returned 0 events for this query")]
         with staged_output(item.path) as staged:
-            records = write(rows, responses, source, staged)
+            records = steps.write(rows, responses, source, staged)
     except Exception as exc:  # noqa: BLE001 - retain checkpoints if assembly fails
         return [failed(item, exc)]
     # Only discard the completed queries once the collection file is published,

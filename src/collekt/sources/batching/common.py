@@ -14,7 +14,8 @@ from typing import Any
 
 from collekt.core.config import Config, SourceConfig
 from collekt.core.naming import format_pattern
-from collekt.sources.base import SourceResult, SourceStatus, should_reuse_cache
+from collekt.core.request import Request
+from collekt.sources.base import SourceResult, SourceStatus, get_adapter, should_reuse_cache
 
 # Stand-ins for every placeholder except `date`, which is the only one that
 # changes between the daily files of a batch.
@@ -124,3 +125,33 @@ def deduplicate(rows: list[dict[str, Any]], key: Callable[[dict[str, Any]], Any]
             if identity is not None:
                 seen.add(identity)
     return unique
+
+
+def daily_groups(
+    request: Request,
+    source: SourceConfig,
+    config: Config,
+    request_dir: Path,
+    batch_days: int,
+    *,
+    compatible: Callable[[SourceResult], Any] = lambda item: None,
+) -> tuple[list[SourceResult], list[list[int]]]:
+    """Group consecutive missing days within fixed windows and compatible payloads."""
+    results = [cached(item, config) for item in get_adapter(source.kind).plan(request, source, config, request_dir)]
+    paths = [item.path for item in results if item.path is not None]
+    if len(paths) != len(set(paths)):
+        raise ValueError("batch downloads require a distinct output filename for each day")
+    groups = []
+    previous = None
+    for index, item in enumerate(results):
+        if item.status != SourceStatus.PLANNED or item.day is None:
+            previous = None
+            continue
+        day = date.fromisoformat(item.day)
+        bucket = (day - request.start_datetime.date()).days // batch_days
+        key = (bucket, item.dataset_id, compatible(item))
+        if previous is None or previous[0] != key or day != previous[1] + timedelta(days=1):
+            groups.append([])
+        groups[-1].append(index)
+        previous = key, day
+    return results, groups

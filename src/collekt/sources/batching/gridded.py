@@ -1,82 +1,43 @@
-"""Multi-day grid retrievals with the original daily output contract."""
+"""Multi-day grid retrievals with the original daily output contract.
+
+The grouping, staging, and daily metadata narrowing here are shared by all grid
+sources. How days are grouped, merged into one provider request, retrieved, and
+cut back into days is supplied by each adapter as a `GridSteps`.
+"""
 
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import replace
-from datetime import date, timedelta
+from dataclasses import dataclass, replace
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any
 
 from collekt.core.config import Config, SourceConfig
 from collekt.core.request import Request
-from collekt.sources.base import BatchOptions, SourceResult, SourceStatus, get_adapter
-from collekt.sources.batching.common import batch_details, cached, daily_output_errors, failed, staged_output
+from collekt.sources.base import BatchOptions, SourceResult, SourceStatus
+from collekt.sources.batching.common import batch_details, daily_groups, failed, staged_output
 
 
-def grid_batch_errors(source: SourceConfig) -> list[str]:
-    """Report configurations a grid batch cannot split back into daily files."""
-    errors = daily_output_errors(source)
-    if source.kind == "era5" and (
-        str(source.raw.get("data_format", "netcdf")) != "netcdf"
-        or str(source.raw.get("download_format", "unarchived")) != "unarchived"
-    ):
-        errors.append("batch downloads require data_format='netcdf' and download_format='unarchived'")
-    return errors
+@dataclass(frozen=True)
+class GridSteps:
+    """The provider-specific steps of a grid batch.
 
+    Attributes:
+        compatible: Key of a planned day's result; consecutive days are merged
+            into one retrieval only while their keys are equal.
+        merge: Build one provider request from the planned days of a group.
+        retrieve: Download a merged request `(request, source, payload, path)`
+            to `path`, returning a message for the results, if any.
+        split: Select one planned day `(dataset, item)` from the retrieved dataset.
+        transport: How the provider serves a group, recorded in the provenance.
+    """
 
-def daily_groups(
-    request: Request,
-    source: SourceConfig,
-    config: Config,
-    request_dir: Path,
-    batch_days: int,
-    *,
-    compatible: Callable[[SourceResult], Any] = lambda item: None,
-) -> tuple[list[SourceResult], list[list[int]]]:
-    """Group consecutive missing days within fixed windows and compatible payloads."""
-    results = [cached(item, config) for item in get_adapter(source.kind).plan(request, source, config, request_dir)]
-    paths = [item.path for item in results if item.path is not None]
-    if len(paths) != len(set(paths)):
-        raise ValueError("batch downloads require a distinct output filename for each day")
-    groups = []
-    previous = None
-    for index, item in enumerate(results):
-        if item.status != SourceStatus.PLANNED or item.day is None:
-            previous = None
-            continue
-        day = date.fromisoformat(item.day)
-        bucket = (day - request.start_datetime.date()).days // batch_days
-        key = (bucket, item.dataset_id, compatible(item))
-        if previous is None or previous[0] != key or day != previous[1] + timedelta(days=1):
-            groups.append([])
-        groups[-1].append(index)
-        previous = key, day
-    return results, groups
-
-
-def _compatibility(kind: str, item: SourceResult) -> dict[str, Any]:
-    body = dict(item.details["request"])
-    if kind == "cmems" and body["coordinates_selection_method"] not in {"outside", "nearest"}:
-        # Inside selections fall back to a nearest neighbour when empty. A
-        # range subset can exclude that neighbour at either end; without the
-        # provider's complete time index, keep those selections independent.
-        return body
-    for key in {"era5": ("day",), "cmems": ("start_datetime", "end_datetime"), "ecmwf_open_data": ("date",)}[kind]:
-        body.pop(key, None)
-    return body
-
-
-def _payload(kind: str, members: list[SourceResult]) -> dict[str, Any]:
-    body = dict(members[0].details["request"])
-    if kind == "era5":
-        body["day"] = [day for item in members for day in item.details["request"]["day"]]
-    elif kind == "ecmwf_open_data":
-        body["date"] = [item.details["request"]["date"] for item in members]
-    else:
-        body["end_datetime"] = members[-1].details["request"]["end_datetime"]
-    return body
+    compatible: Callable[[SourceResult], Any]
+    merge: Callable[[list[SourceResult]], dict[str, Any]]
+    retrieve: Callable[[Request, SourceConfig, dict[str, Any], Path], str | None]
+    split: Callable[[Any, SourceResult], Any]
+    transport: str = "range"
 
 
 def run_grid_batch(
@@ -85,31 +46,20 @@ def run_grid_batch(
     config: Config,
     request_dir: Path,
     options: BatchOptions,
+    *,
+    steps: GridSteps,
 ) -> list[SourceResult]:
     """Plan and execute identical provider groups, splitting each into daily files."""
-    results, groups = daily_groups(
-        request,
-        source,
-        config,
-        request_dir,
-        options.days,
-        compatible=lambda item: _compatibility(source.kind, item),
-    )
+    results, groups = daily_groups(request, source, config, request_dir, options.days, compatible=steps.compatible)
     for indices in groups:
         members = [results[index] for index in indices]
         try:
-            payload = _payload(source.kind, members)
+            payload = steps.merge(members)
         except Exception as exc:  # noqa: BLE001 - an unbuildable group must not abort the collection
             for index in indices:
                 results[index] = failed(results[index], exc)
             continue
-        batch = batch_details(
-            source,
-            members[0].day,
-            members[-1].day,
-            payload,
-            transport="individual_files" if source.kind == "ecmwf_open_data" else "range",
-        )
+        batch = batch_details(source, members[0].day, members[-1].day, payload, transport=steps.transport)
         for index in indices:
             results[index] = replace(results[index], details=results[index].details | {"batch": batch})
         if options.dry_run:
@@ -120,7 +70,7 @@ def run_grid_batch(
         try:
             with TemporaryDirectory(prefix=".collekt-batch-", dir=out_dir) as directory:
                 path = Path(directory) / "batch.nc"
-                message = _retrieve(request, source, payload, path)
+                message = steps.retrieve(request, source, payload, path)
                 if len(indices) == 1 and payload == members[0].details["request"]:
                     # The group asked the provider for exactly one day's own
                     # request, so there is nothing to split: publishing the
@@ -137,7 +87,7 @@ def run_grid_batch(
                     for index in indices:
                         item = results[index]
                         try:
-                            daily = _prepare_daily(_split(dataset, item, source.kind))
+                            daily = _prepare_daily(steps.split(dataset, item))
                             with staged_output(item.path) as staged:
                                 daily.to_netcdf(staged)
                             results[index] = replace(item, status=SourceStatus.DOWNLOADED, message=message)
@@ -148,112 +98,6 @@ def run_grid_batch(
                 if results[index].status == SourceStatus.PLANNED:
                     results[index] = failed(results[index], exc)
     return results
-
-
-def _retrieve(request: Request, source: SourceConfig, payload: dict[str, Any], path: Path) -> str | None:
-    if source.kind == "era5":
-        from collekt.sources import era5
-
-        body = dict(payload)
-        dataset_id = body.pop("dataset_id")
-        era5._cdsapi().Client().retrieve(dataset_id, body).download(str(path))
-    elif source.kind == "cmems":
-        from collekt.sources import cmems
-
-        cmems._copernicusmarine().subset(
-            **payload,
-            output_filename=path.name,
-            output_directory=str(path.parent),
-            overwrite=True,
-            disable_progress_bar=True,
-        )
-    else:
-        from collekt.sources import ecmwf_open_data as ecmwf
-
-        resol = str(source.raw.get("resol", "0p25"))
-        client = ecmwf._client_class()(
-            source=str(source.raw.get("source", "ecmwf")),
-            model=str(source.raw.get("model", "ifs")),
-            resol=resol,
-        )
-        raw = path.with_suffix(".grib2")
-        client.retrieve(payload, target=str(raw))
-        missing = ecmwf._crop_to_netcdf(
-            raw,
-            path,
-            request.region,
-            float(source.raw.get("pad_deg", ecmwf.DEFAULT_PAD_DEG)),
-            ecmwf._grid_resolution(resol),
-            source.variables,
-        )
-        if missing:
-            return f"missing from the cropped file (provider limitation): {', '.join(missing)}"
-    return None
-
-
-def _split(dataset: Any, item: SourceResult, kind: str) -> Any:
-    import numpy as np
-
-    payload = item.details["request"]
-    if kind == "ecmwf_open_data":
-        # `time` is the run, whereas `valid_time` combines run and lead time.
-        hour = int(str(payload["time"]).split(":", 1)[0])
-        run = np.datetime64(f"{item.day}T{hour:02d}:00:00")
-        if "time" in dataset.dims:
-            return dataset.sel(time=run)
-        if dataset.coords["time"].values != run:
-            raise ValueError(f"missing forecast run {run}")
-        return dataset
-    if kind == "cmems":
-        return _cmems_slice(dataset, payload)
-    coordinate = "valid_time" if "valid_time" in dataset.coords else "time"
-    expected = np.array([f"{item.day}T{hour}" for hour in payload["time"]], dtype="datetime64[ns]")
-    if not np.isin(expected, dataset[coordinate].values).all():
-        raise ValueError(f"batch is missing requested timestamps for {item.day}")
-    if dataset[coordinate].ndim != 1:
-        if len(expected) == 1 and dataset[coordinate].values == expected[0]:
-            return dataset
-        raise ValueError("ERA5 batch requires a one-dimensional time coordinate")
-    return dataset.sel({coordinate: expected})
-
-
-def _cmems_slice(dataset: Any, payload: dict[str, Any]) -> Any:
-    """Apply the Toolbox's daily temporal selection, including boundary neighbours.
-
-    An `outside` selection can include samples on the next day; an instant can
-    lie between two samples. Merely grouping by UTC date would lose those data.
-    """
-    import numpy as np
-
-    if "time" not in dataset.dims or dataset.sizes["time"] == 0:
-        raise ValueError("CMEMS batch requires a nonempty time dimension")
-    index = dataset.indexes["time"]
-    # `get_indexer` needs an ascending index, while `sel(slice(...))` needs the
-    # bounds in the dataset's own order. Keep the two apart instead of swapping
-    # the bounds and then looking them up in an index pandas would reject.
-    if index.is_monotonic_increasing:
-        ascending, descending = index, False
-    elif index.is_monotonic_decreasing:
-        ascending, descending = index[::-1], True
-    else:
-        raise ValueError("CMEMS batch requires a monotonic time coordinate")
-    start = np.datetime64(payload["start_datetime"])
-    end = np.datetime64(payload["end_datetime"])
-    method = payload["coordinates_selection_method"]
-    if method in {"outside", "nearest"}:
-        adjusted = []
-        for value, side in [(start, "pad"), (end, "backfill")]:
-            if ascending.min() <= value <= ascending.max():
-                position = ascending.get_indexer([value], method="nearest" if method == "nearest" else side)[0]
-                value = ascending[position]
-            adjusted.append(value)
-        start, end = adjusted
-    bounds = (end, start) if descending else (start, end)
-    selected = dataset.sel(time=slice(*bounds))
-    if selected.sizes["time"] == 0:
-        nearest = ascending[ascending.get_indexer([start], method="nearest")[0]]
-        selected = dataset.sel(time=slice(nearest, nearest))
-    return selected
 
 
 def _like(original: str, value: Any) -> str:

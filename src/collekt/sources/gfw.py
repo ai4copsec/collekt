@@ -74,7 +74,7 @@ from collekt.sources.base import (
     register_adapter,
     should_reuse_cache,
 )
-from collekt.sources.batching.events import run_event_batch
+from collekt.sources.batching.events import EventSteps, run_event_batch
 
 SPEC_YAML = Path(__file__).parent / "gfw.spec.yaml"
 DEFAULT_DATASET_ID = "gfw-events"
@@ -618,7 +618,7 @@ def _write_batch(
 register_adapter(
     SourceAdapter(
         kind="gfw",
-        batch=partial(run_event_batch, query=_query_batch, write=_write_batch),
+        batch=partial(run_event_batch, steps=EventSteps(query=_query_batch, write=_write_batch)),
         fetch=fetch_gfw,
         plan=plan_gfw,
         diagnose=diagnose,

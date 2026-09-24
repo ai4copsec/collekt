@@ -811,7 +811,7 @@ def test_provider_coverage_attributes_survive_a_split_batch(tmp_path, monkeypatc
 
 
 def test_cmems_split_handles_a_descending_time_coordinate():
-    from collekt.sources.batching.gridded import _cmems_slice
+    from collekt.sources.cmems import _daily_slice
 
     times = np.arange("2023-01-01", "2023-01-04", dtype="datetime64[h]").astype("datetime64[ns]")
     ascending = xr.Dataset({"uo": ("time", np.arange(times.size, dtype="float32"))}, coords={"time": times})
@@ -820,11 +820,11 @@ def test_cmems_split_handles_a_descending_time_coordinate():
         "end_datetime": "2023-01-02T23:00:00",
         "coordinates_selection_method": "outside",
     }
-    expected = _cmems_slice(ascending, payload)
-    reversed_slice = _cmems_slice(ascending.isel(time=slice(None, None, -1)), payload)
+    expected = _daily_slice(ascending, payload)
+    reversed_slice = _daily_slice(ascending.isel(time=slice(None, None, -1)), payload)
     xr.testing.assert_identical(reversed_slice.sortby("time"), expected)
     with pytest.raises(ValueError, match="monotonic"):
-        _cmems_slice(ascending.isel(time=[2, 0, 1]), payload)
+        _daily_slice(ascending.isel(time=[2, 0, 1]), payload)
 
 
 def test_gfw_checkpoint_resume_preserves_real_parquet_dates_and_metadata(tmp_path, monkeypatch):

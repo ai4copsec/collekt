@@ -27,7 +27,7 @@ day - prefer a day-partitioned Parquet archive for anything large.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
 from typing import Any
@@ -38,6 +38,7 @@ from collekt.core.naming import format_pattern, pattern_values
 from collekt.core.request import Region, Request
 from collekt.core.temporal import SamplingPlan, sampling_plan
 from collekt.sources.base import (
+    BatchOptions,
     ProgressCallback,
     SourceAdapter,
     SourceResult,
@@ -46,8 +47,7 @@ from collekt.sources.base import (
     register_adapter,
     should_reuse_cache,
 )
-from collekt.sources.batching.common import daily_output_errors
-from collekt.sources.batching.files import run_local_batch
+from collekt.sources.batching.common import batch_details, daily_groups, daily_output_errors, failed, staged_output
 from collekt.sources.planning import plan_source, static_source_coverage
 
 DEFAULT_DATASET_ID = "local-archive"
@@ -441,10 +441,98 @@ def plan_local(request: Request, source: SourceConfig, config: Config, request_d
     )
 
 
+def _run_batch(
+    request: Request,
+    source: SourceConfig,
+    config: Config,
+    request_dir: Path,
+    options: BatchOptions,
+) -> list[SourceResult]:
+    """Read a shared archive partition once per batch, preserving daily row files."""
+    spec = _spec(source)
+    glob_files = _glob_files(spec) if isinstance(spec, _LocalGlobSpec) else None
+    matched = {
+        day.isoformat(): glob_files if glob_files is not None else _matched_files(spec, day)
+        for day in request.iter_days()
+    }
+    results, groups = daily_groups(
+        request,
+        source,
+        config,
+        request_dir,
+        options.days,
+        compatible=lambda item: matched[item.day],
+    )
+    for indices in groups:
+        first, last = results[indices[0]], results[indices[-1]]
+        files = matched[first.day]
+        batch = batch_details(
+            source,
+            first.day,
+            last.day,
+            {"files": [str(path) for path in files], "start": first.day, "end": last.day},
+            transport="archive_read",
+        )
+        for index in indices:
+            results[index] = replace(results[index], details=results[index].details | {"batch": batch})
+        if options.dry_run:
+            continue
+        options.progress(source.name, f"reading archive batch {first.day} to {last.day}")
+        try:
+            import damast
+            import polars as pl
+
+            if not files:
+                raise ValueError("no archive files for this query")
+            variables = tuple(dict.fromkeys((*source.variables, spec.time_column))) if source.variables else ()
+            frame, metadata = _read_day_subset(
+                files,
+                time_column=spec.time_column,
+                lat_column=spec.lat_column,
+                lon_column=spec.lon_column,
+                day=date.fromisoformat(first.day),
+                end_day=date.fromisoformat(last.day),
+                region=request.region,
+                variables=variables,
+            )
+        except _ConfigError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - isolate archive failures
+            for index in indices:
+                results[index] = failed(results[index], exc)
+            continue
+        for index in indices:
+            item = results[index]
+            try:
+                start, end = _day_range(date.fromisoformat(item.day))
+                if getattr(frame.schema[spec.time_column], "time_zone", None) is None:
+                    start, end = start.replace(tzinfo=None), end.replace(tzinfo=None)
+                daily = frame.filter(pl.col(spec.time_column).is_between(start, end, closed="left"))
+                if source.variables:
+                    daily = daily.select(list(source.variables))
+                if daily.height == 0:
+                    raise ValueError("no archive rows for this day and region")
+                subset = damast.core.AnnotatedDataFrame(
+                    daily,
+                    _narrowed_metadata(metadata, daily.columns),
+                    validation_mode=damast.core.ValidationMode.IGNORE,
+                )
+                with staged_output(item.path) as staged:
+                    subset.export(staged)
+                results[index] = replace(
+                    item,
+                    status=SourceStatus.DOWNLOADED,
+                    details=item.details | {"rows": daily.height, "matched_files": [str(path) for path in files]},
+                )
+            except Exception as exc:  # noqa: BLE001 - one daily export must not block others
+                results[index] = failed(item, exc)
+    return results
+
+
 register_adapter(
     SourceAdapter(
         kind="local",
-        batch=run_local_batch,
+        batch=_run_batch,
         batch_check=daily_output_errors,
         fetch=fetch_local,
         plan=plan_local,

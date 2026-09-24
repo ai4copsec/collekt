@@ -28,7 +28,7 @@ from collekt.sources.base import (
     register_adapter,
     should_reuse_cache,
 )
-from collekt.sources.batching.events import run_event_batch
+from collekt.sources.batching.events import EventSteps, run_event_batch
 
 logger = logging.getLogger(__name__)
 
@@ -301,7 +301,9 @@ def _write_batch(
 register_adapter(
     SourceAdapter(
         kind="skytruth",
-        batch=partial(run_event_batch, query=_query_batch, write=_write_batch, adjust=_overlap_windows),
+        batch=partial(
+            run_event_batch, steps=EventSteps(query=_query_batch, write=_write_batch, adjust=_overlap_windows)
+        ),
         fetch=fetch_skytruth,
         plan=plan_skytruth,
         known_raw_keys=frozenset({"limit", "api_url"}),

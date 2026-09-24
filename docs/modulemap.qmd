@@ -37,12 +37,12 @@ src/collekt/
   sources/
     base.py                # adapter protocol + registry, SourceResult/status
     planning.py            # shared dry-run planner (plan_source, coverage)
-    batching/              # opt-in SourceAdapter.batch implementations
-      common.py            # provenance, checkpoints, atomic writes, config checks
-      gridded.py           # ERA5/CMEMS/ECMWF grouping and daily splitting
-      events.py            # SkyTruth/GFW window queries and combined outputs
-      files.py             # GFS/eOdyn groups, local reads, isolated HOZINT runs
-      products.py          # Data Space searches, pagination, product downloads
+    batching/              # source-agnostic SourceAdapter.batch machinery;
+                           #   provider steps live in each source module
+      common.py            # day grouping, provenance, checkpoints, atomic writes
+      gridded.py           # run_grid_batch + GridSteps (ERA5/CMEMS/ECMWF)
+      events.py            # run_event_batch + EventSteps (SkyTruth/GFW)
+      files.py             # run_file_batch: logical groups of per-file URLs (GFS/eOdyn)
     cmems.py               # copernicusmarine.subset               (open)
     ecmwf_open_data.py     # forecast wind, GRIB2 cropped to NetCDF (open)
     era5.py                # reanalysis wind, cdsapi                (credentials)

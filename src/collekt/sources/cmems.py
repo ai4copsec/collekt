@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import sys
 from datetime import date
+from functools import partial
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -32,7 +33,8 @@ from collekt.sources.base import (
     register_adapter,
     should_reuse_cache,
 )
-from collekt.sources.batching.gridded import grid_batch_errors, run_grid_batch
+from collekt.sources.batching.common import daily_output_errors
+from collekt.sources.batching.gridded import GridSteps, run_grid_batch
 from collekt.sources.planning import plan_source
 
 
@@ -400,11 +402,87 @@ def diagnose(config: Config, online: bool) -> list[DoctorCheck]:
     return checks
 
 
+def _batch_key(item: SourceResult) -> dict[str, Any]:
+    """Days can share a subset call when everything but the time range matches."""
+    body = dict(item.details["request"])
+    if body["coordinates_selection_method"] not in {"outside", "nearest"}:
+        # Inside selections fall back to a nearest neighbour when empty. A
+        # range subset can exclude that neighbour at either end; without the
+        # provider's complete time index, keep those selections independent.
+        return body
+    body.pop("start_datetime", None)
+    body.pop("end_datetime", None)
+    return body
+
+
+def _merge_batch(members: list[SourceResult]) -> dict[str, Any]:
+    body = dict(members[0].details["request"])
+    body["end_datetime"] = members[-1].details["request"]["end_datetime"]
+    return body
+
+
+def _retrieve_batch(request: Request, source: SourceConfig, payload: dict[str, Any], path: Path) -> str | None:
+    _copernicusmarine().subset(
+        **payload,
+        output_filename=path.name,
+        output_directory=str(path.parent),
+        overwrite=True,
+        disable_progress_bar=True,
+    )
+    return None
+
+
+def _split_batch(dataset: Any, item: SourceResult) -> Any:
+    return _daily_slice(dataset, item.details["request"])
+
+
+def _daily_slice(dataset: Any, payload: dict[str, Any]) -> Any:
+    """Apply the Toolbox's daily temporal selection, including boundary neighbours.
+
+    An `outside` selection can include samples on the next day; an instant can
+    lie between two samples. Merely grouping by UTC date would lose those data.
+    """
+    import numpy as np
+
+    if "time" not in dataset.dims or dataset.sizes["time"] == 0:
+        raise ValueError("CMEMS batch requires a nonempty time dimension")
+    index = dataset.indexes["time"]
+    # `get_indexer` needs an ascending index, while `sel(slice(...))` needs the
+    # bounds in the dataset's own order. Keep the two apart instead of swapping
+    # the bounds and then looking them up in an index pandas would reject.
+    if index.is_monotonic_increasing:
+        ascending, descending = index, False
+    elif index.is_monotonic_decreasing:
+        ascending, descending = index[::-1], True
+    else:
+        raise ValueError("CMEMS batch requires a monotonic time coordinate")
+    start = np.datetime64(payload["start_datetime"])
+    end = np.datetime64(payload["end_datetime"])
+    method = payload["coordinates_selection_method"]
+    if method in {"outside", "nearest"}:
+        adjusted = []
+        for value, side in [(start, "pad"), (end, "backfill")]:
+            if ascending.min() <= value <= ascending.max():
+                position = ascending.get_indexer([value], method="nearest" if method == "nearest" else side)[0]
+                value = ascending[position]
+            adjusted.append(value)
+        start, end = adjusted
+    bounds = (end, start) if descending else (start, end)
+    selected = dataset.sel(time=slice(*bounds))
+    if selected.sizes["time"] == 0:
+        nearest = ascending[ascending.get_indexer([start], method="nearest")[0]]
+        selected = dataset.sel(time=slice(nearest, nearest))
+    return selected
+
+
 register_adapter(
     SourceAdapter(
         kind="cmems",
-        batch=run_grid_batch,
-        batch_check=grid_batch_errors,
+        batch=partial(
+            run_grid_batch,
+            steps=GridSteps(compatible=_batch_key, merge=_merge_batch, retrieve=_retrieve_batch, split=_split_batch),
+        ),
+        batch_check=daily_output_errors,
         fetch=fetch_cmems,
         plan=plan_cmems,
         diagnose=diagnose,
