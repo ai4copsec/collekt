@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -17,7 +18,7 @@ import requests
 from collekt.core.availability import Availability, AvailabilityMethod, AvailabilityStatus
 from collekt.core.config import Config, SourceConfig
 from collekt.core.naming import format_pattern, pattern_values
-from collekt.core.request import Request
+from collekt.core.request import Region, Request
 from collekt.sources.base import (
     ProgressCallback,
     SourceAdapter,
@@ -27,6 +28,7 @@ from collekt.sources.base import (
     register_adapter,
     should_reuse_cache,
 )
+from collekt.sources.batching.events import EventSteps, run_event_batch
 
 logger = logging.getLogger(__name__)
 
@@ -266,9 +268,42 @@ def plan_skytruth(request: Request, source: SourceConfig, config: Config, reques
     ]
 
 
+def _overlap_windows(payloads: list[dict[str, Any]], windows: list[Request]) -> None:
+    """End each window at the next one's start so no event is lost at midnight.
+
+    The API payload has second precision, so a window ending at 23:59:59 would
+    drop an event stamped in the fraction of a second before midnight. The
+    overlap is harmless: events seen twice are deduplicated by ID.
+    """
+    for payload, following in zip(payloads, windows[1:], strict=False):
+        start = payload["datetime"].split("/", 1)[0]
+        payload["datetime"] = f"{start}/{following.start_datetime:%Y-%m-%dT%H:%M:%SZ}"
+
+
+def _query_batch(
+    source: SourceConfig, region: Region, payload: dict[str, Any], progress: ProgressCallback
+) -> dict[str, Any]:
+    """Fetch every page of one batch window."""
+    url = (source.raw.get("api_url") or CERULEAN_API_SLICK) + "?sortby=%2Dslick_timestamp"
+    rows, url = _fetch_pages(url, payload)
+    return {"rows": rows, "url": url}
+
+
+def _write_batch(
+    rows: list[dict[str, Any]], responses: list[dict[str, Any]], source: SourceConfig, output_path: Path
+) -> int:
+    """Write the merged slicks newest first, as the unbatched query returns them."""
+    rows.sort(key=lambda row: str((row.get("properties") or {}).get("slick_timestamp", "")), reverse=True)
+    _write_parquet(rows, output_path, "; ".join(response["url"] for response in responses))
+    return len(rows)
+
+
 register_adapter(
     SourceAdapter(
         kind="skytruth",
+        batch=partial(
+            run_event_batch, steps=EventSteps(query=_query_batch, write=_write_batch, adjust=_overlap_windows)
+        ),
         fetch=fetch_skytruth,
         plan=plan_skytruth,
         known_raw_keys=frozenset({"limit", "api_url"}),

@@ -35,6 +35,29 @@ skipped, and it is the contract downstream consumers rely on.
 - `warnings` holds skipped sources; `failures` holds failed ones. Both are
   non-blocking unless the run is `--strict`.
 
+## Batch provenance
+
+With `batch_days` enabled, daily files can share a `details.batch` record.
+Collection-level event files instead carry `details.batches`, a list of the
+queries used to build that file. Each record contains `id`, `start`, `end`,
+`transport`, and the concrete provider `request`. Native per-day parameters and
+`details.temporal` remain attached to daily results.
+
+`transport` distinguishes `range`, `individual_files`, `archive_read`, and
+`search_then_individual_files`. A retrieval group is not necessarily one HTTP
+request: provider SDKs, pagination, and product downloads can make several.
+Summary counters continue to count files/results. On reuse, the original batch
+provenance is retained instead of being replaced by the current batch setting.
+
+A batched download also reports the planner's `provider`, `method`, `request`,
+and `availability` for each file, where the same file downloaded without
+`batch_days` carries only `temporal`. A collection filled in over several runs
+can therefore hold both shapes. Consumers should read `details` keys by name
+rather than assuming a fixed set — which is what the flexible block is for.
+
+This is optional metadata within the existing flexible `details` block; the
+manifest version remains `0.1`. See [Batch downloads](batching.qmd).
+
 ## Draft schema
 
 A permissive draft JSON Schema ships at

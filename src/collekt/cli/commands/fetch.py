@@ -12,7 +12,7 @@ from collekt.core.datasets import DatasetConfig
 from collekt.core.fetcher import Fetcher
 from collekt.core.reporting import CliReporter
 from collekt.core.request import Region, Request
-from collekt.sources.base import SourceResult
+from collekt.sources.base import SourceResult, SourceStatus
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:
@@ -40,6 +40,9 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     parser.add_argument("--strict", action="store_true", help="Fail if any requested source is skipped")
     parser.add_argument("--no-cache", action="store_true", help="Ignore cached files and download again")
     parser.add_argument("--dry-run", action="store_true", help="Plan provider requests without downloading")
+    parser.add_argument(
+        "--batch-days", type=int, help="Maximum UTC calendar days per retrieval group (positive integer)"
+    )
     parser.set_defaults(handler=execute)
 
 
@@ -54,6 +57,7 @@ def execute(args: argparse.Namespace, console: Console) -> int:
         conf_dir=args.conf_dir,
         strict=args.strict,
         progress=reporter.progress,
+        batch_days=args.batch_days,
     )
     result = fetcher.plan() if args.dry_run else fetcher.download(use_cache=not args.no_cache)
     if args.dry_run:
@@ -106,3 +110,18 @@ def _render_plan(console: Console, results: tuple[SourceResult, ...]) -> None:
             str(result.path or ""),
         )
     console.print(table)
+    groups = {}
+    for result in results:
+        if result.status != SourceStatus.PLANNED:
+            continue
+        details = result.details or {}
+        batches = [details["batch"]] if "batch" in details else details.get("batches", [])
+        for batch in batches:
+            groups[(result.source, batch["id"])] = batch
+    if groups:
+        table = Table(title=f"{len(groups)} planned retrieval groups (provider requests may be multiple)")
+        for name in ("Source", "Start", "End", "Transport"):
+            table.add_column(name)
+        for (source, _), batch in groups.items():
+            table.add_row(source, batch["start"], batch["end"], batch["transport"])
+        console.print(table)

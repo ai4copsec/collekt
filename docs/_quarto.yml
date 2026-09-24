@@ -19,6 +19,8 @@ website:
         href: products.qmd
       - text: "CLI"
         href: cli.qmd
+      - text: "Batch downloads"
+        href: batching.qmd
       - text: "Credentials"
         href: credentials.qmd
       - text: "Manifest"

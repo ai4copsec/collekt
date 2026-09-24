@@ -11,6 +11,7 @@ from __future__ import annotations
 import math
 import re
 from datetime import date, datetime, time
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -30,6 +31,8 @@ from collekt.sources.base import (
     register_adapter,
     should_reuse_cache,
 )
+from collekt.sources.batching.common import daily_output_errors
+from collekt.sources.batching.gridded import GridSteps, run_grid_batch
 from collekt.sources.planning import plan_source, static_source_coverage
 
 DEFAULT_DATASET_ID = "ecmwf-open-data-ifs"
@@ -305,9 +308,69 @@ def diagnose(config: Config, online: bool) -> list[DoctorCheck]:
     ]
 
 
+def _batch_key(item: SourceResult) -> dict[str, Any]:
+    """Forecast dates can share a client call when everything but the date matches."""
+    body = dict(item.details["request"])
+    body.pop("date", None)
+    return body
+
+
+def _merge_batch(members: list[SourceResult]) -> dict[str, Any]:
+    body = dict(members[0].details["request"])
+    body["date"] = [item.details["request"]["date"] for item in members]
+    return body
+
+
+def _retrieve_batch(request: Request, source: SourceConfig, payload: dict[str, Any], path: Path) -> str | None:
+    resol = str(source.raw.get("resol", "0p25"))
+    client = _client_class()(
+        source=str(source.raw.get("source", "ecmwf")),
+        model=str(source.raw.get("model", "ifs")),
+        resol=resol,
+    )
+    raw = path.with_suffix(".grib2")
+    client.retrieve(payload, target=str(raw))
+    missing = _crop_to_netcdf(
+        raw,
+        path,
+        request.region,
+        float(source.raw.get("pad_deg", DEFAULT_PAD_DEG)),
+        _grid_resolution(resol),
+        source.variables,
+    )
+    if missing:
+        return f"missing from the cropped file (provider limitation): {', '.join(missing)}"
+    return None
+
+
+def _split_batch(dataset: Any, item: SourceResult) -> Any:
+    """Select one day's forecast run, keeping all of its lead times."""
+    import numpy as np
+
+    # `time` is the run, whereas `valid_time` combines run and lead time.
+    hour = int(str(item.details["request"]["time"]).split(":", 1)[0])
+    run = np.datetime64(f"{item.day}T{hour:02d}:00:00")
+    if "time" in dataset.dims:
+        return dataset.sel(time=run)
+    if dataset.coords["time"].values != run:
+        raise ValueError(f"missing forecast run {run}")
+    return dataset
+
+
 register_adapter(
     SourceAdapter(
         kind="ecmwf_open_data",
+        batch=partial(
+            run_grid_batch,
+            steps=GridSteps(
+                compatible=_batch_key,
+                merge=_merge_batch,
+                retrieve=_retrieve_batch,
+                split=_split_batch,
+                transport="individual_files",
+            ),
+        ),
+        batch_check=daily_output_errors,
         fetch=fetch_ecmwf_open_data,
         plan=plan_ecmwf_open_data,
         diagnose=diagnose,

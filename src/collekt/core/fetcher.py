@@ -6,6 +6,7 @@ import tempfile
 from dataclasses import replace
 from pathlib import Path
 
+from collekt.core.batching import validate_batch_days
 from collekt.core.collect import run_collection
 from collekt.core.config import Config
 from collekt.core.datasets import DatasetConfig
@@ -56,6 +57,9 @@ class Fetcher:
         strict: Override config strict mode. If true, warnings become a final
             `RuntimeError` after the manifest is written.
         progress: Optional progress callback.
+        batch_days: Maximum UTC calendar days per retrieval group. A positive
+            integer enables provider-aware batching while retaining daily files
+            for daily sources. `None` keeps the source's existing behavior.
     """
 
     def __init__(
@@ -67,7 +71,10 @@ class Fetcher:
         conf_dir: str | Path | None = None,
         strict: bool | None = None,
         progress: ProgressCallback = null_progress,
+        batch_days: int | None = None,
     ) -> None:
+        validate_batch_days(batch_days)
+        self.batch_days = batch_days
         self.request = request
         self.strict = strict
         self.progress = progress
@@ -114,6 +121,7 @@ class Fetcher:
             config=self.config,
             strict=self.strict,
             dry_run=True,
+            batch_days=self.batch_days,
             progress=self.progress,
         )
         return self.plan_result
@@ -143,6 +151,7 @@ class Fetcher:
             strict=self.strict,
             use_cache=use_cache,
             dry_run=False,
+            batch_days=self.batch_days,
             progress=self.progress,
         )
         return self.download_result
