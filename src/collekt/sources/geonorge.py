@@ -6,17 +6,18 @@ are static reference data, so this is a per-request source: the time window is
 ignored and a single file is written for the whole request.
 
 Each catalog entry names a WFS ``endpoint`` and the ``type_names`` to request.
-Features are fetched with a server-side BBOX (GetFeature, paged) and then clipped
-exactly to the bbox. A request whose region misses the entry's declared ``coverage`` is skipped
-without contacting Geonorge.
+Features are fetched with a server-side BBOX and then clipped
+exactly to the bbox. A request whose region misses the entry's declared ``coverage``
+is skipped without contacting Geonorge.
 """
 
 from __future__ import annotations
 
+import logging
+import math
 import tempfile
 import time
 import warnings
-from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -83,11 +84,16 @@ def _record_failure(host: str) -> None:
     _host_failures[host] = [*_recent_failures(host), time.monotonic()]
 
 
-Report = Callable[[str], None]  # one progress line, e.g. "app:Korallrev page 1: HTTP 200 in 0.3 s, ..."
-
-
-def _ignore(_message: str) -> None:
-    """Default `Report` that drops progress lines."""
+# Request/response log lines in the same form as the Copernicus Marine client's,
+# e.g. "INFO - 2026-10-21T17:34:21Z - GetFeature app:Korallrev page 1 from wfs.geonorge.no".
+logger = logging.getLogger("collekt.geonorge")
+if not logger.handlers:
+    _handler = logging.StreamHandler()
+    _handler.setFormatter(logging.Formatter("%(levelname)s - %(asctime)s - %(message)s", "%Y-%m-%dT%H:%M:%SZ"))
+    _handler.formatter.converter = time.gmtime  # timestamps in UTC, matching the trailing Z
+    logger.addHandler(_handler)
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
 
 
 def _bbox(request: Request) -> Bbox:
@@ -136,21 +142,23 @@ def _wfs_params(bbox: Bbox) -> dict[str, Any]:
 
 
 def _feature_count(path: Path) -> int:
+    """Features in one GetFeature page, 0 for a valid empty page.
+
+    A page GDAL cannot read at all (e.g. an HTML error or login page served with
+    HTTP 200) raises, so the dataset is reported as failed rather than as empty.
+    """
     import pyogrio
 
-    try:
-        return int(pyogrio.read_info(path, force_feature_count=True)["features"])
-    except Exception:  # noqa: BLE001 - an unreadable page holds no usable features
+    if len(pyogrio.list_layers(path)) == 0:  # an empty FeatureCollection has no layer
         return 0
+    return int(pyogrio.read_info(path, force_feature_count=True)["features"])
 
 
-def _wfs_pages(
-    endpoint: str, type_name: str, base_params: dict[str, Any], out_dir: Path, report: Report = _ignore
-) -> list[Path]:
+def _wfs_pages(endpoint: str, type_name: str, base_params: dict[str, Any], out_dir: Path) -> list[Path]:
     """Fetch every GetFeature page of one feature type; returns only pages with features.
 
-    Reports each request's HTTP status, elapsed time, size and
-    feature count, so a slow or failing server is visible while it happens.
+    Logs each request's HTTP status, elapsed time, size and feature count, so a
+    slow or failing server is visible while it happens.
     """
     host = endpoint.split("/")[2]
     paths: list[Path] = []
@@ -167,19 +175,19 @@ def _wfs_pages(
                 f"{host} failed {len(failures)} times in the last {HOST_FAILURE_WINDOW / 60:g} min; "
                 f"not querying it again for now"
             )
-        report(f"GetFeature {label} from {host}")
+        logger.info(f"GetFeature {label} from {host}")
         started = time.monotonic()
         try:
             response = _session.get(endpoint, params=params, timeout=WFS_REQUEST_TIMEOUT)
         except requests.RequestException as exc:
             _record_failure(host)
-            report(f"{label}: {type(exc).__name__} after {time.monotonic() - started:.1f} s")
+            logger.warning(f"{label}: {type(exc).__name__} after {time.monotonic() - started:.1f} s")
             raise
         elapsed = time.monotonic() - started
         if not response.ok or "ExceptionReport" in response.text[:512]:
             if response.status_code in GATEWAY_ERRORS:
                 _record_failure(host)
-            report(f"{label}: HTTP {response.status_code} after {elapsed:.1f} s")
+            logger.warning(f"{label}: HTTP {response.status_code} after {elapsed:.1f} s")
             raise RuntimeError(
                 f"WFS GetFeature failed for {type_name} (HTTP {response.status_code} after {elapsed:.0f} s): "
                 f"{response.text[:200]}"
@@ -188,7 +196,7 @@ def _wfs_pages(
         path = out_dir / f"{safe_type}_{page}.gml"
         path.write_bytes(response.content)
         count = _feature_count(path)
-        report(
+        logger.info(
             f"{label}: HTTP {response.status_code} in {elapsed:.1f} s, {len(response.content) / 1024:.1f} KB, "
             f"{count} features"
         )
@@ -208,13 +216,13 @@ def _wfs_pages(
     return paths
 
 
-def fetch_wfs(source: SourceConfig, bbox: Bbox, out_dir: Path, report: Report = _ignore) -> list[Path]:
+def fetch_wfs(source: SourceConfig, bbox: Bbox, out_dir: Path) -> list[Path]:
     """GetFeature each of the source's ``type_names`` with a server-side BBOX."""
     endpoint = str(source.raw["endpoint"])
     base_params = _wfs_params(bbox)
     paths: list[Path] = []
     for type_name in source.raw.get("type_names") or ():
-        paths.extend(_wfs_pages(endpoint, str(type_name), base_params, out_dir, report))
+        paths.extend(_wfs_pages(endpoint, str(type_name), base_params, out_dir))
     return paths
 
 
@@ -250,12 +258,19 @@ def crop(paths: list[Path], bbox: Bbox) -> gpd.GeoDataFrame:
     return gpd.GeoDataFrame(pd.concat(frames, ignore_index=True), crs="EPSG:4326")
 
 
+def _text_or_none(value: Any) -> str | None:
+    """A cell as text, keeping missing values (None, float NaN) missing instead of the string 'nan'."""
+    if value is None or (isinstance(value, float) and math.isnan(value)):
+        return None
+    return str(value)
+
+
 def _write_geoparquet(features: gpd.GeoDataFrame, output_path: Path) -> None:
     """Write via a temporary file so an interrupted write never leaves a reusable partial file."""
     # Columns merged from several layers/pages can mix value types, which Arrow rejects.
     for column in features.columns.drop(features.geometry.name):
         if features[column].dtype == object:
-            features[column] = features[column].map(lambda value: None if value is None else str(value))
+            features[column] = features[column].map(_text_or_none)
     partial = output_path.with_name(f"{output_path.name}.part")
     features.to_parquet(partial)
     partial.replace(output_path)
@@ -311,8 +326,15 @@ def fetch_geonorge(
     try:
         progress(source.name, f"fetching Geonorge dataset {source.dataset_id}")
         with tempfile.TemporaryDirectory(prefix="collekt-geonorge-") as scratch:
-            pages = fetch_wfs(source, bbox, Path(scratch), report=lambda line: progress(source.name, line))
+            started = time.monotonic()
+            logger.info(f"Requesting {source.name} ({', '.join(source.raw.get('type_names') or ())})")
+            pages = fetch_wfs(source, bbox, Path(scratch))
+            size_kb = sum(page.stat().st_size for page in pages) / 1024
             features = crop(pages, bbox)
+            logger.info(
+                f"Fetched {source.name}: {len(features)} features inside the region, "
+                f"{size_kb:.1f} KB in {len(pages)} page(s), {time.monotonic() - started:.1f} s"
+            )
     except HostUnavailableError as exc:
         return [_result(source, SourceStatus.SKIPPED, message=str(exc))]
     except Exception as exc:  # noqa: BLE001 - provider/network failures are reported, not raised

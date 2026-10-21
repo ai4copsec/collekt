@@ -9,6 +9,7 @@ import types
 from pathlib import Path
 
 import geopandas as gpd
+import pyogrio
 import pytest
 from shapely.geometry import Point
 
@@ -101,7 +102,7 @@ def test_fetch_outside_coverage_is_skipped_without_network(tmp_path, monkeypatch
 
 
 def test_fetch_inside_coverage_still_queries(tmp_path, monkeypatch):
-    def fake_fetch_wfs(source, bbox, out_dir, report):
+    def fake_fetch_wfs(source, bbox, out_dir):
         return [_write_points(out_dir / "page.json", {"inside": Point(5.0, 61.0)})]
 
     monkeypatch.setattr(geonorge, "fetch_wfs", fake_fetch_wfs)
@@ -138,7 +139,7 @@ def test_plan_reports_wfs_request_without_network(tmp_path):
 
 
 def test_fetch_writes_cropped_geoparquet(tmp_path, monkeypatch):
-    def fake_fetch_wfs(source, bbox, out_dir, report):
+    def fake_fetch_wfs(source, bbox, out_dir):
         return [_write_points(out_dir / "page.json", {"inside": Point(5.0, 61.0), "outside": Point(20, 70)})]
 
     monkeypatch.setattr(geonorge, "fetch_wfs", fake_fetch_wfs)
@@ -151,7 +152,7 @@ def test_fetch_writes_cropped_geoparquet(tmp_path, monkeypatch):
 
 
 def test_fetch_reuses_existing_file(tmp_path, monkeypatch):
-    def fake_fetch_wfs(source, bbox, out_dir, report):
+    def fake_fetch_wfs(source, bbox, out_dir):
         return [_write_points(out_dir / "page.json", {"inside": Point(5.0, 61.0)})]
 
     monkeypatch.setattr(geonorge, "fetch_wfs", fake_fetch_wfs)
@@ -163,7 +164,7 @@ def test_fetch_reuses_existing_file(tmp_path, monkeypatch):
 
 
 def test_fetch_with_no_features_in_region_is_a_warning(tmp_path, monkeypatch):
-    def fake_fetch_wfs(source, bbox, out_dir, report):
+    def fake_fetch_wfs(source, bbox, out_dir):
         return [_write_points(out_dir / "page.json", {"outside": Point(20, 70)})]
 
     monkeypatch.setattr(geonorge, "fetch_wfs", fake_fetch_wfs)
@@ -174,7 +175,7 @@ def test_fetch_with_no_features_in_region_is_a_warning(tmp_path, monkeypatch):
 
 
 def test_fetch_provider_error_is_a_failure(tmp_path, monkeypatch):
-    def broken(source, bbox, out_dir, report):
+    def broken(source, bbox, out_dir):
         raise RuntimeError("WFS GetFeature failed")
 
     monkeypatch.setattr(geonorge, "fetch_wfs", broken)
@@ -185,11 +186,12 @@ def test_fetch_provider_error_is_a_failure(tmp_path, monkeypatch):
 
 
 def test_write_geoparquet_stringifies_mixed_object_columns(tmp_path):
-    gdf = gpd.GeoDataFrame({"mixed": [1, "a"]}, geometry=[Point(0, 0), Point(1, 1)], crs="EPSG:4326")
+    points = [Point(0, 0), Point(1, 1), Point(2, 2)]
+    gdf = gpd.GeoDataFrame({"mixed": [1, "a", float("nan")]}, geometry=points, crs="EPSG:4326")
     path = tmp_path / "out.parquet"
     geonorge._write_geoparquet(gdf, path)
 
-    assert gpd.read_parquet(path)["mixed"].tolist() == ["1", "a"]
+    assert gpd.read_parquet(path)["mixed"].tolist() == ["1", "a", None]  # missing stays missing, not "nan"
     assert not path.with_name("out.parquet.part").exists()
 
 
@@ -263,15 +265,23 @@ def test_wfs_pages_termination(tmp_path, monkeypatch, total, expected_files, exp
     assert sorted(tmp_path.iterdir()) == sorted(paths)
 
 
-def test_wfs_pages_report_status_time_size_and_features(tmp_path, monkeypatch):
+def test_wfs_pages_log_status_time_size_and_features(tmp_path, monkeypatch, caplog):
     monkeypatch.setattr(geonorge, "_session", _PagingSession(3))
     monkeypatch.setattr(geonorge, "WFS_PAGE_SIZE", 2)
-    lines = []
-    geonorge._wfs_pages("https://wfs.test/wfs", "app:Type", {"count": 2}, tmp_path, lines.append)
+    with caplog.at_level("INFO", logger=geonorge.logger.name):
+        geonorge._wfs_pages("https://wfs.test/wfs", "app:Type", {"count": 2}, tmp_path)
+    lines = [record.getMessage() for record in caplog.records]
 
     assert lines[0] == "GetFeature app:Type page 1 from wfs.test"
     assert lines[1].startswith("app:Type page 1: HTTP 200 in ") and lines[1].endswith("KB, 2 features")
     assert lines[3].endswith("1 features")
+
+
+def test_wfs_pages_raise_on_unreadable_page(tmp_path, monkeypatch):
+    login_page = _FakeResponse(b"<!doctype html><html><body>log in</body></html>")  # HTTP 200, not data
+    monkeypatch.setattr(geonorge, "_session", types.SimpleNamespace(get=lambda *a, **k: login_page))
+    with pytest.raises(pyogrio.errors.DataSourceError):
+        geonorge._wfs_pages("http://wfs.test", "app:Type", {"count": 1000}, tmp_path)
 
 
 def test_wfs_pages_raise_on_exception_report(tmp_path, monkeypatch):
