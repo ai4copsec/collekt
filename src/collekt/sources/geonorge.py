@@ -84,16 +84,7 @@ def _record_failure(host: str) -> None:
     _host_failures[host] = [*_recent_failures(host), time.monotonic()]
 
 
-# Request/response log lines in the same form as the Copernicus Marine client's,
-# e.g. "INFO - 2026-10-21T17:34:21Z - GetFeature app:Korallrev page 1 from wfs.geonorge.no".
-logger = logging.getLogger("collekt.geonorge")
-if not logger.handlers:
-    _handler = logging.StreamHandler()
-    _handler.setFormatter(logging.Formatter("%(levelname)s - %(asctime)s - %(message)s", "%Y-%m-%dT%H:%M:%SZ"))
-    _handler.formatter.converter = time.gmtime  # timestamps in UTC, matching the trailing Z
-    logger.addHandler(_handler)
-    logger.setLevel(logging.INFO)
-    logger.propagate = False
+logger = logging.getLogger(__name__)
 
 
 def _bbox(request: Request) -> Bbox:
