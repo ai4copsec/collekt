@@ -53,6 +53,8 @@ from collekt.sources.base import (
     register_adapter,
     should_reuse_cache,
 )
+from collekt.sources.batching.common import daily_output_errors
+from collekt.sources.batching.files import run_file_batch
 from collekt.sources.planning import plan_source, static_source_coverage
 
 DEFAULT_DATASET_ID = "gfs-analysis"
@@ -255,6 +257,7 @@ def fetch_gfs(
     request_dir: Path,
     *,
     progress: ProgressCallback = null_progress,
+    _days: tuple[date, ...] | None = None,
 ) -> list[SourceResult]:
     """Fetch GFS analysis wind, one region-subset NetCDF per day.
 
@@ -269,6 +272,8 @@ def fetch_gfs(
         config: Global configuration (cache policy).
         request_dir: Directory for this collection request.
         progress: Optional progress callback.
+        _days: Internal batch-planner day selection; keeps the full request's
+            timestamp anchor and output naming context.
 
     Returns:
         One `SourceResult` per requested day.
@@ -279,7 +284,7 @@ def fetch_gfs(
     dataset_id = source.dataset_id or DEFAULT_DATASET_ID
     plan = sampling_plan(request, source)
 
-    for day in request.iter_days():
+    for day in request.iter_days() if _days is None else _days:
         values = pattern_values(
             source=source.name,
             dataset_id=dataset_id,
@@ -412,6 +417,8 @@ def diagnose(config: Config, online: bool) -> list[DoctorCheck]:
 register_adapter(
     SourceAdapter(
         kind="gfs",
+        batch=run_file_batch,
+        batch_check=daily_output_errors,
         fetch=fetch_gfs,
         plan=plan_gfs,
         diagnose=diagnose,
