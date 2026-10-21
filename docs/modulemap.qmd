@@ -44,6 +44,7 @@ src/collekt/
     skytruth.py            # oil-slick features -> Parquet          (open)
     hozint.py              # threat-intel reports -> Parquet        (credentials)
     gfw.py                 # GFW events -> Parquet                  (credentials)
+    geonorge.py            # Geonorge maritime vectors -> GeoParquet (open; orders need email)
     eodyn.py               # eOdyn ocean-data (archive/api)         (credentials)
     local.py               # local damast-managed tabular archive   (no catalog entry)
     skytruth.spec.yaml     # Skytruth column metadata (damast spec)
@@ -56,7 +57,7 @@ src/collekt/
     default.yaml           # runtime defaults + source_catalogs
     source/                # curated dataset catalogs: cmems_global, cmems_eur,
                            #   cmems_med, cmems_ibi, cmems_nws, ecmwf, gfs,
-                           #   eodyn, skytruth, dataspace, gfw
+                           #   eodyn, skytruth, dataspace, gfw, geonorge
 
   resources/
     schema/manifest.schema.json   # draft manifest schema (reference; not enforced)

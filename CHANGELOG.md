@@ -7,6 +7,15 @@ under `[main]`; `just bump` copies them under the new version.
 
 ### Added
 
+- a `geonorge` source adapter and `Geonorge` `DatasetSelection`, with a bundled
+  `geonorge` catalog of ten curated Norwegian maritime vector datasets
+  (fairways, navigation aids, emergency harbours, aquaculture sites, coral
+  reefs, military and trawling restricted zones, depth contours),
+  each pinned by Geonorge UUID. WFS datasets are cropped server-side by bbox;
+  download datasets go through the nedlasting.geonorge.no order API (server-side
+  polygon clip, else the whole-country file cropped locally) and need
+  `GEONORGE_EMAIL`. Features are clipped to the request bbox and written as
+  GeoParquet; restricted datasets are skipped with a warning.
 - a `local` source adapter and `Local` `DatasetSelection`: relies on damast
   to interface an existing tabular-data archive (file(s) *.csv, *.parquet).
   Data can be queried through the normal `Request(region, time)` -> `fetch()` -> manifest

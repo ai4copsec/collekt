@@ -1,0 +1,123 @@
+# Geonorge maritime vector datasets — open feature sources, one entry per dataset.
+#
+# Curated for maritime surveillance and pinned by catalogue UUID (`dataset_id`),
+# which stays stable across title edits. Each entry is cropped to the request
+# bbox and written as GeoParquet; the time window is ignored (static reference
+# data) and the entries take no variable selection.
+#
+# Prefer the WFS variant of a dataset (server-side bbox crop) and use
+# `protocol: download` (nedlasting.geonorge.no order API) only where no WFS
+# exists: it needs GEONORGE_EMAIL and may fall back to ordering the whole-country
+# file. WFS entries name the exact feature types to request, so no per-run
+# GetCapabilities call is needed; re-probe an endpoint's GetCapabilities only
+# when adding or changing an entry. Features are requested in each server's GML
+# default.
+
+sources:
+  # --- navigation & infrastructure
+  geonorge_depth_contours:  # Dybdedata - kurver generaliserte
+    kind: geonorge
+    path: "geonorge"
+    filename_pattern: "{source}_{bbox_hash}.parquet"
+    dataset_id: "871960a1-0f01-4c47-8f79-5d338b65197e"
+    protocol: download
+    url: "https://kartkatalog.geonorge.no/metadata/uuid/871960a1-0f01-4c47-8f79-5d338b65197e"
+
+  geonorge_fairways:  # Hovedled og biled WFS
+    kind: geonorge
+    path: "geonorge"
+    filename_pattern: "{source}_{bbox_hash}.parquet"
+    dataset_id: "42e58e93-13da-4f47-8c1c-3525af7c3e77"
+    protocol: wfs
+    endpoint: "https://wfs.geonorge.no/skwms1/wfs.farled"
+    type_names: ["app:HovedledOgBiled"]  # fairway centrelines only, not the area polygon + outline
+    url: "https://kartkatalog.geonorge.no/metadata/uuid/42e58e93-13da-4f47-8c1c-3525af7c3e77"
+
+  geonorge_navigation_aids:  # Navigasjonsinstallasjoner WFS
+    kind: geonorge
+    path: "geonorge"
+    filename_pattern: "{source}_{bbox_hash}.parquet"
+    dataset_id: "73e46cf4-d9f5-4d75-b148-bb5edf888c4a"
+    protocol: wfs
+    endpoint: "https://maps.kystverket.cloudgis.no/enterprise/services/PROD/nfs_sistop_ekstern_prod/MapServer/WFSServer"
+    type_names:
+      - "nfs_sistop_ekstern_prod:Lys"
+      - "nfs_sistop_ekstern_prod:IB"
+      - "nfs_sistop_ekstern_prod:Racon"
+      - "nfs_sistop_ekstern_prod:Fast_sjømerke"
+      - "nfs_sistop_ekstern_prod:Flytende_merke"
+    url: "https://kartkatalog.geonorge.no/metadata/uuid/73e46cf4-d9f5-4d75-b148-bb5edf888c4a"
+
+  geonorge_emergency_harbours:  # Nødhavner WFS
+    kind: geonorge
+    path: "geonorge"
+    filename_pattern: "{source}_{bbox_hash}.parquet"
+    dataset_id: "3eef614a-b82f-4779-8a30-02876b792d1a"
+    protocol: wfs
+    endpoint: "https://wfs.geonorge.no/skwms1/wfs.nodhavner"
+    type_names: ["app:Nødhavn"]
+    url: "https://kartkatalog.geonorge.no/metadata/uuid/3eef614a-b82f-4779-8a30-02876b792d1a"
+
+  geonorge_aquaculture:  # Akvakultur - lokaliteter WFS
+    kind: geonorge
+    path: "geonorge"
+    filename_pattern: "{source}_{bbox_hash}.parquet"
+    dataset_id: "1765495c-cfce-49d1-899e-321e2c421f39"
+    protocol: wfs
+    endpoint: "https://wfs.geonorge.no/skwms1/wfs.akvakulturlokaliteter"
+    type_names: ["app:AkvakulturFlate", "app:AkvakulturPunkt", "app:Akvakulturgrense"]
+    url: "https://kartkatalog.geonorge.no/metadata/uuid/1765495c-cfce-49d1-899e-321e2c421f39"
+
+  geonorge_coral_reefs:  # Korallrev WFS
+    kind: geonorge
+    path: "geonorge"
+    filename_pattern: "{source}_{bbox_hash}.parquet"
+    dataset_id: "4e3c59b4-528f-4806-ada3-e9455c9b7d4e"
+    protocol: wfs
+    endpoint: "https://wfs.geonorge.no/skwms1/wfs.korallrev"
+    type_names: ["app:Korallrev"]
+    url: "https://kartkatalog.geonorge.no/metadata/uuid/4e3c59b4-528f-4806-ada3-e9455c9b7d4e"
+
+  geonorge_coral_reef_closures:  # Korallrev - forbudsområder WFS
+    kind: geonorge
+    path: "geonorge"
+    filename_pattern: "{source}_{bbox_hash}.parquet"
+    dataset_id: "e8c675c4-ada7-427e-8103-abf891b824b9"
+    protocol: wfs
+    endpoint: "https://wfs.geonorge.no/skwms1/wfs.korallrevforbudsomrader"
+    type_names: ["app:Korallrev", "app:KorallrevGrense"]
+    url: "https://kartkatalog.geonorge.no/metadata/uuid/e8c675c4-ada7-427e-8103-abf891b824b9"
+
+  # --- regulatory / restricted zones
+  geonorge_military_firing_ranges:  # Forsvarets skyte- og øvingsfelt i sjø WFS
+    kind: geonorge
+    path: "geonorge"
+    filename_pattern: "{source}_{bbox_hash}.parquet"
+    dataset_id: "f9552903-2445-46c9-8a0d-37439f87a448"
+    protocol: wfs
+    endpoint: "https://wfs.geonorge.no/skwms1/wfs.ovingsfeltsjo"
+    type_names: ["app:SkytefeltSjø", "app:Skytefeltgrense"]
+    url: "https://kartkatalog.geonorge.no/metadata/uuid/f9552903-2445-46c9-8a0d-37439f87a448"
+
+  geonorge_military_restricted_areas:  # Militære forbudsområder innen sjøforsvaret WFS
+    kind: geonorge
+    path: "geonorge"
+    filename_pattern: "{source}_{bbox_hash}.parquet"
+    dataset_id: "8e7b3c93-4601-487a-b241-7017e2f624e7"
+    protocol: wfs
+    endpoint: "https://wfs.geonorge.no/skwms1/wfs.militereforbudsomradersjo"
+    type_names: ["app:ForbudsområdeGrense", "app:MilitærtForbudsområdeSjø"]
+    url: "https://kartkatalog.geonorge.no/metadata/uuid/8e7b3c93-4601-487a-b241-7017e2f624e7"
+
+  geonorge_trawling_closures:  # Tråling forbudsområder
+    kind: geonorge
+    path: "geonorge"
+    filename_pattern: "{source}_{bbox_hash}.parquet"
+    dataset_id: "b2c6f249-0c19-45c0-a91a-8f873d2c3c4f"
+    protocol: wfs
+    endpoint: "https://gis.fiskeridir.no/server/services/FiskeridirWFS_fiskeri/MapServer/WFSServer"
+    type_names:
+      - "FiskeridirWFS_fiskeri:traalforbud_jennegga_malangsgrunnen"
+      - "FiskeridirWFS_fiskeri:traalforbud_storegga"
+      - "FiskeridirWFS_fiskeri:reguleringer_stormasket_traal_inntil12nm"
+    url: "https://kartkatalog.geonorge.no/metadata/uuid/b2c6f249-0c19-45c0-a91a-8f873d2c3c4f"

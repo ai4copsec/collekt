@@ -20,6 +20,7 @@ source's `kind`.
 | `skytruth` | Oil-slick detections (features) | open | Parquet |
 | `hozint` | Threat-intelligence reports (features) | credentials | Parquet |
 | `gfw` | Fishing / encounter / port-visit / loitering / AIS-gap events (features) | credentials | Parquet |
+| `geonorge` | Norwegian maritime reference vectors: fairways, navigation aids, aquaculture, restricted zones, ... (features) | open (orders need `GEONORGE_EMAIL`) | GeoParquet |
 | `eodyn` | eOdyn surface currents / drifters | open (preview archive) | NetCDF |
 | `local` | Row-filtered subset of a local `damast`-managed tabular archive (features) | none — local filesystem | Parquet |
 
@@ -47,6 +48,7 @@ uses, grouped into catalogs under `collekt/conf/source/`:
 | `skytruth` | `skytruth` |
 | `hozint` | `hozint` |
 | `gfw` | `gfw` |
+| `geonorge` | `geonorge_depth_contours`, `geonorge_fairways`, `geonorge_navigation_aids`, `geonorge_emergency_harbours`, `geonorge_aquaculture`, `geonorge_coral_reefs`, `geonorge_coral_reef_closures`, `geonorge_military_firing_ranges`, `geonorge_military_restricted_areas`, `geonorge_trawling_closures` |
 | `dataspace` | `copernicus_s1_grd`, `copernicus_s2_l2a`, `copernicus_landsat` |
 
 Browse the catalog programmatically instead of reading the tables below:
