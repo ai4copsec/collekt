@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 from datetime import date, datetime
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +24,8 @@ from collekt.sources.base import (
     register_adapter,
     should_reuse_cache,
 )
+from collekt.sources.batching.common import daily_output_errors
+from collekt.sources.batching.gridded import GridSteps, run_grid_batch
 from collekt.sources.planning import plan_source, static_source_coverage
 
 DEFAULT_DATASET_ID = "reanalysis-era5-single-levels"
@@ -187,9 +190,61 @@ def diagnose(config: Config, online: bool) -> list[DoctorCheck]:
     return checks
 
 
+def _batch_errors(source: SourceConfig) -> list[str]:
+    """Report configurations a grid batch cannot split back into daily files."""
+    errors = daily_output_errors(source)
+    if (
+        str(source.raw.get("data_format", "netcdf")) != "netcdf"
+        or str(source.raw.get("download_format", "unarchived")) != "unarchived"
+    ):
+        errors.append("batch downloads require data_format='netcdf' and download_format='unarchived'")
+    return errors
+
+
+def _batch_key(item: SourceResult) -> dict[str, Any]:
+    """Days can share a CDS request when everything but the day matches."""
+    body = dict(item.details["request"])
+    body.pop("day", None)
+    return body
+
+
+def _merge_batch(members: list[SourceResult]) -> dict[str, Any]:
+    body = dict(members[0].details["request"])
+    body["day"] = [day for item in members for day in item.details["request"]["day"]]
+    return body
+
+
+def _retrieve_batch(request: Request, source: SourceConfig, payload: dict[str, Any], path: Path) -> str | None:
+    body = dict(payload)
+    dataset_id = body.pop("dataset_id")
+    _cdsapi().Client().retrieve(dataset_id, body).download(str(path))
+    return None
+
+
+def _split_batch(dataset: Any, item: SourceResult) -> Any:
+    """Select one day's requested hours, refusing a batch that lacks any of them."""
+    import numpy as np
+
+    payload = item.details["request"]
+    coordinate = "valid_time" if "valid_time" in dataset.coords else "time"
+    expected = np.array([f"{item.day}T{hour}" for hour in payload["time"]], dtype="datetime64[ns]")
+    if not np.isin(expected, dataset[coordinate].values).all():
+        raise ValueError(f"batch is missing requested timestamps for {item.day}")
+    if dataset[coordinate].ndim != 1:
+        if len(expected) == 1 and dataset[coordinate].values == expected[0]:
+            return dataset
+        raise ValueError("ERA5 batch requires a one-dimensional time coordinate")
+    return dataset.sel({coordinate: expected})
+
+
 register_adapter(
     SourceAdapter(
         kind="era5",
+        batch=partial(
+            run_grid_batch,
+            steps=GridSteps(compatible=_batch_key, merge=_merge_batch, retrieve=_retrieve_batch, split=_split_batch),
+        ),
+        batch_check=_batch_errors,
         fetch=fetch_era5,
         plan=plan_era5,
         diagnose=diagnose,

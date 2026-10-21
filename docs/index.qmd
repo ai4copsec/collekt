@@ -70,6 +70,10 @@ result = fetcher.download()
 print(result.manifest_path)
 ```
 
+For longer requests, `Fetcher(..., batch_days=7)` enables optional
+[batch downloads](batching.qmd), retaining daily output files where applicable.
+The default download behavior is unchanged.
+
 Gridded results can be assembled onto a common grid and time axis:
 
 ```python
