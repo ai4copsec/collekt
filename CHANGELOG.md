@@ -7,6 +7,13 @@ under `[main]`; `just bump` copies them under the new version.
 
 ### Added
 
+- a `geonorge` source adapter and `Geonorge` `DatasetSelection`, with a bundled
+  `geonorge` catalog of ten curated Norwegian maritime vector datasets
+  (fairways, navigation aids, emergency harbours, aquaculture sites, coral
+  reefs, military and trawling restricted zones, depth contours),
+  each pinned by Geonorge UUID. Every dataset is fetched from a WFS with a
+  server-side bbox, clipped to the request bbox and written as GeoParquet.
+  
 - Opt-in `Fetcher(..., batch_days=N)` and `collekt fetch --batch-days N` for
   provider-aware retrieval groups across all ten built-in source kinds. ERA5
   and compatible CMEMS requests are split back into daily NetCDF files;
