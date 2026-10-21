@@ -275,7 +275,7 @@ class Geonorge(DatasetSelection):
 
     An open feature source with no variable selection: each catalog key is one
     curated Geonorge dataset, cropped to the request bbox and written as
-    GeoParquet. Download-protocol datasets need `GEONORGE_EMAIL`.
+    GeoParquet. No credentials are needed.
 
     Example:
 

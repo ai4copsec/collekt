@@ -44,7 +44,7 @@ src/collekt/
     skytruth.py            # oil-slick features -> Parquet          (open)
     hozint.py              # threat-intel reports -> Parquet        (credentials)
     gfw.py                 # GFW events -> Parquet                  (credentials)
-    geonorge.py            # Geonorge maritime vectors -> GeoParquet (open; orders need email)
+    geonorge.py            # Geonorge maritime vectors (WFS) -> GeoParquet (open)
     eodyn.py               # eOdyn ocean-data (archive/api)         (credentials)
     local.py               # local damast-managed tabular archive   (no catalog entry)
     skytruth.spec.yaml     # Skytruth column metadata (damast spec)
