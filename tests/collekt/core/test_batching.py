@@ -97,6 +97,7 @@ def test_windows_are_clipped_utc_calendar_days():
         "gfw",
         "hozint",
         "copernicus_dataspace",
+        "geonorge",
     ],
 )
 def test_every_builtin_has_a_batch_handler(kind):

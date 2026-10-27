@@ -269,11 +269,43 @@ class GFW(DatasetSelection):
         return data
 
 
-DatasetLike = CMEMS | ECMWFOpenData | ERA5 | GFS | GFW | eOdyn | Local | SkyTruth | CopernicusDataSpace | Hozint
+@dataclass(frozen=True, init=False)
+class Geonorge(DatasetSelection):
+    """Geonorge maritime vector-dataset selection.
+
+    An open feature source with no variable selection: each catalog key is one
+    curated Geonorge dataset, cropped to the request bbox and written as
+    GeoParquet. No credentials are needed.
+
+    Example:
+
+    ```python
+    collekt.DatasetConfig(collekt.Geonorge("geonorge_aquaculture"))
+    ```
+
+    Args:
+        key: Catalog key of the Geonorge dataset to select.
+    """
+
+    provider: ClassVar[str] = "geonorge"
+
+    def __init__(self, key: str) -> None:
+        super().__init__(key, ())
+
+    def source_overrides(self) -> dict[str, Any]:
+        return {}
+
+    def as_dict(self) -> dict[str, Any]:
+        return {"provider": self.provider, "key": self.key}
+
+
+DatasetLike = (
+    CMEMS | ECMWFOpenData | ERA5 | GFS | GFW | Geonorge | eOdyn | Local | SkyTruth | CopernicusDataSpace | Hozint
+)
 
 _PROVIDERS: dict[str, type[DatasetLike]] = {
     cls.provider: cls
-    for cls in (CMEMS, ECMWFOpenData, ERA5, GFS, eOdyn, Local, SkyTruth, CopernicusDataSpace, Hozint, GFW)
+    for cls in (CMEMS, ECMWFOpenData, ERA5, GFS, eOdyn, Local, SkyTruth, CopernicusDataSpace, Hozint, GFW, Geonorge)
 }
 
 
