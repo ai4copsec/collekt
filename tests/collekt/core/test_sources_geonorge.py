@@ -289,3 +289,86 @@ def test_wfs_pages_raise_on_exception_report(tmp_path, monkeypatch):
     monkeypatch.setattr(geonorge, "_session", types.SimpleNamespace(get=lambda *a, **k: response))
     with pytest.raises(RuntimeError, match="app:Type"):
         geonorge._wfs_pages("http://wfs.test", "app:Type", {"count": 1000}, tmp_path)
+
+
+# --- host circuit breaker ---------------------------------------------------
+
+
+class _TimeoutSession:
+    def __init__(self):
+        self.calls = 0
+
+    def get(self, *args, **kwargs):
+        self.calls += 1
+        raise geonorge.requests.Timeout("read timed out")
+
+
+def test_wfs_pages_stop_querying_a_host_after_repeated_failures(tmp_path, monkeypatch):
+    monkeypatch.setattr(geonorge, "_host_failures", {})
+    session = _TimeoutSession()
+    monkeypatch.setattr(geonorge, "_session", session)
+    for _ in range(geonorge.HOST_FAILURE_LIMIT):
+        with pytest.raises(geonorge.requests.Timeout):
+            geonorge._wfs_pages("https://wfs.test/wfs", "app:Type", {"count": 2}, tmp_path)
+    with pytest.raises(geonorge.HostUnavailableError, match="wfs.test"):
+        geonorge._wfs_pages("https://wfs.test/wfs", "app:Type", {"count": 2}, tmp_path)
+
+    assert session.calls == geonorge.HOST_FAILURE_LIMIT
+
+
+def test_wfs_pages_forget_old_failures_and_reset_on_success(tmp_path, monkeypatch):
+    expired = geonorge.time.monotonic() - geonorge.HOST_FAILURE_WINDOW - 1
+    monkeypatch.setattr(geonorge, "_host_failures", {"wfs.test": [expired] * geonorge.HOST_FAILURE_LIMIT})
+    monkeypatch.setattr(geonorge, "_session", _PagingSession(1))
+    geonorge._wfs_pages("https://wfs.test/wfs", "app:Type", {"count": 2}, tmp_path)
+
+    assert "wfs.test" not in geonorge._host_failures
+
+
+def test_fetch_on_unavailable_host_is_a_failure(tmp_path, monkeypatch):
+    def unavailable(source, bbox, out_dir):
+        raise geonorge.HostUnavailableError("wfs.test failed 2 times")
+
+    monkeypatch.setattr(geonorge, "fetch_wfs", unavailable)
+    result = Fetcher(_request(), config=_cfg(tmp_path, g=WFS_SOURCE)).download()
+
+    assert result.summary.failed == 1
+    assert "wfs.test" in result.results[0].message
+
+
+def test_fetch_restores_the_gml_schema_download_option(tmp_path, monkeypatch):
+    seen = []
+
+    def fake_fetch_wfs(source, bbox, out_dir):
+        seen.append(pyogrio.get_gdal_config_option("GML_DOWNLOAD_SCHEMA"))
+        return [_write_points(out_dir / "page.json", {"inside": Point(5.0, 61.0)})]
+
+    monkeypatch.setattr(geonorge, "fetch_wfs", fake_fetch_wfs)
+    pyogrio.set_gdal_config_options({"GML_DOWNLOAD_SCHEMA": "YES"})
+    try:
+        Fetcher(_request(), config=_cfg(tmp_path, g=WFS_SOURCE)).download()
+        assert seen == ["NO"]
+        assert pyogrio.get_gdal_config_option("GML_DOWNLOAD_SCHEMA") == "YES"
+    finally:
+        pyogrio.set_gdal_config_options({"GML_DOWNLOAD_SCHEMA": None})
+
+
+# --- batching ---------------------------------------------------------------
+
+
+def test_batch_days_fetches_static_data_once(tmp_path, monkeypatch):
+    calls = []
+
+    def fake_fetch_wfs(source, bbox, out_dir):
+        calls.append(bbox)
+        return [_write_points(out_dir / "page.json", {"inside": Point(5.0, 61.0)})]
+
+    monkeypatch.setattr(geonorge, "fetch_wfs", fake_fetch_wfs)
+    west, south, east, north = BBOX
+    week = Request(region=Region(west=west, east=east, south=south, north=north), start="2024-01-01", end="2024-01-07")
+    fetcher = Fetcher(week, config=_cfg(tmp_path, g=WFS_SOURCE), batch_days=2)
+
+    assert fetcher.plan().summary.planned == 1
+    result = fetcher.download()
+    assert result.summary.downloaded == 1
+    assert len(calls) == 1

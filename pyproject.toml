@@ -52,6 +52,7 @@ dependencies = [
     # tabular feature backend (GFW,Skytruth)
     "damast>=0.3.7",
     "geopandas",
+    "pyogrio",  # direct GML/WFS reads (geonorge)
     "polars",
     # provider clients
     "copernicusmarine>=2.4.1",

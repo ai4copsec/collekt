@@ -13,9 +13,9 @@ under `[main]`; `just bump` copies them under the new version.
   reefs, military and trawling restricted zones, depth contours),
   each pinned by Geonorge UUID. Every dataset is fetched from a WFS with a
   server-side bbox, clipped to the request bbox and written as GeoParquet.
-  
+
 - Opt-in `Fetcher(..., batch_days=N)` and `collekt fetch --batch-days N` for
-  provider-aware retrieval groups across all ten built-in source kinds. ERA5
+  provider-aware retrieval groups across all eleven built-in source kinds. ERA5
   and compatible CMEMS requests are split back into daily NetCDF files;
   forecast runs, event metadata, global record caps, and existing filenames
   are preserved. Batch plans/provenance distinguish retrieval groups from

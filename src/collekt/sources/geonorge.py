@@ -18,6 +18,8 @@ import math
 import tempfile
 import time
 import warnings
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -35,6 +37,7 @@ from collekt.core.config import Config, SourceConfig
 from collekt.core.naming import format_pattern, pattern_values
 from collekt.core.request import Request
 from collekt.sources.base import (
+    BatchOptions,
     ProgressCallback,
     SourceAdapter,
     SourceResult,
@@ -46,6 +49,8 @@ from collekt.sources.base import (
 
 if TYPE_CHECKING:
     import geopandas as gpd
+
+logger = logging.getLogger(__name__)
 
 WFS_PAGE_SIZE = 1000
 WFS_MAX_PAGES_PER_TYPE = 20
@@ -82,9 +87,6 @@ def _recent_failures(host: str) -> list[float]:
 
 def _record_failure(host: str) -> None:
     _host_failures[host] = [*_recent_failures(host), time.monotonic()]
-
-
-logger = logging.getLogger(__name__)
 
 
 def _bbox(request: Request) -> Bbox:
@@ -158,7 +160,9 @@ def _wfs_pages(endpoint: str, type_name: str, base_params: dict[str, Any], out_d
     for page in range(WFS_MAX_PAGES_PER_TYPE):
         if page:
             # sent from the second page on only: some deegree services (e.g. Nødhavner)
-            # time out on an explicit startIndex=0, although it is the default
+            # time out on an explicit startIndex=0, although it is the default.
+            # No sortBy (not every server supports it), so paging relies on the
+            # server's natural order being stable across requests.
             params["startIndex"] = page * WFS_PAGE_SIZE
         label = f"{type_name} page {page + 1}"
         if len(failures := _recent_failures(host)) >= HOST_FAILURE_LIMIT:
@@ -270,6 +274,24 @@ def _write_geoparquet(features: gpd.GeoDataFrame, output_path: Path) -> None:
 # --- Adapter ----------------------------------------------------------------
 
 
+@contextmanager
+def _no_gml_schema_download() -> Iterator[None]:
+    """Stop GDAL's GML driver from fetching remote XSDs, restoring the previous setting afterwards.
+
+    Otherwise each page's schema is fetched from the slow Geonorge servers on every
+    open (30-60 s even for a 2-feature page); geometry and attributes are inferred
+    from the data instead. The GDAL option is process-wide, hence the restore.
+    """
+    import pyogrio
+
+    previous = pyogrio.get_gdal_config_option("GML_DOWNLOAD_SCHEMA")
+    pyogrio.set_gdal_config_options({"GML_DOWNLOAD_SCHEMA": "NO"})
+    try:
+        yield
+    finally:
+        pyogrio.set_gdal_config_options({"GML_DOWNLOAD_SCHEMA": previous})
+
+
 def _result(
     source: SourceConfig,
     status: SourceStatus,
@@ -299,8 +321,6 @@ def fetch_geonorge(
     progress: ProgressCallback = null_progress,
 ) -> list[SourceResult]:
     """Fetch one Geonorge dataset for the request's bbox and write it as GeoParquet."""
-    import pyogrio
-
     if reason := _coverage_skip_reason(request, source):
         return [_result(source, SourceStatus.SKIPPED, message=reason)]
 
@@ -308,15 +328,10 @@ def fetch_geonorge(
     if should_reuse_cache(output_path.exists(), config):
         return [_result(source, SourceStatus.REUSED, path=output_path)]
 
-    # GDAL's GML driver otherwise fetches each page's remote XSD from the slow
-    # Geonorge servers on every open (30-60 s even for a 2-feature page);
-    # geometry and attributes are inferred from the data instead.
-    pyogrio.set_gdal_config_options({"GML_DOWNLOAD_SCHEMA": "NO"})
-
     bbox = _bbox(request)
     try:
         progress(source.name, f"fetching Geonorge dataset {source.dataset_id}")
-        with tempfile.TemporaryDirectory(prefix="collekt-geonorge-") as scratch:
+        with _no_gml_schema_download(), tempfile.TemporaryDirectory(prefix="collekt-geonorge-") as scratch:
             started = time.monotonic()
             logger.info(f"Requesting {source.name} ({', '.join(source.raw.get('type_names') or ())})")
             pages = fetch_wfs(source, bbox, Path(scratch))
@@ -326,8 +341,6 @@ def fetch_geonorge(
                 f"Fetched {source.name}: {len(features)} features inside the region, "
                 f"{size_kb:.1f} KB in {len(pages)} page(s), {time.monotonic() - started:.1f} s"
             )
-    except HostUnavailableError as exc:
-        return [_result(source, SourceStatus.SKIPPED, message=str(exc))]
     except Exception as exc:  # noqa: BLE001 - provider/network failures are reported, not raised
         return [_result(source, SourceStatus.FAILED, message=str(exc))]
 
@@ -371,9 +384,23 @@ def plan_geonorge(request: Request, source: SourceConfig, config: Config, reques
     return [_result(source, SourceStatus.PLANNED, path=_output_path(request, source, request_dir), details=details)]
 
 
+def _run_batch(
+    request: Request,
+    source: SourceConfig,
+    config: Config,
+    request_dir: Path,
+    options: BatchOptions,
+) -> list[SourceResult]:
+    """Static reference data ignores the time window: one retrieval serves every batch."""
+    if options.dry_run:
+        return plan_geonorge(request, source, config, request_dir)
+    return fetch_geonorge(request, source, config, request_dir, progress=options.progress)
+
+
 register_adapter(
     SourceAdapter(
         kind="geonorge",
+        batch=_run_batch,
         fetch=fetch_geonorge,
         plan=plan_geonorge,
         known_raw_keys=frozenset({"endpoint", "type_names"}),
