@@ -5,6 +5,8 @@ Builds a small damast-partitioned Parquet archive in a tmp dir, then exercises
 pattern as the eOdyn archive tests.
 """
 
+from pathlib import Path
+
 import pytest
 
 from collekt import Fetcher
@@ -117,6 +119,27 @@ def test_local_skips_when_no_rows_in_region(tmp_path):
 
     assert result.summary.skipped == 1
     assert "no rows within the request region" in result.results[0].message
+
+
+def test_local_export_error_skips_the_day_and_leaves_no_reusable_file(tmp_path, monkeypatch):
+    archive = tmp_path / "archive"
+    _write_archive(archive)
+    cfg = _config(tmp_path, archive)
+    export = damast.core.AnnotatedDataFrame.export
+
+    def broken(self, path, *args, **kwargs):
+        Path(path).write_text("partial")
+        raise OSError("disk full")
+
+    monkeypatch.setattr(damast.core.AnnotatedDataFrame, "export", broken)
+    first = Fetcher(_request(start="2026-01-01", end="2026-01-02"), config=cfg).download()
+    assert first.summary.skipped == 2
+    assert "disk full" in first.results[0].message
+    assert not list((tmp_path / "out").rglob("*.parquet"))
+
+    monkeypatch.setattr(damast.core.AnnotatedDataFrame, "export", export)
+    second = Fetcher(_request(start="2026-01-01", end="2026-01-02"), config=cfg).download()
+    assert second.summary.downloaded == 2
 
 
 def test_local_reuses_cached_output_on_second_run(tmp_path):

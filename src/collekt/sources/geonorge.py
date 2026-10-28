@@ -267,7 +267,11 @@ def _write_geoparquet(features: gpd.GeoDataFrame, output_path: Path) -> None:
         if features[column].dtype == object:
             features[column] = features[column].map(_text_or_none)
     partial = output_path.with_name(f"{output_path.name}.part")
-    features.to_parquet(partial)
+    try:
+        features.to_parquet(partial)
+    except Exception:
+        partial.unlink(missing_ok=True)
+        raise
     partial.replace(output_path)
 
 
@@ -348,7 +352,10 @@ def fetch_geonorge(
         return [_result(source, SourceStatus.SKIPPED, message="no features inside the request region")]
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    _write_geoparquet(features, output_path)
+    try:
+        _write_geoparquet(features, output_path)
+    except Exception as exc:  # noqa: BLE001 - a write failure must not abort the other sources
+        return [_result(source, SourceStatus.FAILED, message=f"could not write GeoParquet: {exc}")]
     return [
         _result(
             source,

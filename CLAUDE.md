@@ -9,7 +9,7 @@ documented functions; no dead or experimental code left in `src/`.
 ## Environment & tooling
 
 - Dependencies and the virtual environment (`.venv/`) are managed by **uv**; task
-  shortcuts live in the **justfile**. Requires Python 3.13+.
+  shortcuts live in the **justfile**. Supports Python 3.12+ (CI tests 3.12–3.14).
 - **Never run `pip install`.** Add a runtime dependency with `uv add <pkg>`, an
   optional one with `uv add --optional <extra> <pkg>`, and a tool with
   `uv add --group dev|test|docs <pkg>`. Commit the updated `uv.lock`.

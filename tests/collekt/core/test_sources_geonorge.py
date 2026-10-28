@@ -185,6 +185,23 @@ def test_fetch_provider_error_is_a_failure(tmp_path, monkeypatch):
     assert not list(tmp_path.rglob("*.parquet"))
 
 
+def test_fetch_write_error_is_a_failure(tmp_path, monkeypatch):
+    def fake_fetch_wfs(source, bbox, out_dir):
+        return [_write_points(out_dir / "page.json", {"inside": Point(5.0, 61.0)})]
+
+    def broken(self, path, *args, **kwargs):
+        Path(path).write_text("partial")
+        raise OSError("disk full")
+
+    monkeypatch.setattr(geonorge, "fetch_wfs", fake_fetch_wfs)
+    monkeypatch.setattr(gpd.GeoDataFrame, "to_parquet", broken)
+    result = Fetcher(_request(), config=_cfg(tmp_path, g=WFS_SOURCE)).download()
+
+    assert result.summary.failed == 1
+    assert "disk full" in result.results[0].message
+    assert not list(tmp_path.rglob("*.parquet*"))
+
+
 def test_write_geoparquet_stringifies_mixed_object_columns(tmp_path):
     points = [Point(0, 0), Point(1, 1), Point(2, 2)]
     gdf = gpd.GeoDataFrame({"mixed": [1, "a", float("nan")]}, geometry=points, crs="EPSG:4326")

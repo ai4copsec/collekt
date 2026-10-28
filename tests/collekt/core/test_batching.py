@@ -345,6 +345,44 @@ def test_skytruth_resumes_failed_window_and_deduplicates_before_atomic_export(tm
     assert len(calls) == 4
 
 
+def test_an_empty_event_result_is_queried_again_on_the_next_run(tmp_path, monkeypatch):
+    """Every window answered with no events: the answer must not be cached as a checkpoint."""
+    calls = []
+
+    def query(url, params):
+        calls.append(params["datetime"])
+        return [], url
+
+    monkeypatch.setattr(skytruth, "_fetch_pages", query)
+    fetcher = Fetcher(
+        request(end="2023-01-04"), config=config(tmp_path, "skytruth", filename_pattern="events.parquet"), batch_days=2
+    )
+    first = fetcher.download()
+    assert first.summary.skipped == 1 and len(calls) == 2
+    assert not list(first.output_dir.rglob(".batch-queries/*/*.json"))
+    fetcher.download()
+    assert len(calls) == 4
+
+
+def test_gfw_region_it_cannot_query_is_skipped_not_raised(tmp_path, monkeypatch):
+    monkeypatch.setattr(gfw, "_fetch_events", lambda *args: pytest.fail("must not query GFW"))
+    region = Region(
+        west=0,
+        east=11,
+        south=35,
+        north=36,
+        geometry="MULTIPOLYGON (((0 35, 1 35, 1 36, 0 36, 0 35)), ((10 35, 11 35, 11 36, 10 36, 10 35)))",
+    )
+    fetcher = Fetcher(
+        Request(region=region, start="2023-01-01", end="2023-01-04"),
+        config=config(tmp_path, "gfw", filename_pattern="events.parquet"),
+        batch_days=2,
+    )
+    for result in (fetcher.plan(), fetcher.download()):
+        assert result.summary.skipped == 1
+        assert "Polygon" in result.results[0].message
+
+
 def test_gfw_global_cap_and_overlapping_events(tmp_path, monkeypatch):
     calls, written = [], []
 
@@ -477,9 +515,12 @@ def test_product_windows_paginate_deduplicate_and_apply_global_limit(tmp_path, m
     result = fetcher.download()
     assert len(searches) == 2 and len(pages) == 1 and len(downloads) == 3
     assert [path.name for path in result.files] == ["a", "b", "c"]
+    # Nothing failed, so the searches are not kept: a rerun asks the catalogue again for
+    # products ingested since, but reuses the products already downloaded.
+    assert not list(result.output_dir.rglob(".batch-searches/*.json"))
     again = fetcher.download()
     assert again.summary.reused == 3
-    assert len(searches) == 2 and len(downloads) == 3
+    assert len(searches) == 4 and len(downloads) == 3
 
 
 def test_gfs_groups_preserve_cycle_urls_and_original_request_names(tmp_path, monkeypatch):
