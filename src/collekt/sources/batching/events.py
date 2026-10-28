@@ -51,7 +51,8 @@ def run_event_batch(
     """Query independent windows, resume failures, and deduplicate overlapping events."""
     adapter = get_adapter(source.kind)
     item = cached(adapter.plan(request, source, config, request_dir)[0], config)
-    if item.status == SourceStatus.REUSED:
+    # SKIPPED: the planner already rejected the request (e.g. a region the provider can't query).
+    if item.status in (SourceStatus.REUSED, SourceStatus.SKIPPED):
         return [item]
     windows = request_windows(request, options.days)
     payloads = [adapter.plan(window, source, config, request_dir)[0].details["request"] for window in windows]
@@ -88,6 +89,8 @@ def run_event_batch(
             lambda row: row.get("id", (row.get("properties") or {}).get("id")),
         )
         if not rows:
+            # Every window answered: keeping the empty checkpoints would hide later events.
+            shutil.rmtree(checkpoint_dir, ignore_errors=True)
             return [failed(item, "the API returned 0 events for this query")]
         with staged_output(item.path) as staged:
             records = steps.write(rows, responses, source, staged)

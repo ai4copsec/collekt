@@ -698,13 +698,19 @@ def test_gfw_write_parquet_produces_expected_schema(tmp_path):
         ),
     ]
 
-    gfw._write_parquet(events, output_path, _gfw_source())
+    with warnings.catch_warnings(record=True) as records:
+        warnings.simplefilter("always")
+        gfw._write_parquet(events, output_path, _gfw_source())
+
+    # `mpa` and the other empty region lists infer as List(Null): cast before damast sees them.
+    assert [record for record in records if "DataSpecification.apply" in str(record.message)] == []
 
     schema = pl.read_parquet(output_path).schema
     assert schema["lat"] == pl.Float64
     assert schema["start"] == pl.Datetime(time_unit="us", time_zone="UTC")
     assert schema["bounding_box"] == pl.List(pl.Float64)
     assert schema["fishing_json"] == pl.String
+    assert schema["regions"].to_schema()["mpa"] == pl.List(pl.String)
 
 
 def test_gfw_write_parquet_handles_a_rare_event_type_beyond_the_inference_window(tmp_path):
@@ -730,10 +736,16 @@ def test_gfw_write_parquet_handles_a_rare_event_type_beyond_the_inference_window
     events = [_event(i, "port_visit") for i in range(150)] + [_event(150, "loitering")]
     output_path = tmp_path / "gfw.parquet"
 
-    gfw._write_parquet(events, output_path, _gfw_source())
+    with warnings.catch_warnings(record=True) as records:
+        warnings.simplefilter("always")
+        gfw._write_parquet(events, output_path, _gfw_source())
+
+    # Distances and regions are null in every event here: they must still reach damast typed.
+    assert [record for record in records if "DataSpecification.apply" in str(record.message)] == []
 
     table = pl.read_parquet(output_path)
     assert table.height == 151
+    assert table.schema["start_distance_from_port_km"] == pl.Float64
     assert table.schema["loitering_json"] == pl.String
     assert table.filter(pl.col("loitering_json").is_not_null()).height == 1
 

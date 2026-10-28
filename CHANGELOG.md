@@ -209,3 +209,17 @@ under `[main]`; `just bump` copies them under the new version.
   separately, merges them, and renames variables back to their requested
   mnemonics; any param still missing from the result is reported in the
   source's manifest message instead of silently vanishing.
+- GFW parquet output: the distance columns and `regions` are now cast to their
+  declared types before damast validates them, so a result where they are all
+  null or empty no longer triggers damast type-repair warnings.
+- Batched event sources (`gfw`, `skytruth`) no longer keep the checkpoints of a
+  query that returned zero events, so the next run asks the API again instead
+  of reusing the empty answer.
+- Batched `copernicus_dataspace` searches are discarded once every window and
+  product succeeded, so a rerun finds products ingested since.
+- `gfw` planning (dry run and batched download) now skips a region it cannot
+  query, such as a MultiPolygon AOI, instead of aborting the collection.
+- A GeoParquet write failure in `geonorge`, or a daily export failure in an
+  unbatched `local` run, is now reported for that source or day instead of
+  aborting the collection. `local` exports are staged, so a failed write leaves
+  no partial file to be reused.

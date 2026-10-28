@@ -379,7 +379,22 @@ def fetch_local(
             _narrowed_metadata(metadata, collected.columns),
             validation_mode=damast.core.ValidationMode.IGNORE,
         )
-        subset.export(output_path)
+        try:
+            with staged_output(output_path) as staged:
+                subset.export(staged)
+        except Exception as exc:  # noqa: BLE001 - one daily export must not block others
+            results.append(
+                SourceResult(
+                    source=source.name,
+                    status=SourceStatus.SKIPPED,
+                    dataset_id=dataset_id,
+                    variables=source.variables,
+                    day=day.isoformat(),
+                    message=f"could not export {day.isoformat()}: {exc}",
+                    details={"temporal": temporal, "matched_files": [str(f) for f in matched]},
+                )
+            )
+            continue
         results.append(
             SourceResult(
                 source=source.name,

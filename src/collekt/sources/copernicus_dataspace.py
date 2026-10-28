@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import shutil
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -286,6 +287,7 @@ def _run_batch(
             token = _login(*_credentials())
         return token
 
+    checkpoint_dir = out_dir / ".batch-searches"
     results = []
     seen = set()
     for batch in batches:
@@ -295,7 +297,7 @@ def _run_batch(
         options.progress(source.name, f"searching batch {batch['start']} to {batch['end']}")
         try:
             features = checkpoint_query(
-                out_dir / ".batch-searches",
+                checkpoint_dir,
                 batch,
                 config,
                 lambda batch=batch: _search_pages(access_token(), batch["request"], cap),
@@ -330,6 +332,10 @@ def _run_batch(
                 results.append(replace(product_result, status=SourceStatus.DOWNLOADED))
             except Exception as exc:  # noqa: BLE001 - preserve successful products
                 results.append(failed(product_result, exc))
+    # The checkpoints only serve to resume a failed window; once nothing failed, a later run
+    # must search the catalogue again or it would miss newly ingested products.
+    if all(result.status != SourceStatus.SKIPPED for result in results):
+        shutil.rmtree(checkpoint_dir, ignore_errors=True)
     return results or [failed(base, "no downloadable products for this query")]
 
 

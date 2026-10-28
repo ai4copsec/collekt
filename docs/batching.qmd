@@ -104,7 +104,8 @@ and published after successful writing. Failed grid batches do not prevent later
 batches from running. A missing ERA5 timestamp prevents that daily slice from
 being treated as complete. Event queries checkpoint completed windows; if another
 window fails, no partial collection file is published, and the next run can reuse
-the completed queries. Data Space also caches completed searches. These checkpoints
+the completed queries. Data Space also caches completed searches until every window
+succeeds, so a rerun after a full success searches the catalogue again. These checkpoints
 live inside the collection directory; `download(use_cache=False)` ignores them.
 
 HOZINT stores each window separately so a file from the first window cannot make

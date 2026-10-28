@@ -110,6 +110,27 @@ GFW_STRING_COLUMNS = (
     "loitering_json",
     "port_visit_json",
 )
+# Numeric columns, cast for the same reason: an empty region or a result without distances
+# leaves them all null.
+GFW_FLOAT_COLUMNS = (
+    "start_distance_from_shore_km",
+    "end_distance_from_shore_km",
+    "start_distance_from_port_km",
+    "end_distance_from_port_km",
+)
+# Region-id lists per area kind, as declared in gfw.spec.yaml. A list that is empty in every
+# event (no MPA crossed, say) would otherwise infer as List(Null).
+GFW_REGION_KINDS = (
+    "mpa",
+    "eez",
+    "rfmo",
+    "fao",
+    "major_fao",
+    "eez_12_nm",
+    "high_seas",
+    "mpa_no_take_partial",
+    "mpa_no_take",
+)
 
 
 class GFWTruncatedResultWarning(UserWarning):
@@ -508,6 +529,8 @@ def _write_parquet(events: list[dict[str, Any]], output_path: Path, source: Sour
         # Cast explicitly rather than leave an all-null column as Null: damast repairs those with
         # a warning, and the same trick keeps skytruth.py's output quiet (SKYTRUTH_STRING_COLUMNS).
         *[pl.col(column).cast(pl.String) for column in GFW_STRING_COLUMNS],
+        *[pl.col(column).cast(pl.Float64) for column in GFW_FLOAT_COLUMNS],
+        pl.col("regions").cast(pl.Struct(dict.fromkeys(GFW_REGION_KINDS, pl.List(pl.String)))),
     )
     datasets = _datasets(source)
     metadata = damast.core.MetaData.load_yaml(SPEC_YAML)
@@ -524,6 +547,18 @@ def plan_gfw(request: Request, source: SourceConfig, config: Config, request_dir
     """Plan the GFW query without contacting the API."""
     dataset_id = source.dataset_id or DEFAULT_DATASET_ID
     start_date, end_date = _query_window(request)
+    try:
+        geometry = _geometry(request.region)
+    except ValueError as exc:
+        return [
+            SourceResult(
+                source=source.name,
+                status=SourceStatus.SKIPPED,
+                dataset_id=dataset_id,
+                variables=source.variables,
+                message=str(exc),
+            )
+        ]
     details = {
         "provider": "gfw",
         "method": "events.get_all_events",
@@ -531,7 +566,7 @@ def plan_gfw(request: Request, source: SourceConfig, config: Config, request_dir
             "datasets": _datasets(source),
             "start_date": start_date,
             "end_date": end_date,
-            "geometry": _geometry(request.region),
+            "geometry": geometry,
             # `limit` is the page size actually sent; the query pages on `offset` until a short
             # page arrives, or until `max_events` (null = collect everything) is reached.
             "limit": _page_size(source) or CLIENT_DEFAULT_LIMIT,
