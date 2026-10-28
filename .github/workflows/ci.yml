@@ -1,9 +1,11 @@
 name: CI
 
 on:
+  # Feature branches are tested through their pull request; also running on
+  # their pushes would queue every job twice.
   push:
     branches:
-      - "**"
+      - main
     tags:
       - "*"
   pull_request:
