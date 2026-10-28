@@ -117,7 +117,9 @@ class BatchHandler(Protocol):
 
     A handler covers both planning and execution so that a dry run reports the
     same grouping the download will use. It returns the same `SourceResult`
-    records `fetch` and `plan` return, at the same output paths.
+    records `fetch` and `plan` return, at the same output paths. The exception is
+    HOZINT, whose CLI names its own files: each window is written to its own
+    `batches/<id>/` directory so one window's files cannot make another look cached.
     """
 
     def __call__(
