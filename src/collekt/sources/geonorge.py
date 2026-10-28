@@ -261,7 +261,10 @@ def _text_or_none(value: Any) -> str | None:
 
 
 def _write_geoparquet(features: gpd.GeoDataFrame, output_path: Path) -> None:
-    """Write via a temporary file so an interrupted write never leaves a reusable partial file."""
+    """Write via a temporary file so an interrupted write never leaves a reusable partial file.
+
+    Temporary .part-file gets deleted if write fails.
+    """
     # Columns merged from several layers/pages can mix value types, which Arrow rejects.
     for column in features.columns.drop(features.geometry.name):
         if features[column].dtype == object:
@@ -269,10 +272,10 @@ def _write_geoparquet(features: gpd.GeoDataFrame, output_path: Path) -> None:
     partial = output_path.with_name(f"{output_path.name}.part")
     try:
         features.to_parquet(partial)
-    except Exception:
+        partial.replace(output_path)
+    except BaseException:
         partial.unlink(missing_ok=True)
         raise
-    partial.replace(output_path)
 
 
 # --- Adapter ----------------------------------------------------------------
@@ -345,17 +348,13 @@ def fetch_geonorge(
                 f"Fetched {source.name}: {len(features)} features inside the region, "
                 f"{size_kb:.1f} KB in {len(pages)} page(s), {time.monotonic() - started:.1f} s"
             )
-    except Exception as exc:  # noqa: BLE001 - provider/network failures are reported, not raised
+        if features.empty:
+            return [_result(source, SourceStatus.SKIPPED, message="no features inside the request region")]
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        _write_geoparquet(features, output_path)
+    except Exception as exc:  # noqa: BLE001 - provider/network/write failures are reported, not raised
         return [_result(source, SourceStatus.FAILED, message=str(exc))]
 
-    if features.empty:
-        return [_result(source, SourceStatus.SKIPPED, message="no features inside the request region")]
-
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        _write_geoparquet(features, output_path)
-    except Exception as exc:  # noqa: BLE001 - a write failure must not abort the other sources
-        return [_result(source, SourceStatus.FAILED, message=f"could not write GeoParquet: {exc}")]
     return [
         _result(
             source,
