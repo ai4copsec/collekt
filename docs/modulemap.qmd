@@ -10,7 +10,9 @@ modules).
 ```text
 src/collekt/
   __init__.py              # public API: Request, Region, Fetcher, Result,
-                           #   Assembler, run_doctor, DoctorCheck
+                           #   Assembler, run_doctor, DoctorCheck,
+                           #   available_datasets, describe_datasets,
+                           #   DatasetConfig + provider selections
   version.py               # single version source (bumped by commitizen)
 
   core/
@@ -64,7 +66,7 @@ src/collekt/
     default.yaml           # runtime defaults + source_catalogs
     source/                # curated dataset catalogs: cmems_global, cmems_eur,
                            #   cmems_med, cmems_ibi, cmems_nws, ecmwf, gfs,
-                           #   eodyn, skytruth, dataspace, gfw, geonorge
+                           #   eodyn, skytruth, hozint, dataspace, gfw, geonorge
 
   resources/
     schema/manifest.schema.json   # draft manifest schema (reference; not enforced)

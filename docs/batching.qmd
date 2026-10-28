@@ -77,6 +77,7 @@ request may need **more** calls when explicit windows are enabled.
 | SkyTruth | Paginated queries for each window; duplicate feature IDs are removed across windows. | One annotated Parquet file for the collection. |
 | Global Fishing Watch | Paginated queries for each window; duplicate event IDs are removed, events are sorted by start time, and `max_events` caps the combined result with a truncation warning. | One annotated Parquet file for the collection. |
 | HOZINT | One isolated CLI invocation per window, with a completion marker for reliable retries. | CLI-generated Parquet files under `batches/<id>/` within the source directory. |
+| Geonorge | Static reference data: one WFS retrieval for the whole request, whatever the batch size. | One GeoParquet file per dataset. |
 | Copernicus Data Space | Date-window searches with pagination and product deduplication. `max_records` caps unique catalogue records across all windows. Each product still downloads separately. | Original product filenames. |
 
 SkyTruth and Data Space query windows overlap at midnight to avoid dropping

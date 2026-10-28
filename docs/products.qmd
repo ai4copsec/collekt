@@ -16,6 +16,7 @@ source's `kind`.
 | `cmems` | Gridded ocean fields (currents, SST, waves, biogeochemistry) | open | NetCDF |
 | `ecmwf_open_data` | Gridded forecast wind | open | NetCDF (cropped from global GRIB2) |
 | `era5` | Gridded reanalysis wind | credentials (CDS) | NetCDF |
+| `gfs` | Gridded NOAA GFS analysis wind (NOMADS GRIB filter, last ~10 days) | open | NetCDF (daily, from GRIB2 analysis cycles) |
 | `copernicus_dataspace` | Sentinel / Landsat product files | credentials | product (e.g. `.zip`) |
 | `skytruth` | Oil-slick detections (features) | open | Parquet |
 | `hozint` | Threat-intelligence reports (features) | credentials | Parquet |
@@ -44,6 +45,7 @@ uses, grouped into catalogs under `collekt/conf/source/`:
 | `cmems_ibi` | `cmems_ibi_currents`, `cmems_ibi_currents_2d_hourly`, `cmems_ibi_currents_3d_hourly`, `cmems_ibi_waves`, `cmems_atl_chl_obs_nrt`, `cmems_atl_chl_obs_my`, `cmems_ibi_bgc_model` |
 | `cmems_nws` | `cmems_nws_currents`, `cmems_nws_currents_2d_hourly`, `cmems_nws_currents_3d_hourly`, `cmems_nws_waves`, `cmems_nws_chl_obs`, `cmems_nws_bgc_model` |
 | `ecmwf` | `ecmwf_open_data_forecast`, `era5_reanalysis` |
+| `gfs` | `gfs_analysis` |
 | `eodyn` | `eodyn_osmose_currents` |
 | `skytruth` | `skytruth` |
 | `hozint` | `hozint` |

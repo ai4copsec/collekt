@@ -12,7 +12,7 @@ can then be assembled onto a common grid and time axis.
 
 ## Installation
 
-Requires Python 3.13+ and [`uv`](https://docs.astral.sh/uv/).
+Requires Python 3.12+ and [`uv`](https://docs.astral.sh/uv/).
 
 ```bash
 git clone https://github.com/ai4copsec/collekt.git
@@ -101,9 +101,10 @@ fail if any requested source is skipped.
 
 ### Sources and configuration
 
-collekt ships a **curated catalog** of datasets (CMEMS global + Mediterranean,
-ECMWF Open Data, ERA5, Skytruth, HOZINT, Global Fishing Watch, Copernicus Data
-Space, eOdyn). Select concrete
+collekt ships a **curated catalog** of datasets (CMEMS global and regional seas,
+ECMWF Open Data, ERA5, NOAA GFS, Skytruth, HOZINT, Global Fishing Watch,
+Copernicus Data Space, Geonorge, eOdyn), and a `local` adapter reads an existing
+tabular archive on disk. Select concrete
 dataset keys with `DatasetConfig` or its YAML form, and put provider parameters
 such as variable names and depth ranges directly on each selected dataset. See
 [Products](https://ai4copsec.github.io/collekt/products.html) and
