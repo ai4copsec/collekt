@@ -1,6 +1,6 @@
 [project]
 name = "collekt"
-version = "0.2.1"
+version = "0.3.0"
 description = "A library to facilitate spatio-temporal data collection across arbitrary datasources"
 license = "BSD-3-Clause"
 license-files = ["LICENSE"]
@@ -110,7 +110,7 @@ ignore = [
 testpaths = ["tests"]
 
 [tool.commitizen]
-version = "0.2.1"
+version = "0.3.0"
 name = "cz_conventional_commits"
 version_files = [
     "pyproject.toml:^version = ",
