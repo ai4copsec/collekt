@@ -483,7 +483,7 @@ def test_hozint_failed_partial_output_is_not_cached_as_complete(tmp_path, monkey
 def test_product_windows_paginate_deduplicate_and_apply_global_limit(tmp_path, monkeypatch):
     from collekt.sources import copernicus_dataspace as cds
 
-    searches, downloads, pages = [], [], []
+    searches, downloads = [], []
 
     def feature(identity):
         return {
@@ -491,15 +491,17 @@ def test_product_windows_paginate_deduplicate_and_apply_global_limit(tmp_path, m
             "assets": {"Product": {"href": f"https://example.test/{identity}", "file:local_path": identity}},
         }
 
+    # The real catalogue leaves the datetime in its next links unencoded, so following
+    # the href verbatim turns "+00:00" into " 00:00" and the server rejects it.
+    next_href = f"{cds.SEARCH_URL}?datetime=2023-01-01T00:00:00+00:00/2023-01-03T00:00:00+00:00&token=next:x:a+1"
+
     def search(token, params):
         searches.append(params)
+        if "token" in params:
+            return {"features": [feature("b")]}
         if params["datetime"].startswith("2023-01-01"):
-            return {"features": [feature("a")], "links": [{"rel": "next", "href": "?page=2"}]}
+            return {"features": [feature("a")], "links": [{"rel": "next", "method": "GET", "href": next_href}]}
         return {"features": [feature("b"), feature("c"), feature("d")]}
-
-    def get(url, **kwargs):
-        pages.append(url)
-        return SimpleNamespace(raise_for_status=lambda: None, json=lambda: {"features": [feature("b")]})
 
     def download(url, token, path):
         downloads.append(url)
@@ -508,20 +510,21 @@ def test_product_windows_paginate_deduplicate_and_apply_global_limit(tmp_path, m
     monkeypatch.setattr(cds, "_credentials", lambda: ("unused", "unused"))
     monkeypatch.setattr(cds, "_login", lambda *args: "unused")
     monkeypatch.setattr(cds, "_search", search)
-    monkeypatch.setattr(cds.requests, "get", get)
     monkeypatch.setattr(cds, "_download", download)
     fetcher = Fetcher(
         request(), config=config(tmp_path, "copernicus_dataspace", collection="example", max_records=3), batch_days=2
     )
     result = fetcher.download()
-    assert len(searches) == 2 and len(pages) == 1 and len(downloads) == 3
+    assert len(searches) == 3 and len(downloads) == 3
+    # The next page repeats the original search, adding only the token from the link.
+    assert searches[1] == searches[0] | {"token": "next:x:a+1"}
     assert [path.name for path in result.files] == ["a", "b", "c"]
     # Nothing failed, so the searches are not kept: a rerun asks the catalogue again for
     # products ingested since, but reuses the products already downloaded.
     assert not list(result.output_dir.rglob(".batch-searches/*.json"))
     again = fetcher.download()
     assert again.summary.reused == 3
-    assert len(searches) == 4 and len(downloads) == 3
+    assert len(searches) == 6 and len(downloads) == 3
 
 
 def test_gfs_groups_preserve_cycle_urls_and_original_request_names(tmp_path, monkeypatch):

@@ -16,6 +16,16 @@ under `[main]`; `just bump` copies them under the new version.
   are skipped, and `batch_days` reads a group of days at once. Adds the `gcsfs`
   and `zarr` dependencies.
 
+### Fixed
+
+- Copernicus Data Space searches spanning more than one page no longer fail with
+  HTTP 400 ("Invalid RFC3339 datetime"). The catalogue's `next` links leave the
+  datetime unencoded, so collekt now takes only the paging token from them and
+  repeats its own encoded search.
+- Copernicus Data Space searches sort by `datetime,id` instead of `datetime` alone.
+  Products of one pass share a datetime, and the catalogue's paging repeated some
+  and silently dropped others (e.g. 3 of 14 Sentinel-2 tiles).
+
 ## [0.3.0] - 2026-10-28
 
 ### Added
