@@ -7,6 +7,15 @@ under `[main]`; `just bump` copies them under the new version.
 
 ### Added
 
+- a generic `file_archive` source adapter and `FileArchive` `DatasetSelection`
+  for providers that publish zipped CSV files per day or month over HTTP, with
+  bundled `aisdk_ais` (Danish Maritime Authority) and `marine_cadastre_ais`
+  (NOAA) AIS catalogs and their damast specs. Files are mirrored once under a
+  shared `archive_root` and either converted to a day-partitioned damast
+  Parquet archive via `export_partitioned` (`convert: parquet`, default; also
+  readable by the `local` adapter) or kept as-is with only damast spec sidecars
+  (`convert: spec_only`); each request day is cut to the request region.
+
 - an `era5_arco` source adapter, `ERA5ARCO` `DatasetSelection` and bundled
   `era5_arco_reanalysis` catalog entry that read ERA5 anonymously from Google's
   ARCO-ERA5 Zarr store instead of the CDS queue, cropped to daily NetCDF files
