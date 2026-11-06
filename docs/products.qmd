@@ -25,13 +25,16 @@ source's `kind`.
 | `geonorge` | Norwegian maritime reference vectors: fairways, navigation aids, aquaculture, restricted zones, ... (features) | open | GeoParquet |
 | `eodyn` | eOdyn surface currents / drifters | open (preview archive) | NetCDF |
 | `local` | Row-filtered subset of a local `damast`-managed tabular archive (features) | none — local filesystem | Parquet |
+| `file_archive` | Row-filtered subset of a remote archive of zipped CSVs, mirrored locally (AIS positions: AISDK, Marine Cadastre) | open | Parquet |
 
 Open sources need no secrets; credential-gated sources resolve their secrets from
 the environment or provider tools — see [Credentials](credentials.qmd). The eOdyn
 adapter serves a historical preview archive (`mode: archive`) until the
 production API ships (`mode: api`). The `local` adapter reads an archive that
 already exists on disk rather than fetching from a remote provider — see
-[Local data collections](#local-data-collections).
+[Local data collections](#local-data-collections). The `file_archive` adapter
+downloads a provider's files into a local mirror first — see
+[Remote file archives (AIS)](#remote-file-archives-ais).
 
 `era5` and `era5_arco` serve the same ERA5 reanalysis: both select variables by
 their long ERA5 names and write them under the CDS short names (`u10`, `t2m`,
@@ -65,6 +68,8 @@ uses, grouped into catalogs under `collekt/conf/source/`:
 | `skytruth` | `skytruth` |
 | `hozint` | `hozint` |
 | `gfw` | `gfw` |
+| `aisdk` | `aisdk_ais` |
+| `marine_cadastre` | `marine_cadastre_ais` |
 | `geonorge` | `geonorge_depth_contours`, `geonorge_fairways`, `geonorge_navigation_aids`, `geonorge_emergency_harbours`, `geonorge_aquaculture`, `geonorge_coral_reefs`, `geonorge_coral_reef_closures`, `geonorge_military_firing_ranges`, `geonorge_military_restricted_areas`, `geonorge_trawling_closures` |
 | `dataspace` | `copernicus_s1_grd`, `copernicus_s2_l2a`, `copernicus_landsat` |
 
@@ -406,6 +411,71 @@ collekt fetch --bbox -6 20 35 45 --start 2026-01-01 \
   --conf-dir my_brick/conf --dataset-config presets/ais.yaml \
   --output-dir data/collections
 ```
+
+## Remote file archives (AIS)
+
+The `file_archive` adapter serves providers that publish tabular data as zipped
+CSV files over HTTP, one file per day or month. Two AIS archives are bundled:
+
+| Source | Provider | Files | Coverage |
+|---|---|---|---|
+| `aisdk_ais` | Danish Maritime Authority | monthly zips until 2024-02, daily from 2024-03 (bucket root from 2025-02-27) | Danish waters, 2006-03-01 to a few days ago |
+| `marine_cadastre_ais` | NOAA Marine Cadastre | daily zips | U.S. waters, 2015-01-01 to 2023-12-31 |
+
+```python
+collekt.DatasetConfig(collekt.FileArchive("aisdk_ais", variables=["# Timestamp", "MMSI", "Latitude", "Longitude"]))
+```
+
+Each remote file is downloaded **once** into a persistent mirror (`archive_root`,
+by default `~/.cache/collekt/archive/<provider>`) that every request shares.
+Every request day is then read from the mirror, cut to the day and the request
+region, and written as one Parquet file into the request directory. Columns keep
+the provider's own names.
+
+`convert` decides what the mirror keeps:
+
+- `parquet` (default): each CSV is converted to annotated Parquet with a parsed
+  UTC time column and written with damast's `export_partitioned` into a
+  time-partitioned archive following `layout` (default: one file per UTC day,
+  `time:<time_column>+daily:%Y/%m/%Y-%m-%d`); the CSV is removed. The mirror is a
+  regular damast archive, so a `local` source with the same `layout` — or
+  damast's own tools — can read it directly. Rows that two remote files
+  contribute to the same partition are merged, not overwritten.
+- `spec_only`: the original CSVs stay byte-identical, one directory per remote
+  file, with only a damast `<file>.spec.yaml` sidecar written next to each. The
+  time column is parsed at read time.
+
+Column metadata (descriptions, units) comes from the provider's bundled damast
+spec (`aisdk.spec.yaml`, `marine_cadastre.spec.yaml`, next to the adapter); a
+source without `spec` infers it from the data.
+
+A further archive of the same shape needs only a catalog entry, declared
+downstream like any other source:
+
+```yaml
+sources:
+  my_ais:
+    kind: file_archive
+    path: "ais/my_ais"
+    filename_pattern: "my_ais_{date:%Y%m%d}_{bbox_hash}.parquet"
+    archive_root: "$HOME/.cache/collekt/archive/my_ais"
+    convert: spec_only
+    periods:
+      # str.format templates over `date`; the first period containing a day wins.
+      - every: month             # one download serves every day of the month
+        until: "2019-12-31"
+        url: "https://example.org/{date:%Y}/ais-{date:%Y-%m}.zip"
+        member: "ais-{date:%Y-%m-%d}.csv"   # the day's CSV inside the monthly zip
+      - every: day
+        start: "2020-01-01"
+        url: "https://example.org/{date:%Y}/ais-{date:%Y-%m-%d}.zip"
+    time_column: timestamp
+    time_format: "%Y-%m-%d %H:%M:%S"
+    region_columns: [lat, lon]
+```
+
+Conversion loads one CSV at a time into memory, which suits a day of AIS data
+(a few GB) — the scale this adapter targets.
 
 ## Dependencies
 
