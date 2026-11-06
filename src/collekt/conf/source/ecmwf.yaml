@@ -1,5 +1,5 @@
 # ECMWF atmospheric sources: near-real-time forecast wind (Open Data) and
-# reanalysis (ERA5).
+# reanalysis (ERA5, from the CDS or from Google's ARCO-ERA5 Zarr store).
 #
 # These are not part of the Copernicus Marine catalogue, so `available_variables`
 # is maintained by hand — extend it downstream if you need variables beyond the
@@ -53,3 +53,29 @@ sources:
       - sea_surface_temperature
     url: "https://cds.climate.copernicus.eu/datasets/reanalysis-era5-single-levels"
     doi: "10.24381/cds.adbb2d47"
+
+  era5_arco_reanalysis:
+    kind: era5_arco
+    path: "ecmwf/era5_arco"
+    dataset_id: "arco-era5"
+    temporal_sampling: 1h
+    # The same ERA5 reanalysis, read anonymously from Google's analysis-ready
+    # Zarr copy instead of the CDS queue. Each chunk is one global hour of one
+    # variable: fast for short windows, costly for long series over small
+    # regions (prefer era5_reanalysis there). The store trails real time by
+    # about a week; downloads check its own `valid_time_stop_era5t` attribute,
+    # so `end` below only shapes dry-run plans.
+    coverage:
+      start: "1940-01-01"
+      end: "now-7d"
+    store: "gs://gcp-public-data-arco-era5/ar/full_37-1h-0p25deg-chunk-1.zarr-v3"
+    pad_deg: 0.5
+    available_variables:
+      - 10m_u_component_of_wind
+      - 10m_v_component_of_wind
+      - 100m_u_component_of_wind
+      - 100m_v_component_of_wind
+      - 2m_temperature
+      - mean_sea_level_pressure
+      - sea_surface_temperature
+    url: "https://github.com/google-research/arco-era5"

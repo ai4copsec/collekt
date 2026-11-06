@@ -5,6 +5,17 @@ under `[main]`; `just bump` copies them under the new version.
 
 ## [main]
 
+### Added
+
+- an `era5_arco` source adapter, `ERA5ARCO` `DatasetSelection` and bundled
+  `era5_arco_reanalysis` catalog entry that read ERA5 anonymously from Google's
+  ARCO-ERA5 Zarr store instead of the CDS queue, cropped to daily NetCDF files
+  with the same short variable names as CDS files (`u10`, `t2m`, ...). It is an explicit alternative to `era5`, not a
+  fallback: chunks are global per hour, so it suits short windows rather than
+  long series over small regions. Days past the store's `valid_time_stop_era5t`
+  are skipped, and `batch_days` reads a group of days at once. Adds the `gcsfs`
+  and `zarr` dependencies.
+
 ## [0.3.0] - 2026-10-28
 
 ### Added

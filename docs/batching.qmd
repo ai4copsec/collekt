@@ -69,6 +69,7 @@ request may need **more** calls when explicit windows are enabled.
 | Source | Retrieval with `batch_days` | Output |
 |---|---|---|
 | ERA5 | One CDS request per compatible group. Groups stay within one year/month and share the same hour selection. Partial first/last days can form smaller groups. Requires unarchived NetCDF. | Original daily NetCDF files. |
+| ERA5 (ARCO) | One read of the Zarr store per group of days; the hourly global chunks of all days in the group are fetched concurrently. Days past the store's last valid day are skipped. | Original daily NetCDF files. |
 | CMEMS | Multi-day `subset` calls for `outside` and `nearest` coordinate selection. Daily slices reproduce the Toolbox's selection, including boundary neighbours. `inside` and `strict-inside` retain daily calls because their empty-selection fallback needs the provider's full time index, so batching gains nothing for them. | Original daily NetCDF files. |
 | ECMWF Open Data | One client call for compatible forecast dates/steps. The SDK may still download multiple remote files. Splitting uses forecast run time and retains lead times and valid times. | Original file per forecast run/day. |
 | GFS | Logical groups of analysis cycles; each native cycle still has its own URL and transfer. | Original daily NetCDF files. |

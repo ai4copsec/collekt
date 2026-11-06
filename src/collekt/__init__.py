@@ -12,6 +12,7 @@ from collekt.core.catalog import available_datasets, describe_datasets
 from collekt.core.datasets import (
     CMEMS,
     ERA5,
+    ERA5ARCO,
     GFS,
     GFW,
     CopernicusDataSpace,
@@ -43,6 +44,7 @@ __all__ = [
     "DoctorCheck",
     "ECMWFOpenData",
     "ERA5",
+    "ERA5ARCO",
     "Fetcher",
     "GFS",
     "GFW",
