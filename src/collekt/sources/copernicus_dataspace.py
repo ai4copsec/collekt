@@ -94,7 +94,9 @@ def _download(url: str, token: str, path: Path) -> None:
 def _search_params(request: Request, source: SourceConfig, collection: str) -> dict[str, Any]:
     params: dict[str, Any] = {
         "collections": collection,
-        "sortby": "datetime",
+        # Products of one pass share a datetime; without the `id` tie-break the
+        # catalogue's token paging repeats some and drops others.
+        "sortby": "datetime,id",
         "limit": int(source.raw.get("max_records", 100)),
     }
     start = request.start_datetime.isoformat(timespec="seconds")

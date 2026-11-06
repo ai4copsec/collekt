@@ -892,3 +892,46 @@ def test_dataspace_plan_reports_search_without_network(tmp_path):
 
     assert result.summary.planned == 1
     assert result.results[0].details["request"]["collections"] == "sentinel-1-grd"
+
+
+def test_dataspace_search_sorts_by_datetime_then_id(tmp_path):
+    # Products of one pass share a datetime; sorting by datetime alone made the
+    # catalogue's token paging repeat some products and silently drop others.
+    result = Fetcher(_request(), config=_cfg(tmp_path, dataspace=DATASPACE)).plan()
+
+    assert result.results[0].details["request"]["sortby"] == "datetime,id"
+
+
+def _next_link(href, method="GET"):
+    return {"links": [{"rel": "next", "method": method, "href": href}]}
+
+
+def test_dataspace_next_page_token_is_read_literally():
+    # The server leaves the href unencoded, so `+` is a literal plus, not a space.
+    catalogue = _next_link("https://x/search?datetime=2024-01-01T00:00:00+00:00&token=next:a+1%2F2")
+
+    assert copernicus_dataspace._next_page_token(catalogue) == "next:a+1/2"
+
+
+def test_dataspace_last_page_has_no_next_token():
+    assert copernicus_dataspace._next_page_token({"links": [{"rel": "self", "href": "https://x"}]}) is None
+
+
+def test_dataspace_next_link_without_token_is_rejected():
+    with pytest.raises(ValueError, match="no paging token"):
+        copernicus_dataspace._next_page_token(_next_link("https://x/search?page=2"))
+
+
+def test_dataspace_non_get_next_link_is_rejected():
+    with pytest.raises(ValueError, match="unsupported method"):
+        copernicus_dataspace._next_page_token(_next_link("https://x/search?token=a", method="POST"))
+
+
+def test_dataspace_repeated_page_token_is_rejected(monkeypatch):
+    feature = {"id": "S1A", "assets": {}}
+    monkeypatch.setattr(
+        copernicus_dataspace, "_search", lambda token, params: {"features": [feature]} | _next_link("https://x?token=a")
+    )
+
+    with pytest.raises(ValueError, match="repeated"):
+        copernicus_dataspace._search_pages("token", {"limit": 1}, cap=10)
