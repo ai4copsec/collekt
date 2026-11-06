@@ -39,6 +39,9 @@ Configuration keys (besides the common source keys):
 - `layout`: damast ``time:`` partitioning spec of the Parquet mirror (see `damast.core.SaveAs`);
   defaults to one file per UTC day, ``time:<time_column>+daily:%Y/%m/%Y-%m-%d``.
 - `spec`: filename of the provider's damast spec next to this module.
+- `coverage` (common key): the provider's region and date range. Requests outside it are skipped
+  before anything is downloaded, and rows are only returned within it. Several entries can
+  therefore share one `archive_root` and differ only in their region - one download serves all.
 
 Conversion loads one CSV member at a time fully into memory (`export_partitioned` collects the
 frame), which is fine for a day of AIS data (a few GB) but sets the scale this adapter targets.
@@ -55,11 +58,19 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any
 
-from collekt.core.availability import Coverage
+from collekt.core.availability import (
+    Coverage,
+    clip_region,
+    day_in_range,
+    day_reason,
+    region_overlaps,
+    region_reason,
+    static_coverage,
+)
 from collekt.core.config import Config, SourceConfig
 from collekt.core.diagnostics import DoctorCheck, package_check
 from collekt.core.naming import format_pattern, pattern_values
-from collekt.core.request import Request
+from collekt.core.request import Region, Request
 from collekt.core.temporal import SamplingPlan, sampling_plan
 from collekt.sources.base import (
     ProgressCallback,
@@ -459,6 +470,16 @@ def fetch_file_archive(
     out_dir.mkdir(parents=True, exist_ok=True)
     plan = sampling_plan(request, source)
     mirror_errors: dict[str, Exception | None] = {}
+    # The declared coverage gates downloads: a remote file can be gigabytes, so a request outside
+    # the provider's region or date range is skipped before anything is fetched.
+    coverage = static_coverage(source)
+    region_miss = None if coverage is None or region_overlaps(request.region, coverage) else coverage
+    # Rows are read within the request region clipped to the coverage box, so an entry only ever
+    # returns rows of the region it declares - two entries that share one mirror and differ only
+    # in region (e.g. either side of the antimeridian) never return the same rows.
+    read_region = request.region
+    if coverage is not None and region_miss is None:
+        read_region = Region.from_bbox(clip_region(request.region, coverage))
 
     results: list[SourceResult] = []
     for day in request.iter_days() if _days is None else _days:
@@ -474,6 +495,14 @@ def fetch_file_archive(
         output_path = out_dir / format_pattern(source.filename_pattern, values)
         if should_reuse_cache(output_path.exists(), config):
             results.append(_result(source, day, SourceStatus.REUSED, details, path=output_path, format="parquet"))
+            continue
+
+        if region_miss is not None:
+            message = region_reason(request.region, region_miss)
+            results.append(_result(source, day, SourceStatus.SKIPPED, details, message=message))
+            continue
+        if coverage is not None and not day_in_range(day, coverage):
+            results.append(_result(source, day, SourceStatus.SKIPPED, details, message=day_reason(day, coverage)))
             continue
 
         remote = remote_file_for_day(spec, day)
@@ -506,7 +535,7 @@ def fetch_file_archive(
                 lat_column=spec.lat_column,
                 lon_column=spec.lon_column,
                 day=day,
-                region=request.region,
+                region=read_region,
                 variables=source.variables,
                 time_format=spec.time_format,
                 validation_mode=damast.core.ValidationMode.UPDATE_DATA,
