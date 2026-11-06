@@ -38,8 +38,13 @@ def _store(stop="2026-06-30", empty_sst_hour=None):
         {
             "10m_u_component_of_wind": (dims, u10, {"short_name": "u10"}),
             "sea_surface_temperature": (dims, sst, {"short_name": "sst"}),
+            # A pressure-level field like the store's 37-level ones (a broadcast view, no memory cost).
+            "temperature": (
+                ("time", "level", "latitude", "longitude"),
+                np.broadcast_to(np.float32(290.0), (shape[0], 2, *shape[1:])),
+            ),
         },
-        coords={"time": time, "latitude": latitude, "longitude": longitude},
+        coords={"time": time, "latitude": latitude, "longitude": longitude, "level": [500, 1000]},
         attrs={"valid_time_start": "1940-01-01", "valid_time_stop": "2026-03-31", "valid_time_stop_era5t": stop},
     )
 
@@ -97,6 +102,15 @@ def test_unknown_variable_is_skipped(tmp_path, store):
     assert "not_a_variable" in result.results[0].message
 
 
+def test_pressure_level_variable_is_rejected(tmp_path, store):
+    store()
+    result = _fetch(tmp_path, variables=["10m_u_component_of_wind", "temperature"])
+
+    assert result.summary.skipped == 1
+    assert "only single-level variables are supported, not: temperature" in result.results[0].message
+    assert not result.files
+
+
 def test_empty_timestamps_are_reported(tmp_path, store):
     store(empty_sst_hour="2026-06-25T05")
     result = _fetch(tmp_path)
@@ -110,7 +124,7 @@ def test_batch_reads_once_and_matches_daily_downloads(tmp_path, store):
     daily = _fetch(tmp_path / "daily", end="2026-06-27T23:00")
     batched = _fetch(tmp_path / "batched", end="2026-06-27T23:00", batch_days=3)
 
-    assert len(opened) == 3 + 1
+    assert len(opened) == 1 + 1  # once for the whole daily fetch, once for the single batch
     assert batched.summary.downloaded == 3
     for one, other in zip(daily.files, batched.files, strict=True):
         assert one.name == other.name

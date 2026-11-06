@@ -97,22 +97,26 @@ def _empty_variables(dataset: Any) -> list[str]:
     return [name for name, variable in dataset.data_vars.items() if bool(variable.isnull().all(spatial).any())]
 
 
-def _retrieve(source: SourceConfig, payload: dict[str, Any], path: Path) -> str | None:
-    """Write the requested hours that the store already holds to `path` as NetCDF.
+def _retrieve(store: Any, payload: dict[str, Any], path: Path) -> str | None:
+    """Write the requested hours that an opened store already holds to `path` as NetCDF.
 
     Hours past the store's last valid day are left out. The store ends on a whole
     day, so a day is either complete or absent; a batch's split step reports the
     absent ones. Returns a message about empty variables, if any.
 
     Raises:
-        ValueError: If a variable is not in the store, or no requested hour is available yet.
+        ValueError: If a variable is not in the store or is not a single-level
+            (time, latitude, longitude) field, or no requested hour is available yet.
     """
     import numpy as np
 
-    store = _open_store(payload["store"])
     missing = [name for name in payload["variables"] if name not in store.data_vars]
     if missing:
         raise ValueError(f"not in the ARCO-ERA5 store: {', '.join(missing)}")
+    # The store also holds 37-level fields; one would cost 37x the volume and add a `level` dimension.
+    leveled = [name for name in payload["variables"] if set(store[name].dims) != {"time", "latitude", "longitude"}]
+    if leveled:
+        raise ValueError(f"only single-level variables are supported, not: {', '.join(leveled)}")
     until = _valid_until(store)
     times = np.array([t for t in payload["times"] if date.fromisoformat(t[:10]) <= until], dtype="datetime64[ns]")
     if not len(times):
@@ -165,6 +169,7 @@ def fetch_era5_arco(
     dataset_id = source.dataset_id or DEFAULT_DATASET_ID
     plan = sampling_plan(request, source)
     results: list[SourceResult] = []
+    store = None  # opened on the first day that is not cached, then shared by all days
     for day in request.iter_days():
         item = SourceResult(
             source=source.name,
@@ -180,8 +185,9 @@ def fetch_era5_arco(
             continue
         progress(source.name, f"downloading {day.isoformat()} from the ARCO-ERA5 store")
         try:
+            store = store if store is not None else _open_store(_store_url(source))
             with staged_output(item.path) as staged:
-                message = _retrieve(source, item.details["request"], staged)
+                message = _retrieve(store, item.details["request"], staged)
         except Exception as exc:  # noqa: BLE001 - unavailable days are warnings, like the CDS adapter
             results.append(failed(item, exc))
             continue
@@ -243,7 +249,7 @@ def _merge_batch(members: list[SourceResult]) -> dict[str, Any]:
 
 
 def _retrieve_batch(request: Request, source: SourceConfig, payload: dict[str, Any], path: Path) -> str | None:
-    return _retrieve(source, payload, path)
+    return _retrieve(_open_store(payload["store"]), payload, path)
 
 
 register_adapter(
