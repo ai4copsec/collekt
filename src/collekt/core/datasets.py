@@ -119,6 +119,33 @@ class ERA5(DatasetSelection):
 
 
 @dataclass(frozen=True, init=False)
+class ERA5ARCO(DatasetSelection):
+    """ERA5 reanalysis selection served from Google's public ARCO-ERA5 Zarr store.
+
+    An alternative to `ERA5` that needs no CDS account and has no queue. Each
+    Zarr chunk holds one hour of one variable for the whole globe, so the
+    download volume grows with hours x variables, independent of the region
+    size (about 3 MB per variable-hour). It suits short windows; for long time
+    series over a small region, `ERA5` (CDS) usually transfers far less. The
+    store lags real time by about a week. Variables are selected by the same long
+    ERA5 names as `ERA5` and written under the same short names as the CDS
+    files (e.g. `10m_u_component_of_wind` becomes `u10`).
+
+    Example:
+
+    ```python
+    collekt.DatasetConfig(collekt.ERA5ARCO("era5_arco_reanalysis", variables=["10m_u_component_of_wind"]))
+    ```
+
+    Args:
+        key: Catalog key to select.
+        variables: ERA5 variable names to fetch.
+    """
+
+    provider: ClassVar[str] = "era5_arco"
+
+
+@dataclass(frozen=True, init=False)
 class eOdyn(DatasetSelection):
     """eOdyn dataset selection."""
 
@@ -300,12 +327,36 @@ class Geonorge(DatasetSelection):
 
 
 DatasetLike = (
-    CMEMS | ECMWFOpenData | ERA5 | GFS | GFW | Geonorge | eOdyn | Local | SkyTruth | CopernicusDataSpace | Hozint
+    CMEMS
+    | ECMWFOpenData
+    | ERA5
+    | ERA5ARCO
+    | GFS
+    | GFW
+    | Geonorge
+    | eOdyn
+    | Local
+    | SkyTruth
+    | CopernicusDataSpace
+    | Hozint
 )
 
 _PROVIDERS: dict[str, type[DatasetLike]] = {
     cls.provider: cls
-    for cls in (CMEMS, ECMWFOpenData, ERA5, GFS, eOdyn, Local, SkyTruth, CopernicusDataSpace, Hozint, GFW, Geonorge)
+    for cls in (
+        CMEMS,
+        ECMWFOpenData,
+        ERA5,
+        ERA5ARCO,
+        GFS,
+        eOdyn,
+        Local,
+        SkyTruth,
+        CopernicusDataSpace,
+        Hozint,
+        GFW,
+        Geonorge,
+    )
 }
 
 

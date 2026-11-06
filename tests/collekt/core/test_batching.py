@@ -88,6 +88,7 @@ def test_windows_are_clipped_utc_calendar_days():
     "kind",
     [
         "era5",
+        "era5_arco",
         "cmems",
         "ecmwf_open_data",
         "gfs",

@@ -42,12 +42,13 @@ src/collekt/
     batching/              # source-agnostic SourceAdapter.batch machinery;
                            #   provider steps live in each source module
       common.py            # day grouping, provenance, checkpoints, atomic writes
-      gridded.py           # run_grid_batch + GridSteps (ERA5/CMEMS/ECMWF)
+      gridded.py           # run_grid_batch + GridSteps (ERA5/ARCO/CMEMS/ECMWF)
       events.py            # run_event_batch + EventSteps (SkyTruth/GFW)
       files.py             # run_file_batch: logical groups of per-file URLs (GFS/eOdyn)
     cmems.py               # copernicusmarine.subset               (open)
     ecmwf_open_data.py     # forecast wind, GRIB2 cropped to NetCDF (open)
     era5.py                # reanalysis wind, cdsapi                (credentials)
+    era5_arco.py           # same ERA5, Google ARCO Zarr store, cropped (open)
     gfs.py                 # GFS analysis wind, NOMADS GRIB filter  (open)
     copernicus_dataspace.py# Sentinel/Landsat product files        (credentials)
     skytruth.py            # oil-slick features -> Parquet          (open)

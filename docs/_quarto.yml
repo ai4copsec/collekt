@@ -78,6 +78,7 @@ quartodoc:
         - CMEMS
         - ECMWFOpenData
         - ERA5
+        - ERA5ARCO
         - GFS
         - eOdyn
         - Local

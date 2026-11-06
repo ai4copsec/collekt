@@ -61,6 +61,8 @@ dependencies = [
     "gfw-api-python-client>=1.4.0",
     "hozint-apiclient",
     "python-dotenv>=1.2.2",
+    "gcsfs>=2026.10.1",
+    "zarr>=3.3.0",
 ]
 
 [project.urls]
