@@ -7,6 +7,7 @@ monkeypatched `requests.get`, then fetched through the normal `Fetcher` entry po
 import io
 import zipfile
 from datetime import date
+from pathlib import Path
 
 import pytest
 
@@ -14,7 +15,7 @@ from collekt import Fetcher
 from collekt.core.config import get_config
 from collekt.core.doctor import _unknown_raw_key_checks
 from collekt.core.request import Region, Request
-from collekt.sources.file_archive import SPEC_DIR, parse_archive_spec, remote_file_for_day
+from collekt.sources.file_archive import SPEC_DIR, parse_archive_spec, remote_file_for_day, resolve_archive_root
 
 damast = pytest.importorskip("damast")
 pl = pytest.importorskip("polars")
@@ -395,3 +396,37 @@ def test_bundled_marine_cadastre_entries_differ_only_in_region_and_output():
 
     assert differing == {"coverage", "path", "filename_pattern"}
     assert east["coverage"]["east"] < west["coverage"]["west"]  # the two boxes do not overlap
+
+
+def test_relative_archive_root_resolves_under_the_environment_variable(tmp_path, monkeypatch):
+    monkeypatch.setenv("COLLEKT_ARCHIVE_ROOT", str(tmp_path / "archives"))
+
+    assert resolve_archive_root("aisdk") == tmp_path / "archives" / "aisdk"
+    assert parse_archive_spec(get_config().sources["aisdk_ais"]).archive_root == tmp_path / "archives" / "aisdk"
+
+
+def test_relative_archive_root_defaults_to_the_user_cache(monkeypatch):
+    monkeypatch.delenv("COLLEKT_ARCHIVE_ROOT", raising=False)
+
+    assert resolve_archive_root("aisdk") == Path("~/.cache/collekt/archive/aisdk").expanduser()
+
+
+def test_absolute_archive_root_ignores_the_environment_variable(tmp_path, monkeypatch):
+    monkeypatch.setenv("COLLEKT_ARCHIVE_ROOT", str(tmp_path / "archives"))
+
+    assert resolve_archive_root(tmp_path / "mine") == tmp_path / "mine"
+
+
+def test_archive_root_can_be_set_in_a_dotenv_file(tmp_path, monkeypatch):
+    from dotenv import find_dotenv, load_dotenv
+
+    # setenv first so monkeypatch restores the variable that load_dotenv writes into os.environ.
+    monkeypatch.setenv("COLLEKT_ARCHIVE_ROOT", "unset")
+    monkeypatch.delenv("COLLEKT_ARCHIVE_ROOT")
+    (tmp_path / ".env").write_text(f"COLLEKT_ARCHIVE_ROOT={tmp_path / 'from-dotenv'}\n")
+    monkeypatch.chdir(tmp_path)
+
+    # The same call collekt makes on import.
+    load_dotenv(find_dotenv(usecwd=True))
+
+    assert resolve_archive_root("aisdk") == tmp_path / "from-dotenv" / "aisdk"

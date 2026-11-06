@@ -427,8 +427,22 @@ CSV files over HTTP, one file per day or month. Two AIS archives are bundled:
 collekt.DatasetConfig(collekt.FileArchive("aisdk_ais", variables=["# Timestamp", "MMSI", "Latitude", "Longitude"]))
 ```
 
-Each remote file is downloaded **once** into a persistent mirror (`archive_root`,
-by default `~/.cache/collekt/archive/<provider>`) that every request shares.
+Each remote file is downloaded **once** into a persistent mirror that every
+request shares. Where mirrors live is set by the `COLLEKT_ARCHIVE_ROOT`
+environment variable, in the shell or in the project's `.env` (which collekt
+loads on import, see [Credentials](credentials.qmd)):
+
+```bash
+# .env
+COLLEKT_ARCHIVE_ROOT=/data/collekt/archive
+```
+
+Each catalog entry's relative `archive_root` (`aisdk`, `marine_cadastre`) is a
+directory under it; without the variable, mirrors go to
+`~/.cache/collekt/archive/<provider>`. An absolute `archive_root` is used as is.
+Mirrors can be large (one AISDK day is ~0.6 GB zipped), so point the variable
+at a disk with room.
+
 Every request day is then read from the mirror, cut to the day and the request
 region, and written as one Parquet file into the request directory. Each
 catalog entry declares a coarse `coverage` box (the provider's EEZ) and date
@@ -465,7 +479,7 @@ sources:
     kind: file_archive
     path: "ais/my_ais"
     filename_pattern: "my_ais_{date:%Y%m%d}_{bbox_hash}.parquet"
-    archive_root: "$HOME/.cache/collekt/archive/my_ais"
+    archive_root: "my_ais"           # under $COLLEKT_ARCHIVE_ROOT
     convert: spec_only
     periods:
       # str.format templates over `date`; the first period containing a day wins.

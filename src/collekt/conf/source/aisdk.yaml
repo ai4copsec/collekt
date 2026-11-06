@@ -18,7 +18,8 @@ sources:
     path: "ais/aisdk"
     filename_pattern: "aisdk_{date:%Y%m%d}_{bbox_hash}.parquet"
     dataset_id: "aisdk"
-    archive_root: "$HOME/.cache/collekt/archive/aisdk"
+    # Relative: resolved under $COLLEKT_ARCHIVE_ROOT (default ~/.cache/collekt/archive).
+    archive_root: "aisdk"
     convert: parquet
     # The Parquet mirror is a damast archive with one file per UTC day.
     layout: "time:# Timestamp+daily:%Y/%m/aisdk_%Y-%m-%d"

@@ -18,7 +18,8 @@ under `[main]`; `just bump` copies them under the new version.
   Each entry declares a coarse EEZ `coverage` box: requests outside it are
   skipped before any download, and rows are only returned inside it. The U.S.
   EEZ is split at the antimeridian into `marine_cadastre_ais` and
-  `marine_cadastre_ais_west`, which share one mirror.
+  `marine_cadastre_ais_west`, which share one mirror. Mirrors live under
+  `$COLLEKT_ARCHIVE_ROOT` (shell or `.env`; default `~/.cache/collekt/archive`).
 
 - an `era5_arco` source adapter, `ERA5ARCO` `DatasetSelection` and bundled
   `era5_arco_reanalysis` catalog entry that read ERA5 anonymously from Google's

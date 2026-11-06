@@ -27,7 +27,9 @@ single Parquet file into the request directory - the same output contract as the
 
 Configuration keys (besides the common source keys):
 
-- `archive_root`: mirror directory.
+- `archive_root`: mirror directory. A relative path is resolved under the directory named by the
+  ``COLLEKT_ARCHIVE_ROOT`` environment variable (which a project ``.env`` can set), falling back to
+  ``~/.cache/collekt/archive``; an absolute path is used as is.
 - `periods`: list of `{url, every: day|month, start?, until?, member?}`. `url` and `member` are
   `str.format` templates over `date`. A day uses the first period whose `start`/`until`
   (inclusive) contain it; `every: month` formats `url` with the first day of the month, so all
@@ -50,6 +52,7 @@ frame), which is fine for a day of AIS data (a few GB) but sets the scale this a
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import zipfile
 from dataclasses import dataclass
@@ -91,6 +94,8 @@ CONVERT_MODES = ("parquet", "spec_only")
 SPEC_DIR = Path(__file__).parent
 DOWNLOAD_CHUNK_BYTES = 8 * 1024 * 1024
 DOWNLOAD_TIMEOUT_S = 60
+ARCHIVE_ROOT_ENV = "COLLEKT_ARCHIVE_ROOT"
+DEFAULT_ARCHIVE_BASE = Path("~/.cache/collekt/archive")
 
 
 class RemoteFileMissingError(FileNotFoundError):
@@ -144,6 +149,31 @@ def _optional_date(value: Any) -> date | None:
     if value in (None, ""):
         return None
     return value if isinstance(value, date) else date.fromisoformat(str(value))
+
+
+def resolve_archive_root(value: Any) -> Path:
+    """Return the mirror directory for a configured `archive_root`.
+
+    A relative `archive_root` (as the bundled catalogs use) is placed under ``$COLLEKT_ARCHIVE_ROOT``,
+    so one variable - set in the environment or a project ``.env`` - moves every mirror. Without
+    it, mirrors go under ``~/.cache/collekt/archive``. An absolute `archive_root` is kept.
+
+    Example:
+        ```python
+        resolve_archive_root("aisdk")  # $COLLEKT_ARCHIVE_ROOT/aisdk
+        ```
+
+    Args:
+        value: The configured `archive_root`.
+
+    Returns:
+        The absolute mirror directory.
+    """
+    root = Path(str(value)).expanduser()
+    if root.is_absolute():
+        return root
+    base = os.environ.get(ARCHIVE_ROOT_ENV) or DEFAULT_ARCHIVE_BASE
+    return Path(base).expanduser() / root
 
 
 def parse_archive_spec(source: SourceConfig) -> ArchiveSpec:
@@ -205,7 +235,7 @@ def parse_archive_spec(source: SourceConfig) -> ArchiveSpec:
 
     lat_column, lon_column = region_columns
     return ArchiveSpec(
-        archive_root=Path(str(raw["archive_root"])).expanduser(),
+        archive_root=resolve_archive_root(raw["archive_root"]),
         periods=tuple(periods),
         convert=convert,
         layout=layout,
