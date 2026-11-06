@@ -69,7 +69,7 @@ uses, grouped into catalogs under `collekt/conf/source/`:
 | `hozint` | `hozint` |
 | `gfw` | `gfw` |
 | `aisdk` | `aisdk_ais` |
-| `marine_cadastre` | `marine_cadastre_ais` |
+| `marine_cadastre` | `marine_cadastre_ais`, `marine_cadastre_ais_west` |
 | `geonorge` | `geonorge_depth_contours`, `geonorge_fairways`, `geonorge_navigation_aids`, `geonorge_emergency_harbours`, `geonorge_aquaculture`, `geonorge_coral_reefs`, `geonorge_coral_reef_closures`, `geonorge_military_firing_ranges`, `geonorge_military_restricted_areas`, `geonorge_trawling_closures` |
 | `dataspace` | `copernicus_s1_grd`, `copernicus_s2_l2a`, `copernicus_landsat` |
 
@@ -419,8 +419,9 @@ CSV files over HTTP, one file per day or month. Two AIS archives are bundled:
 
 | Source | Provider | Files | Coverage |
 |---|---|---|---|
-| `aisdk_ais` | Danish Maritime Authority | monthly zips until 2024-02, daily from 2024-03 (bucket root from 2025-02-27) | Danish waters, 2006-03-01 to a few days ago |
-| `marine_cadastre_ais` | NOAA Marine Cadastre | daily zips | U.S. waters, 2015-01-01 to 2023-12-31 |
+| `aisdk_ais` | Danish Maritime Authority | monthly zips until 2024-02, daily from 2024-03 (bucket root from 2025-02-27) | Danish EEZ, 2006-03-01 to a few days ago |
+| `marine_cadastre_ais` | NOAA Marine Cadastre | daily zips | U.S. EEZ east of 180°, 2015-01-01 to 2023-12-31 |
+| `marine_cadastre_ais_west` | NOAA Marine Cadastre | same files and mirror | U.S. EEZ west of 180° (western Aleutians, far end of the Hawaiian chain) |
 
 ```python
 collekt.DatasetConfig(collekt.FileArchive("aisdk_ais", variables=["# Timestamp", "MMSI", "Latitude", "Longitude"]))
@@ -429,7 +430,13 @@ collekt.DatasetConfig(collekt.FileArchive("aisdk_ais", variables=["# Timestamp",
 Each remote file is downloaded **once** into a persistent mirror (`archive_root`,
 by default `~/.cache/collekt/archive/<provider>`) that every request shares.
 Every request day is then read from the mirror, cut to the day and the request
-region, and written as one Parquet file into the request directory. Columns keep
+region, and written as one Parquet file into the request directory. Each
+catalog entry declares a coarse `coverage` box (the provider's EEZ) and date
+range; a request outside it is skipped before anything is downloaded, and an
+entry only returns rows inside its box. Because neither boxes nor request
+regions can cross the antimeridian, the U.S. EEZ is split into two entries
+that share one mirror and differ only in their region; select both to cover
+the whole EEZ (a day is still downloaded only once). Columns keep
 the provider's own names.
 
 `convert` decides what the mirror keeps:

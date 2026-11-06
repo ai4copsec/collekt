@@ -15,6 +15,10 @@ under `[main]`; `just bump` copies them under the new version.
   Parquet archive via `export_partitioned` (`convert: parquet`, default; also
   readable by the `local` adapter) or kept as-is with only damast spec sidecars
   (`convert: spec_only`); each request day is cut to the request region.
+  Each entry declares a coarse EEZ `coverage` box: requests outside it are
+  skipped before any download, and rows are only returned inside it. The U.S.
+  EEZ is split at the antimeridian into `marine_cadastre_ais` and
+  `marine_cadastre_ais_west`, which share one mirror.
 
 - an `era5_arco` source adapter, `ERA5ARCO` `DatasetSelection` and bundled
   `era5_arco_reanalysis` catalog entry that read ERA5 anonymously from Google's

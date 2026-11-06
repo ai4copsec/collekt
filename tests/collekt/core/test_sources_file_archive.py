@@ -297,7 +297,7 @@ def test_bundled_specs_describe_the_provider_columns(spec_file, header):
     assert {column.name for column in metadata.columns} == set(header.split(","))
 
 
-@pytest.mark.parametrize("key", ["aisdk_ais", "marine_cadastre_ais"])
+@pytest.mark.parametrize("key", ["aisdk_ais", "marine_cadastre_ais", "marine_cadastre_ais_west"])
 def test_bundled_ais_catalogs_parse_and_have_no_unknown_keys(key):
     source = get_config().sources[key]
 
@@ -324,3 +324,74 @@ def test_bundled_aisdk_catalog_follows_the_provider_layout_changes(day, url, mem
     remote = remote_file_for_day(spec, day)
 
     assert (remote.url, remote.member) == (url, member)
+
+
+DENMARK = {"west": 3.25, "east": 16.51, "south": 54.36, "north": 58.26, "start": "2006-03-01", "end": "2024-12-31"}
+
+
+def test_request_outside_the_coverage_region_is_skipped_without_downloading(tmp_path, served):
+    files, calls = served
+    _serve_daily(files, date(2024, 3, 1))
+    gulf_of_mexico = Region.from_bbox((-90.5, -89.5, 29.0, 30.0))
+
+    result = Fetcher(
+        Request(region=gulf_of_mexico, start="2024-03-01"), config=_config(tmp_path, coverage=DENMARK)
+    ).download()
+
+    assert result.summary.skipped == 1
+    assert "outside the available coverage" in result.results[0].message
+    assert calls == []
+
+
+def test_day_outside_the_coverage_dates_is_skipped_without_downloading(tmp_path, served):
+    files, calls = served
+    _serve_daily(files, date(2025, 1, 2))
+
+    result = Fetcher(_request(start="2025-01-02"), config=_config(tmp_path, coverage=DENMARK)).download()
+
+    assert result.summary.skipped == 1
+    assert "outside the available date range" in result.results[0].message
+    assert calls == []
+
+
+def test_request_inside_the_coverage_is_fetched(tmp_path, served):
+    files, _ = served
+    _serve_daily(files, date(2024, 3, 1))
+
+    result = Fetcher(_request(), config=_config(tmp_path, coverage=DENMARK)).download()
+
+    assert result.summary.downloaded == 1
+
+
+def test_entries_differing_only_in_region_share_the_mirror_and_never_duplicate_rows(tmp_path, served):
+    files, calls = served
+    rows = [
+        _aisdk_row("01/03/2024 01:00:00", 1, 30.0, -170.0),  # east of the antimeridian
+        _aisdk_row("01/03/2024 02:00:00", 2, 30.0, 178.0),  # west of it
+    ]
+    csv = "\n".join([AISDK_HEADER, *rows]) + "\n"
+    files[f"{BASE_URL}/2024/aisdk-2024-03-01.zip"] = _zip({"aisdk-2024-03-01.csv": csv})
+    span = {"south": 20.0, "north": 40.0, "start": "2024-01-01", "end": "2024-12-31"}
+    east = _source(tmp_path, path="east", coverage={"west": -180.0, "east": -65.0, **span})
+    west = _source(tmp_path, path="west", coverage={"west": 167.0, "east": 180.0, **span})
+    cfg = get_config(
+        overrides={"source_catalogs": [], "output": {"root": str(tmp_path / "out")}, "sources": {"e": east, "w": west}}
+    )
+    world = Region.from_bbox((-180, 180, -90, 90))
+
+    result = Fetcher(Request(region=world, start="2024-03-01"), config=cfg).download()
+
+    assert calls == [f"{BASE_URL}/2024/aisdk-2024-03-01.zip"]
+    assert result.summary.downloaded == 2
+    by_source = {item.source: _rows(item.path).dataframe.collected()["MMSI"].to_list() for item in result.results}
+    assert by_source == {"e": [1], "w": [2]}
+
+
+def test_bundled_marine_cadastre_entries_differ_only_in_region_and_output():
+    sources = get_config().sources
+    east, west = sources["marine_cadastre_ais"].raw, sources["marine_cadastre_ais_west"].raw
+
+    differing = {key for key in east.keys() | west.keys() if east.get(key) != west.get(key)}
+
+    assert differing == {"coverage", "path", "filename_pattern"}
+    assert east["coverage"]["east"] < west["coverage"]["west"]  # the two boxes do not overlap
