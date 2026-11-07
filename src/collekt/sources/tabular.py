@@ -40,9 +40,10 @@ def layout_files(archive_root: Path, layout: str, day: date) -> list[Path]:
     nothing is read to find them; glob wildcards in the layout are resolved against the disk.
 
     Example:
-        ```python
-        layout_files(Path("mirror"), "time:timestamp+daily:%Y/%m/ais_%Y-%m-%d", date(2024, 3, 1))
-        ```
+
+    ```python
+    layout_files(Path("mirror"), "time:timestamp+daily:%Y/%m/ais_%Y-%m-%d", date(2024, 3, 1))
+    ```
 
     Args:
         archive_root: Directory the layout's paths are relative to.
@@ -71,6 +72,23 @@ def layout_files(archive_root: Path, layout: str, day: date) -> list[Path]:
         compressed = f"{candidate.with_suffix('').as_posix()}.*{candidate.suffix}"
         matches.extend(sorted(archive_root.glob(compressed)))
     return matches
+
+
+def require_columns(schema, columns) -> None:
+    """Raise `TabularConfigError` unless every one of `columns` is in `schema`.
+
+    Args:
+        schema: The polars schema of the data.
+        columns: Configured column names.
+
+    Raises:
+        TabularConfigError: A configured column is missing.
+    """
+    missing = sorted({c for c in columns if c not in schema})
+    if missing:
+        raise TabularConfigError(
+            f"column(s) {', '.join(missing)} not found in the archive. Available columns: {', '.join(schema.names())}"
+        )
 
 
 def narrowed_metadata(metadata, columns):
@@ -118,7 +136,8 @@ def read_day_subset(
         variables: Columns to keep; empty keeps all.
         end_day: Last UTC day to keep (inclusive); defaults to `day`.
         time_format: `strptime` format to parse `time_column` with when it is stored as text,
-            e.g. a CSV read as-is. Parsed values are taken as UTC.
+            e.g. a CSV read as-is. Parsed values are taken as UTC; rows that do not parse are
+            dropped.
         validation_mode: damast `ValidationMode` applied while loading; damast's default
             (`READONLY`) when `None`.
 
@@ -135,14 +154,11 @@ def read_day_subset(
     adf = damast.core.AnnotatedDataFrame.from_files([str(f) for f in files], metadata_required=False, **kwargs)
     lazy = adf.lazyframe
     schema = lazy.collect_schema()
-    missing = sorted({c for c in (time_column, lat_column, lon_column) if c not in schema})
-    if missing:
-        raise TabularConfigError(
-            f"column(s) {', '.join(missing)} not found in the archive. Available columns: {', '.join(schema.names())}"
-        )
+    require_columns(schema, (time_column, lat_column, lon_column))
 
     if time_format is not None and schema[time_column] == polars.String:
-        lazy = lazy.with_columns(polars.col(time_column).str.strptime(polars.Datetime("us", "UTC"), time_format))
+        parsed = polars.col(time_column).str.strptime(polars.Datetime("us", "UTC"), time_format, strict=False)
+        lazy = lazy.with_columns(parsed)
         schema = lazy.collect_schema()
 
     start, end = day_range(day)

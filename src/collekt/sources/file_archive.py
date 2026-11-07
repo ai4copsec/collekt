@@ -17,8 +17,10 @@ every request, and its CSV members are either
 - kept byte-identical in one directory per remote file, with only a damast spec sidecar
   `<member>.spec.yaml` written next to each CSV (`convert: spec_only`).
 
-A marker under `archive_root/.mirrored/` records each completely mirrored remote file, so an
-interrupted download or conversion is retried rather than mistaken for a complete one.
+A marker under `archive_root/.mirrored/<convert>/` records each completely mirrored remote file,
+so an interrupted download or conversion is retried rather than mistaken for a complete one. The
+downloaded zip is kept under `archive_root/.downloads/` until then, so a retry does not download it
+again.
 
 The damast metadata comes from the provider's bundled spec (`spec`, a file next to this module
 such as `aisdk.spec.yaml`), or is inferred from the data when no spec is configured. Each request
@@ -57,6 +59,7 @@ import shutil
 import zipfile
 from dataclasses import dataclass
 from datetime import date
+from functools import partial
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any
@@ -87,7 +90,13 @@ from collekt.sources.base import (
 from collekt.sources.batching.common import daily_output_errors, staged_output
 from collekt.sources.batching.files import run_file_batch
 from collekt.sources.planning import plan_source, static_source_coverage
-from collekt.sources.tabular import TabularConfigError, layout_files, narrowed_metadata, read_day_subset
+from collekt.sources.tabular import (
+    TabularConfigError,
+    layout_files,
+    narrowed_metadata,
+    read_day_subset,
+    require_columns,
+)
 
 DEFAULT_DATASET_ID = "file-archive"
 CONVERT_MODES = ("parquet", "spec_only")
@@ -96,6 +105,7 @@ DOWNLOAD_CHUNK_BYTES = 8 * 1024 * 1024
 DOWNLOAD_TIMEOUT_S = 60
 ARCHIVE_ROOT_ENV = "COLLEKT_ARCHIVE_ROOT"
 DEFAULT_ARCHIVE_BASE = Path("~/.cache/collekt/archive")
+TIME_FORMAT_SAMPLE_ROWS = 1000
 
 
 class RemoteFileMissingError(FileNotFoundError):
@@ -159,9 +169,10 @@ def resolve_archive_root(value: Any) -> Path:
     it, mirrors go under ``~/.cache/collekt/archive``. An absolute `archive_root` is kept.
 
     Example:
-        ```python
-        resolve_archive_root("aisdk")  # $COLLEKT_ARCHIVE_ROOT/aisdk
-        ```
+
+    ```python
+    resolve_archive_root("aisdk")  # $COLLEKT_ARCHIVE_ROOT/aisdk
+    ```
 
     Args:
         value: The configured `archive_root`.
@@ -251,9 +262,10 @@ def remote_file_for_day(spec: ArchiveSpec, day: date) -> RemoteFile | None:
     """Return the remote file holding `day`, or `None` if no period covers it.
 
     Example:
-        ```python
-        remote_file_for_day(spec, date(2024, 3, 1)).url
-        ```
+
+    ```python
+    remote_file_for_day(spec, date(2024, 3, 1)).url
+    ```
 
     Args:
         spec: Parsed source configuration.
@@ -272,8 +284,8 @@ def remote_file_for_day(spec: ArchiveSpec, day: date) -> RemoteFile | None:
 
 
 def mirror_marker(spec: ArchiveSpec, remote: RemoteFile) -> Path:
-    """Return the marker file recording that `remote` has been mirrored completely."""
-    return spec.archive_root / ".mirrored" / f"{remote.stem}.json"
+    """Return the marker file recording that `remote` has been mirrored completely in `spec.convert` mode."""
+    return spec.archive_root / ".mirrored" / spec.convert / f"{remote.stem}.json"
 
 
 def _download(url: str, target: Path) -> None:
@@ -289,24 +301,58 @@ def _download(url: str, target: Path) -> None:
                 handle.write(chunk)
 
 
-def _extract_csv_members(archive: Path, out_dir: Path) -> list[Path]:
-    """Extract every CSV member of `archive` flat into `out_dir`.
+def _downloaded_archive(spec: ArchiveSpec, remote: RemoteFile, progress: ProgressCallback, source_name: str) -> Path:
+    """Return the downloaded zip of `remote`, downloading it unless an earlier run already did.
 
-    Members are written under their base name only, so a member path cannot escape `out_dir`.
+    The zip is kept until `remote` is mirrored completely, so a failed conversion is retried from
+    disk instead of downloading the file again. An interrupted download keeps its `.part` suffix.
     """
-    extracted = []
-    with zipfile.ZipFile(archive) as bundle:
-        for info in bundle.infolist():
-            name = Path(info.filename).name
-            if info.is_dir() or not name.lower().endswith(".csv"):
-                continue
-            target = out_dir / name
-            with bundle.open(info) as src, target.open("wb") as dst:
-                shutil.copyfileobj(src, dst, DOWNLOAD_CHUNK_BYTES)
-            extracted.append(target)
-    if not extracted:
-        raise ValueError(f"{archive.name} contains no CSV file")
-    return extracted
+    archive = spec.archive_root / ".downloads" / f"{remote.stem}.zip"
+    if archive.is_file():
+        return archive
+    archive.parent.mkdir(parents=True, exist_ok=True)
+    partial_download = archive.with_name(f"{archive.name}.part")
+    progress(source_name, f"downloading {remote.url}")
+    _download(remote.url, partial_download)
+    partial_download.replace(archive)
+    return archive
+
+
+def _csv_members(bundle: zipfile.ZipFile) -> list[zipfile.ZipInfo]:
+    """Return the CSV members of `bundle`, raising `ValueError` if it has none."""
+    members = [info for info in bundle.infolist() if not info.is_dir() and info.filename.lower().endswith(".csv")]
+    if not members:
+        raise ValueError(f"{bundle.filename} contains no CSV file")
+    return members
+
+
+def _extract_member(bundle: zipfile.ZipFile, info: zipfile.ZipInfo, out_dir: Path) -> Path:
+    """Extract one member of `bundle` into `out_dir` under its base name, so it cannot escape `out_dir`."""
+    target = out_dir / Path(info.filename).name
+    with bundle.open(info) as src, target.open("wb") as dst:
+        shutil.copyfileobj(src, dst, DOWNLOAD_CHUNK_BYTES)
+    return target
+
+
+def _check_member(lazy, spec: ArchiveSpec, csv: Path) -> None:
+    """Raise `TabularConfigError` when `csv` does not match the configured columns or `time_format`.
+
+    These mistakes affect every file alike, so they stop the fetch rather than being skipped per
+    day. The time format is checked on the first rows only: it is wrong when none of them parse.
+    """
+    import polars as pl
+
+    schema = lazy.collect_schema()
+    require_columns(schema, (spec.time_column, spec.lat_column, spec.lon_column))
+    if spec.time_format is None or schema[spec.time_column] != pl.String:
+        return
+    sample = lazy.select(spec.time_column).head(TIME_FORMAT_SAMPLE_ROWS).collect()[spec.time_column].drop_nulls()
+    parsed = sample.str.strptime(pl.Datetime("us", "UTC"), spec.time_format, strict=False)
+    if len(sample) and parsed.null_count() == len(sample):
+        raise TabularConfigError(
+            f"{csv.name}: no value of column {spec.time_column!r} matches time_format {spec.time_format!r}"
+            f" (first value: {sample[0]!r})"
+        )
 
 
 def _metadata_for(spec: ArchiveSpec, lazy, url: str):
@@ -337,14 +383,20 @@ def _with_column_type(metadata, column: str, schema):
 def _convert_to_partitions(csv: Path, spec: ArchiveSpec, url: str, out_dir: Path) -> list[Path]:
     """Write `csv` as annotated Parquet partitions per `spec.layout` under `out_dir`, then remove it.
 
-    The time column is parsed to UTC first, since the partitions are cut along it.
+    The time column is parsed to UTC first, since the partitions are cut along it; rows whose
+    timestamp does not parse are dropped, as they belong to no partition.
+
+    Raises:
+        TabularConfigError: `csv` does not match the configured columns or `time_format`.
     """
     import damast
     import polars as pl
 
     lazy, _ = damast.core.AnnotatedDataFrame.load_csv([str(csv)])
-    if spec.time_format is not None:
-        lazy = lazy.with_columns(pl.col(spec.time_column).str.strptime(pl.Datetime("us", "UTC"), spec.time_format))
+    _check_member(lazy, spec, csv)
+    if spec.time_format is not None and lazy.collect_schema()[spec.time_column] == pl.String:
+        parsed = pl.col(spec.time_column).str.strptime(pl.Datetime("us", "UTC"), spec.time_format, strict=False)
+        lazy = lazy.with_columns(parsed).drop_nulls(spec.time_column)
     metadata = _with_column_type(_metadata_for(spec, lazy, url), spec.time_column, lazy.collect_schema())
     adf = damast.core.AnnotatedDataFrame(lazy, metadata, validation_mode=damast.core.ValidationMode.UPDATE_DATA)
     written = adf.export_partitioned(out_dir, damast.core.SaveAs.parse(spec.layout).strategy)
@@ -378,18 +430,83 @@ def _publish_partition(staged: Path, target: Path) -> None:
 
 
 def _write_spec_sidecar(csv: Path, spec: ArchiveSpec, url: str) -> None:
-    """Write the damast spec for `csv` next to it, leaving the CSV untouched."""
+    """Write the damast spec for `csv` next to it, leaving the CSV untouched.
+
+    Raises:
+        TabularConfigError: `csv` does not match the configured columns or `time_format`.
+    """
     import damast
 
     lazy, _ = damast.core.AnnotatedDataFrame.load_csv([str(csv)])
+    _check_member(lazy, spec, csv)
     _metadata_for(spec, lazy, url).save_yaml(damast.core.MetaData.specfile([csv]))
+
+
+def _mirror_as_parquet(
+    archive: Path, spec: ArchiveSpec, url: str, staging_dir: Path, progress: ProgressCallback, source_name: str
+) -> list[Path]:
+    """Convert the CSV members of `archive` one at a time and publish their partitions.
+
+    Each member is extracted, converted and published before the next, so only one CSV is on disk
+    at a time, and a partition that several members contribute to (a day's late rows in the next
+    day's file) is merged rather than overwritten. Returns the published paths relative to
+    `archive_root`.
+    """
+    published: dict[Path, None] = {}
+    with zipfile.ZipFile(archive) as bundle:
+        for index, info in enumerate(_csv_members(bundle)):
+            member_dir = staging_dir / str(index)
+            member_dir.mkdir()
+            csv = _extract_member(bundle, info, member_dir)
+            progress(source_name, f"converting {csv.name}")
+            partitions = member_dir / "partitions"
+            for path in _convert_to_partitions(csv, spec, url, partitions):
+                relative = path.relative_to(partitions)
+                _publish_partition(path, spec.archive_root / relative)
+                published[relative] = None
+            shutil.rmtree(member_dir)
+    return list(published)
+
+
+def _mirror_as_csv(
+    archive: Path,
+    spec: ArchiveSpec,
+    remote: RemoteFile,
+    staging_dir: Path,
+    progress: ProgressCallback,
+    source_name: str,
+) -> list[Path]:
+    """Extract the CSV members of `archive` into `archive_root/<stem>/` with a spec sidecar each.
+
+    Returns the published paths relative to `archive_root`.
+
+    Raises:
+        ValueError: Two members share a file name, which one flat directory cannot keep apart.
+    """
+    unpacked = staging_dir / remote.stem
+    unpacked.mkdir()
+    with zipfile.ZipFile(archive) as bundle:
+        members = _csv_members(bundle)
+        names = [Path(info.filename).name for info in members]
+        duplicates = sorted({name for name in names if names.count(name) > 1})
+        if duplicates:
+            raise ValueError(f"{archive.name}: several CSV members are named {', '.join(duplicates)}")
+        csvs = [_extract_member(bundle, info, unpacked) for info in members]
+    for csv in csvs:
+        progress(source_name, f"annotating {csv.name}")
+        _write_spec_sidecar(csv, spec, remote.url)
+    target = spec.archive_root / remote.stem
+    if target.exists():
+        shutil.rmtree(target)
+    unpacked.replace(target)
+    return [target.relative_to(spec.archive_root) / csv.name for csv in csvs]
 
 
 def mirror(spec: ArchiveSpec, remote: RemoteFile, progress: ProgressCallback, source_name: str) -> None:
     """Make sure `remote` is downloaded and unpacked into the mirror.
 
-    Everything is assembled in a temporary directory under `archive_root` and published at the
-    end, followed by the marker, so an interrupted run never looks complete.
+    The marker is written last, so an interrupted run never looks complete; it is retried from
+    the kept download, and partitions it already published are merged again without duplicates.
 
     Args:
         spec: Parsed source configuration.
@@ -399,42 +516,22 @@ def mirror(spec: ArchiveSpec, remote: RemoteFile, progress: ProgressCallback, so
 
     Raises:
         RemoteFileMissingError: The provider does not serve the file.
+        TabularConfigError: The file does not match the configured columns or `time_format`.
     """
     marker = mirror_marker(spec, remote)
     if marker.is_file():
         return
     spec.archive_root.mkdir(parents=True, exist_ok=True)
+    archive = _downloaded_archive(spec, remote, progress, source_name)
     with TemporaryDirectory(prefix=f".{remote.stem}-", dir=spec.archive_root) as staging:
-        staging_dir = Path(staging)
-        archive = staging_dir / f"{remote.stem}.zip"
-        progress(source_name, f"downloading {remote.url}")
-        _download(remote.url, archive)
-        unpacked = staging_dir / remote.stem
-        unpacked.mkdir()
-        members = _extract_csv_members(archive, unpacked)
-        archive.unlink()
-
         if spec.convert == "parquet":
-            partitions = staging_dir / "partitions"
-            written: list[Path] = []
-            for csv in members:
-                progress(source_name, f"converting {csv.name}")
-                written.extend(_convert_to_partitions(csv, spec, remote.url, partitions))
-            published = [path.relative_to(partitions) for path in written]
-            for relative in published:
-                _publish_partition(partitions / relative, spec.archive_root / relative)
+            published = _mirror_as_parquet(archive, spec, remote.url, Path(staging), progress, source_name)
         else:
-            for csv in members:
-                progress(source_name, f"annotating {csv.name}")
-                _write_spec_sidecar(csv, spec, remote.url)
-            target = spec.archive_root / remote.stem
-            if target.exists():
-                shutil.rmtree(target)
-            unpacked.replace(target)
-            published = [target.relative_to(spec.archive_root) / csv.name for csv in members]
+            published = _mirror_as_csv(archive, spec, remote, Path(staging), progress, source_name)
 
     marker.parent.mkdir(parents=True, exist_ok=True)
     marker.write_text(json.dumps({"url": remote.url, "convert": spec.convert, "files": [str(p) for p in published]}))
+    archive.unlink()
 
 
 def _day_files(spec: ArchiveSpec, remote: RemoteFile, day: date) -> list[Path]:
@@ -452,11 +549,15 @@ def _day_files(spec: ArchiveSpec, remote: RemoteFile, day: date) -> list[Path]:
     return sorted(directory.glob("*.csv"))
 
 
+def _dataset_id(source: SourceConfig) -> str:
+    return source.dataset_id or DEFAULT_DATASET_ID
+
+
 def _result(source: SourceConfig, day: date, status: SourceStatus, details: dict[str, Any], **fields) -> SourceResult:
     return SourceResult(
         source=source.name,
         status=status,
-        dataset_id=source.dataset_id or DEFAULT_DATASET_ID,
+        dataset_id=_dataset_id(source),
         variables=source.variables,
         day=day.isoformat(),
         details=details,
@@ -475,8 +576,9 @@ def fetch_file_archive(
 ) -> list[SourceResult]:
     """Fetch one region-filtered Parquet file per request day from a remote file archive.
 
-    A day whose remote file the provider does not serve, or that has no rows in the region, is
-    skipped; a configured column the data does not have is raised as a configuration error.
+    A day whose remote file the provider does not serve or cannot be read, or that has no rows in
+    the region, is skipped; a configured column or `time_format` the data does not match is raised
+    as a configuration error.
 
     Args:
         request: Region and time window to fetch.
@@ -495,7 +597,7 @@ def fetch_file_archive(
     import damast
 
     spec = parse_archive_spec(source)
-    dataset_id = source.dataset_id or DEFAULT_DATASET_ID
+    dataset_id = _dataset_id(source)
     out_dir = request_dir / source.path
     out_dir.mkdir(parents=True, exist_ok=True)
     plan = sampling_plan(request, source)
@@ -544,6 +646,8 @@ def fetch_file_archive(
             try:
                 mirror(spec, remote, progress, source.name)
                 mirror_errors[remote.url] = None
+            except TabularConfigError as exc:
+                raise ValueError(f"file_archive source {source.name!r}: {exc}") from exc
             except Exception as exc:  # noqa: BLE001 - one unavailable file must not block other days
                 mirror_errors[remote.url] = exc
         if mirror_errors[remote.url] is not None:
@@ -572,6 +676,10 @@ def fetch_file_archive(
             )
         except TabularConfigError as exc:
             raise ValueError(f"file_archive source {source.name!r}: {exc}") from exc
+        except Exception as exc:  # noqa: BLE001 - one unreadable mirrored file must not block other days
+            message = f"could not read {day.isoformat()}: {exc}"
+            results.append(_result(source, day, SourceStatus.SKIPPED, details, message=message))
+            continue
         if rows.height == 0:
             message = f"no rows within the request region for {day.isoformat()}"
             results.append(_result(source, day, SourceStatus.SKIPPED, details, message=message))
@@ -595,13 +703,12 @@ def fetch_file_archive(
 
 
 def _dataset_for_day(source: SourceConfig, day: date) -> str:
-    return source.dataset_id or DEFAULT_DATASET_ID
+    return _dataset_id(source)
 
 
 def _day_details(
-    request: Request, source: SourceConfig, day: date, plan: SamplingPlan, coverage: Coverage | None
+    spec: ArchiveSpec, request: Request, source: SourceConfig, day: date, plan: SamplingPlan, coverage: Coverage | None
 ) -> tuple[str, dict[str, Any], dict[str, Any]]:
-    spec = parse_archive_spec(source)
     remote = remote_file_for_day(spec, day)
     request_details: dict[str, Any] = {"archive_root": str(spec.archive_root), "convert": spec.convert}
     if remote is not None:
@@ -612,7 +719,7 @@ def _day_details(
         "temporal": plan.day_dict(day),
         "request": request_details,
     }
-    return source.dataset_id or DEFAULT_DATASET_ID, details, {}
+    return _dataset_id(source), details, {}
 
 
 def plan_file_archive(request: Request, source: SourceConfig, config: Config, request_dir: Path) -> list[SourceResult]:
@@ -626,7 +733,7 @@ def plan_file_archive(request: Request, source: SourceConfig, config: Config, re
         method=method,
         checked=checked,
         dataset_for_day=_dataset_for_day,
-        day_details=_day_details,
+        day_details=partial(_day_details, parse_archive_spec(source)),
         planned_format="parquet",
     )
 
