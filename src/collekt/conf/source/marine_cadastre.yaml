@@ -1,0 +1,66 @@
+# NOAA Marine Cadastre AIS vessel traffic (U.S. waters) — an open file archive.
+#
+# Served by the generic `file_archive` adapter: daily zipped CSVs (~0.3 GB) are
+# mirrored once under `archive_root` as a day-partitioned damast Parquet archive
+# (`layout`), annotated with the bundled damast spec
+# (`sources/marine_cadastre.spec.yaml`), and each request day is cut to the
+# request region. Set `convert: spec_only` to keep the original CSVs and write
+# only damast spec sidecars.
+#
+# Coverage starts in 2015: 2009-2014 are published per month and UTM zone under a
+# different layout, which this entry does not describe. It ends in 2023: the 2024
+# directory lists daily files, but they returned HTTP 404 when checked (2026-11).
+# Files before 2018 lack the `TransceiverClass` column.
+#
+# Coverage boxes cannot cross the antimeridian (nor can request regions), so the
+# U.S. EEZ is split into two entries that differ only in their region and output
+# path. Both share one `archive_root`, so a day is downloaded once whichever entry
+# fetches it first, and each entry returns only rows inside its own box. Select
+# `marine_cadastre_ais_west` as well for the western Aleutians and the far end of
+# the Hawaiian chain.
+
+sources:
+  marine_cadastre_ais: &marine_cadastre
+    kind: file_archive
+    path: "ais/marine_cadastre"
+    filename_pattern: "marine_cadastre_{date:%Y%m%d}_{bbox_hash}.parquet"
+    dataset_id: "marine-cadastre-ais"
+    # Relative: resolved under $COLLEKT_ARCHIVE_ROOT (default ~/.cache/collekt/archive).
+    archive_root: "marine_cadastre"
+    convert: parquet
+    # The Parquet mirror is a damast archive with one file per UTC day.
+    layout: "time:BaseDateTime+daily:%Y/%m/AIS_%Y_%m_%d"
+    spec: marine_cadastre.spec.yaml
+    periods:
+      - every: day
+        url: "https://coast.noaa.gov/htdata/CMSP/AISDataHandler/{date:%Y}/AIS_{date:%Y_%m_%d}.zip"
+    time_column: BaseDateTime
+    time_format: "%Y-%m-%dT%H:%M:%S"
+    region_columns: [LAT, LON]
+    temporal_sampling: 24h
+    # U.S. EEZ east of the antimeridian, as one box around the Marine Regions EEZs
+    # (contiguous 8456, Alaska 8463, Hawaii 8453, Puerto Rico 33179). Requests
+    # outside it are skipped without downloading. Pacific territories are not covered.
+    coverage:
+      west: -180.0
+      east: -65.0
+      south: 14.93
+      north: 74.71
+      start: "2015-01-01"
+      end: "2023-12-31"
+    url: "https://hub.marinecadastre.gov/pages/vesseltraffic"
+
+  marine_cadastre_ais_west:
+    <<: *marine_cadastre
+    path: "ais/marine_cadastre_west"
+    filename_pattern: "marine_cadastre_west_{date:%Y%m%d}_{bbox_hash}.parquet"
+    # U.S. EEZ west of the antimeridian: the western Aleutians (Alaska 8463) and the
+    # far end of the Hawaiian chain (Hawaii 8453), bounds from the Marine Regions
+    # geometries. A merge key replaces the whole block, so the dates are repeated.
+    coverage:
+      west: 167.64
+      east: 180.0
+      south: 25.39
+      north: 56.28
+      start: "2015-01-01"
+      end: "2023-12-31"

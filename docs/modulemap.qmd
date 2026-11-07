@@ -57,8 +57,12 @@ src/collekt/
     geonorge.py            # Geonorge maritime vectors (WFS) -> GeoParquet (open)
     eodyn.py               # eOdyn ocean-data (archive/api)         (credentials)
     local.py               # local damast-managed tabular archive   (no catalog entry)
+    file_archive.py        # remote zipped-CSV archives, mirrored + damast-converted (open)
+    tabular.py             # shared day/region row reads + damast layout lookup (local, file_archive)
     skytruth.spec.yaml     # Skytruth column metadata (damast spec)
     gfw.spec.yaml          # GFW events column metadata (damast spec)
+    aisdk.spec.yaml        # AISDK AIS column metadata (damast spec)
+    marine_cadastre.spec.yaml # Marine Cadastre AIS column metadata (damast spec)
 
   assemble/
     gridded.py             # Assembler: regrid + time-align -> xarray/NetCDF/Zarr/NumPy
@@ -67,7 +71,8 @@ src/collekt/
     default.yaml           # runtime defaults + source_catalogs
     source/                # curated dataset catalogs: cmems_global, cmems_eur,
                            #   cmems_med, cmems_ibi, cmems_nws, ecmwf, gfs,
-                           #   eodyn, skytruth, hozint, dataspace, gfw, geonorge
+                           #   eodyn, skytruth, hozint, dataspace, gfw, geonorge,
+                           #   aisdk, marine_cadastre
 
   resources/
     schema/manifest.schema.json   # draft manifest schema (reference; not enforced)

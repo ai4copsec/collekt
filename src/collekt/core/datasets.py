@@ -168,6 +168,28 @@ class Local(DatasetSelection):
 
 
 @dataclass(frozen=True, init=False)
+class FileArchive(DatasetSelection):
+    """Remote file-archive dataset selection (e.g. the AIS archives AISDK and Marine Cadastre).
+
+    Where the provider's files live, how they are named per period, and how they are mirrored
+    and converted are catalog-level facts of the ``file_archive`` source kind - not part of
+    this selection. This picks the catalog entry and, optionally, which columns to keep.
+
+    Example:
+
+    ```python
+    collekt.DatasetConfig(collekt.FileArchive("aisdk_ais"))
+    ```
+
+    Args:
+        key: Catalog key of the archive to select, e.g. ``aisdk_ais`` or ``marine_cadastre_ais``.
+        variables: Columns to keep; all columns when omitted.
+    """
+
+    provider: ClassVar[str] = "file_archive"
+
+
+@dataclass(frozen=True, init=False)
 class SkyTruth(DatasetSelection):
     """SkyTruth Cerulean slick selection."""
 
@@ -335,6 +357,7 @@ DatasetLike = (
     | GFW
     | Geonorge
     | eOdyn
+    | FileArchive
     | Local
     | SkyTruth
     | CopernicusDataSpace
@@ -350,6 +373,7 @@ _PROVIDERS: dict[str, type[DatasetLike]] = {
         ERA5ARCO,
         GFS,
         eOdyn,
+        FileArchive,
         Local,
         SkyTruth,
         CopernicusDataSpace,

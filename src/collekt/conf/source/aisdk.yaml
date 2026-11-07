@@ -1,0 +1,52 @@
+# Danish Maritime Authority (AISDK) historical AIS positions — an open file archive.
+#
+# Served by the generic `file_archive` adapter: zipped CSVs are mirrored once under
+# `archive_root` as a day-partitioned damast Parquet archive (`layout`), annotated
+# with the bundled damast spec (`sources/aisdk.spec.yaml`), and each request day
+# is cut to the request region.
+# Set `convert: spec_only` to keep the original CSVs and write only damast spec sidecars.
+#
+# The provider's layout changed twice, so three periods describe it:
+# - until 2024-02: one zip per month in a year folder (~17 GB, one CSV per day inside);
+# - 2024-03 to 2025-02-26: one zip per day (~0.6 GB) in a year folder;
+# - from 2025-02-27: one zip per day at the bucket root, updated with a lag of a
+#   few days (latest checked 2026-11-06: 2026-11-03).
+
+sources:
+  aisdk_ais:
+    kind: file_archive
+    path: "ais/aisdk"
+    filename_pattern: "aisdk_{date:%Y%m%d}_{bbox_hash}.parquet"
+    dataset_id: "aisdk"
+    # Relative: resolved under $COLLEKT_ARCHIVE_ROOT (default ~/.cache/collekt/archive).
+    archive_root: "aisdk"
+    convert: parquet
+    # The Parquet mirror is a damast archive with one file per UTC day.
+    layout: "time:# Timestamp+daily:%Y/%m/aisdk_%Y-%m-%d"
+    spec: aisdk.spec.yaml
+    periods:
+      - every: month
+        until: "2024-02-29"
+        url: "http://aisdata.ais.dk/{date:%Y}/aisdk-{date:%Y-%m}.zip"
+        member: "aisdk-{date:%Y-%m-%d}.csv"
+      - every: day
+        start: "2024-03-01"
+        until: "2025-02-26"
+        url: "http://aisdata.ais.dk/{date:%Y}/aisdk-{date:%Y-%m-%d}.zip"
+      - every: day
+        start: "2025-02-27"
+        url: "http://aisdata.ais.dk/aisdk-{date:%Y-%m-%d}.zip"
+    time_column: "# Timestamp"
+    time_format: "%d/%m/%Y %H:%M:%S"
+    region_columns: [Latitude, Longitude]
+    temporal_sampling: 24h
+    # Bounding box of the Danish EEZ (Marine Regions MRGID 5674); requests outside it
+    # are skipped without downloading. The data itself may reach a little further.
+    coverage:
+      west: 3.25
+      east: 16.51
+      south: 54.36
+      north: 58.26
+      start: "2006-03-01"
+      end: "now-3d"
+    url: "http://aisdata.ais.dk/"
