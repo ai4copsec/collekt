@@ -161,7 +161,8 @@ def test_parquet_mode_converts_with_provider_spec_and_filters_day_and_region(tmp
     assert result.summary.downloaded == 1
     partition = tmp_path / "mirror" / "2024" / "03" / "2024-03-01.parquet"
     assert sorted(p.name for p in (tmp_path / "mirror").rglob("*.parquet")) == [partition.name]
-    assert (tmp_path / "mirror" / ".mirrored" / "aisdk-2024-03-01.json").is_file()
+    assert (tmp_path / "mirror" / ".mirrored" / "parquet" / "aisdk-2024-03-01.json").is_file()
+    assert not list((tmp_path / "mirror" / ".downloads").iterdir())
     converted = _rows(partition)
     assert converted.lazyframe.collect_schema()["# Timestamp"] == pl.Datetime("us", "UTC")
     assert converted.metadata["Latitude"].unit is not None
@@ -217,6 +218,99 @@ def test_rows_from_two_remote_files_for_the_same_day_are_merged(tmp_path, served
 
     partition = _rows(tmp_path / "mirror" / "2024" / "03" / "2024-03-01.parquet").dataframe.collected()
     assert sorted(partition["MMSI"].to_list()) == [1, 2, 3, 9]
+
+
+def test_members_of_one_monthly_zip_sharing_a_day_are_merged(tmp_path, served):
+    files, _ = served
+    # The second day's file also carries a late row of the first day.
+    late = _aisdk_row("01/01/2023 23:59:30", 9, 57.0, 12.0)
+    second = _aisdk_csv(date(2023, 1, 2)) + f"{late}\n"
+    members = {"aisdk-2023-01-01.csv": _aisdk_csv(date(2023, 1, 1)), "aisdk-2023-01-02.csv": second}
+    files[f"{BASE_URL}/2023/aisdk-2023-01.zip"] = _zip(members)
+
+    result = Fetcher(_request(start="2023-01-01"), config=_config(tmp_path)).download()
+
+    assert result.summary.downloaded == 1
+    partition = _rows(tmp_path / "mirror" / "2023" / "01" / "2023-01-01.parquet").dataframe.collected()
+    assert sorted(partition["MMSI"].to_list()) == [1, 2, 3, 9]
+
+
+def test_rows_with_unparseable_timestamps_are_dropped(tmp_path, served):
+    files, _ = served
+    broken = _aisdk_row("not a date", 7, 56.0, 10.0)
+    csv = _aisdk_csv(date(2024, 3, 1)) + f"{broken}\n"
+    files[f"{BASE_URL}/2024/aisdk-2024-03-01.zip"] = _zip({"aisdk-2024-03-01.csv": csv})
+
+    result = Fetcher(_request(), config=_config(tmp_path)).download()
+
+    assert result.summary.downloaded == 1
+    assert sorted(_rows(result.files[0]).dataframe.collected()["MMSI"].to_list()) == [1, 2]
+
+
+@pytest.mark.parametrize(
+    ("override", "match"),
+    [({"time_format": "%Y-%m-%d %H:%M:%S"}, "matches time_format"), ({"time_column": "Time"}, "not found")],
+)
+def test_configuration_mistake_is_raised_and_the_download_kept(tmp_path, served, override, match):
+    files, calls = served
+    _serve_daily(files, date(2024, 3, 1))
+
+    with pytest.raises(ValueError, match=match):
+        Fetcher(_request(), config=_config(tmp_path, **override)).download()
+    result = Fetcher(_request(), config=_config(tmp_path)).download()
+
+    assert result.summary.downloaded == 1
+    assert len(calls) == 1
+
+
+def test_switching_convert_mode_on_one_archive_root_mirrors_again(tmp_path, served):
+    files, _ = served
+    _serve_daily(files, date(2024, 3, 1))
+    Fetcher(_request(), config=_config(tmp_path, out="parquet")).download()
+
+    result = Fetcher(_request(), config=_config(tmp_path, out="spec_only", convert="spec_only")).download()
+
+    assert result.summary.downloaded == 1
+    assert (tmp_path / "mirror" / "aisdk-2024-03-01" / "aisdk-2024-03-01.csv").is_file()
+
+
+def test_members_with_the_same_name_in_different_folders(tmp_path, served):
+    files, _ = served
+    day = date(2024, 3, 1)
+    rows = _aisdk_csv(day).splitlines()
+    first = "\n".join([rows[0], rows[1]]) + "\n"
+    second = "\n".join([rows[0], rows[2]]) + "\n"
+    files[f"{BASE_URL}/2024/aisdk-2024-03-01.zip"] = _zip({"a/day.csv": first, "b/day.csv": second})
+
+    parquet = Fetcher(_request(), config=_config(tmp_path, out="parquet")).download()
+    spec_only_cfg = _config(tmp_path, out="spec_only", convert="spec_only", archive_root=str(tmp_path / "raw"))
+    spec_only = Fetcher(_request(), config=spec_only_cfg).download()
+
+    assert sorted(_rows(parquet.files[0]).dataframe.collected()["MMSI"].to_list()) == [1, 2]
+    assert spec_only.summary.skipped == 1
+    assert "several CSV members are named day.csv" in spec_only.results[0].message
+
+
+def test_unreadable_mirrored_file_skips_only_its_day(tmp_path, served, monkeypatch):
+    import collekt.sources.file_archive as file_archive
+
+    files, _ = served
+    for day in (date(2024, 3, 1), date(2024, 3, 2)):
+        _serve_daily(files, day)
+    real_read = file_archive.read_day_subset
+
+    def read(files, *, day, **kwargs):
+        if day == date(2024, 3, 1):
+            raise pl.exceptions.ComputeError("malformed line")
+        return real_read(files, day=day, **kwargs)
+
+    monkeypatch.setattr(file_archive, "read_day_subset", read)
+
+    result = Fetcher(_request(start="2024-03-01", end="2024-03-02"), config=_config(tmp_path)).download()
+
+    assert result.summary.downloaded == 1
+    assert result.summary.skipped == 1
+    assert "malformed line" in result.results[0].message
 
 
 def test_parquet_mirror_is_a_damast_archive_the_local_adapter_reads(tmp_path, served):
