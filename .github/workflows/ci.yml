@@ -53,6 +53,7 @@ jobs:
   test:
     name: Test (${{ matrix.os }}, py${{ matrix.python-version }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     strategy:
       fail-fast: true
       matrix:

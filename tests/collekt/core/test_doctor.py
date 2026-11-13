@@ -3,8 +3,24 @@
 from datetime import UTC, date, datetime
 from types import SimpleNamespace
 
+import pytest
+
 from collekt.core.config import parse_config
 from collekt.core.doctor import DoctorCheck, run_doctor
+from collekt.sources import era5_arco
+
+
+@pytest.fixture(autouse=True)
+def offline_era5_arco(monkeypatch):
+    """Keep `run_doctor(online=True)` from opening the real ARCO-ERA5 store on GCS.
+
+    Opening it starts zarr's event loop, which hangs interpreter exit on Windows (#24).
+    """
+
+    def unreachable(url):
+        raise OSError(f"offline test: {url} not opened")
+
+    monkeypatch.setattr(era5_arco, "_open_store", unreachable)
 
 
 def test_run_doctor_reports_packages_and_sources():
