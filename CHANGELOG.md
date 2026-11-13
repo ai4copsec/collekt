@@ -34,6 +34,13 @@ under `[main]`; `just bump` copies them under the new version.
   are skipped, and `batch_days` reads a group of days at once. Adds the `gcsfs`
   and `zarr` dependencies.
 
+### Changed
+
+- require damast 0.4.1. It reads compressed CSVs (`.csv.gz`, `.csv.zst`) and
+  names their spec `<name>.spec.yaml`, so `file_archive` with
+  `convert: spec_only` now keeps a single compressed CSV as is instead of
+  rejecting it.
+
 ## [0.3.0] - 2026-10-28
 
 ### Added

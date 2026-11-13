@@ -621,12 +621,19 @@ def test_single_compressed_csv_is_converted_without_unzipping(tmp_path, served):
     assert output.metadata["latitude"].description.startswith("Latitude coordinate")
 
 
-def test_spec_only_rejects_a_single_compressed_csv(tmp_path, served):
+def test_spec_only_keeps_a_single_compressed_csv_as_is(tmp_path, served):
     files, _ = served
     _serve_mc(files, [date(2024, 3, 1)])
 
-    with pytest.raises(ValueError, match="spec_only' needs zipped CSVs"):
-        Fetcher(_request(), config=_mc_config(tmp_path, convert="spec_only")).download()
+    result = Fetcher(_request(), config=_mc_config(tmp_path, convert="spec_only")).download()
+
+    assert result.summary.downloaded == 1
+    mirrored = tmp_path / "mirror" / "ais-2024-03-01"
+    assert sorted(p.name for p in mirrored.iterdir()) == ["ais-2024-03-01.csv.zst", "ais-2024-03-01.spec.yaml"]
+    assert (mirrored / "ais-2024-03-01.csv.zst").read_bytes() == files[format_url(MC_URL, date(2024, 3, 1))]
+    output = _rows(result.files[0])
+    assert sorted(output.dataframe.collected()["mmsi"].to_list()) == [1, 2]
+    assert output.metadata["latitude"].description.startswith("Latitude coordinate")
 
 
 def test_days_after_the_latest_indexed_file_are_skipped_without_downloading(tmp_path, served):

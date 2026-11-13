@@ -472,9 +472,8 @@ cannot be read, the static `coverage` applies.
   contribute to the same partition are merged, not overwritten.
 - `spec_only`: the original CSVs stay byte-identical, one directory per remote
   file, with only a damast `<file>.spec.yaml` sidecar written next to each. The
-  time column is parsed at read time. This needs zipped CSVs: damast cannot read
-  a compressed single CSV such as `.csv.zst` as-is, so Marine Cadastre uses
-  `parquet`.
+  time column is parsed at read time. A single compressed CSV (`.csv.gz`,
+  `.csv.zst`) is kept compressed, since damast reads it directly.
 
 Column metadata (descriptions, units) comes from the provider's bundled damast
 spec (`aisdk.spec.yaml`, `marine_cadastre.spec.yaml`, next to the adapter); a

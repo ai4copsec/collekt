@@ -15,8 +15,7 @@ every request, and its CSV (or each CSV member of a zip) is either
   remote files contribute rows to the same partition, the rows are merged and de-duplicated
   rather than overwritten.
 - kept byte-identical in one directory per remote file, with only a damast spec sidecar
-  `<member>.spec.yaml` written next to each CSV (`convert: spec_only`). This mode needs zipped
-  CSVs: damast cannot read a compressed single CSV such as ``.csv.zst`` as-is.
+  `<name>.spec.yaml` written next to each CSV, compressed or not (`convert: spec_only`).
 
 A marker under `archive_root/.mirrored/<convert>/` records each completely mirrored remote file,
 so an interrupted download or conversion is retried rather than mistaken for a complete one. The
@@ -593,28 +592,20 @@ def _mirror_as_csv(
     progress: ProgressCallback,
     source_name: str,
 ) -> list[Path]:
-    """Extract the CSV members of `archive` into `archive_root/<stem>/` with a spec sidecar each.
+    """Place the CSVs of `archive` into `archive_root/<stem>/` with a spec sidecar each.
 
-    Returns the published paths relative to `archive_root`.
+    A zip has its CSV members extracted; a single CSV, possibly compressed, is copied as it is,
+    since damast reads it directly. Returns the published paths relative to `archive_root`.
 
     Raises:
-        TabularConfigError: `archive` is not a zip; damast cannot read a compressed CSV as-is.
         ValueError: Two members share a file name, which one flat directory cannot keep apart.
     """
-    if not zipfile.is_zipfile(archive):
-        raise TabularConfigError(
-            f"{archive.name}: convert 'spec_only' needs zipped CSVs, since damast cannot read this file as-is;"
-            " use convert 'parquet'"
-        )
     unpacked = staging_dir / remote.stem
     unpacked.mkdir()
-    with zipfile.ZipFile(archive) as bundle:
-        members = _csv_members(bundle)
-        names = [Path(info.filename).name for info in members]
-        duplicates = sorted({name for name in names if names.count(name) > 1})
-        if duplicates:
-            raise ValueError(f"{archive.name}: several CSV members are named {', '.join(duplicates)}")
-        csvs = [_extract_member(bundle, info, unpacked) for info in members]
+    if not zipfile.is_zipfile(archive):
+        csvs = [Path(shutil.copy2(archive, unpacked / archive.name))]
+    else:
+        csvs = _extract_csv_members(archive, unpacked)
     for csv in csvs:
         progress(source_name, f"annotating {csv.name}")
         _write_spec_sidecar(csv, spec, remote.url)
@@ -623,6 +614,21 @@ def _mirror_as_csv(
         shutil.rmtree(target)
     unpacked.replace(target)
     return [target.relative_to(spec.archive_root) / csv.name for csv in csvs]
+
+
+def _extract_csv_members(archive: Path, out_dir: Path) -> list[Path]:
+    """Extract the CSV members of the zip `archive` into `out_dir` and return their paths.
+
+    Raises:
+        ValueError: Two members share a file name, which one flat directory cannot keep apart.
+    """
+    with zipfile.ZipFile(archive) as bundle:
+        members = _csv_members(bundle)
+        names = [Path(info.filename).name for info in members]
+        duplicates = sorted({name for name in names if names.count(name) > 1})
+        if duplicates:
+            raise ValueError(f"{archive.name}: several CSV members are named {', '.join(duplicates)}")
+        return [_extract_member(bundle, info, out_dir) for info in members]
 
 
 def mirror(spec: ArchiveSpec, remote: RemoteFile, progress: ProgressCallback, source_name: str) -> None:
@@ -661,7 +667,7 @@ def _day_files(spec: ArchiveSpec, remote: RemoteFile, day: date) -> list[Path]:
     """Return the mirrored data files to read for `day`.
 
     Parquet mirrors are looked up through `layout`; spec-only mirrors keep the provider's files,
-    so the day's `member` (or every CSV of the remote file) is read.
+    so the day's `member` (or every CSV of the remote file, compressed or not) is read.
     """
     if spec.convert == "parquet":
         return layout_files(spec.archive_root, spec.layout, day)
@@ -669,7 +675,9 @@ def _day_files(spec: ArchiveSpec, remote: RemoteFile, day: date) -> list[Path]:
     if remote.member is not None:
         candidate = directory / remote.member
         return [candidate] if candidate.is_file() else []
-    return sorted(directory.glob("*.csv"))
+    from damast.utils.io import DataFile
+
+    return [path for path in sorted(directory.glob("*.csv*")) if DataFile.format_suffix(path).startswith(".csv")]
 
 
 def _dataset_id(source: SourceConfig) -> str:
