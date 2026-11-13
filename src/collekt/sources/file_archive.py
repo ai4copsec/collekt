@@ -1,12 +1,12 @@
 """Remote file-archive adapter.
 
-Serves providers that publish tabular data as zipped CSV files over plain HTTP, one file per day
-or per month - for example the AIS archives of NOAA Marine Cadastre and the Danish Maritime
-Authority (AISDK). A provider is described entirely in its catalog entry, so a further archive
+Serves providers that publish tabular data as CSV files over plain HTTP, one file per day or per
+month, either zipped or as a single (possibly compressed, e.g. ``.csv.zst``) CSV - for example the
+AIS archives of NOAA Marine Cadastre and the Danish Maritime Authority (AISDK). A provider is described entirely in its catalog entry, so a further archive
 of this shape needs a catalog file (and ideally a damast spec), not a new module.
 
 Each remote file is downloaded once into a persistent mirror under `archive_root`, shared by
-every request, and its CSV members are either
+every request, and its CSV (or each CSV member of a zip) is either
 
 - converted to annotated Parquet and written with `AnnotatedDataFrame.export_partitioned` into a
   damast time-partitioned archive following `layout` (`convert: parquet`, the default). The
@@ -15,12 +15,13 @@ every request, and its CSV members are either
   remote files contribute rows to the same partition, the rows are merged and de-duplicated
   rather than overwritten.
 - kept byte-identical in one directory per remote file, with only a damast spec sidecar
-  `<member>.spec.yaml` written next to each CSV (`convert: spec_only`).
+  `<member>.spec.yaml` written next to each CSV (`convert: spec_only`). This mode needs zipped
+  CSVs: damast cannot read a compressed single CSV such as ``.csv.zst`` as-is.
 
 A marker under `archive_root/.mirrored/<convert>/` records each completely mirrored remote file,
 so an interrupted download or conversion is retried rather than mistaken for a complete one. The
-downloaded zip is kept under `archive_root/.downloads/` until then, so a retry does not download it
-again.
+downloaded file is kept under `archive_root/.downloads/` until then, so a retry does not download
+it again.
 
 The damast metadata comes from the provider's bundled spec (`spec`, a file next to this module
 such as `aisdk.spec.yaml`), or is inferred from the data when no spec is configured. Each request
@@ -32,11 +33,15 @@ Configuration keys (besides the common source keys):
 - `archive_root`: mirror directory. A relative path is resolved under the directory named by the
   ``COLLEKT_ARCHIVE_ROOT`` environment variable (which a project ``.env`` can set), falling back to
   ``~/.cache/collekt/archive``; an absolute path is used as is.
-- `periods`: list of `{url, every: day|month, start?, until?, member?}`. `url` and `member` are
-  `str.format` templates over `date`. A day uses the first period whose `start`/`until`
-  (inclusive) contain it; `every: month` formats `url` with the first day of the month, so all
-  days of a month share one download. `member` names the day's CSV inside a multi-day archive,
-  so in `spec_only` mode a day reads only its own file.
+- `periods`: list of `{url, every: day|month, start?, until?, member?, index?}`. `url`, `member`
+  and `index` are `str.format` templates over `date`. A day uses the first period whose
+  `start`/`until` (inclusive) contain it; `every: month` formats `url` with the first day of the
+  month, so all days of a month share one download. `member` names the day's CSV inside a
+  multi-day archive, so in `spec_only` mode a day reads only its own file. `index` is a yearly
+  listing page (formatted with January 1st of the year) whose links name the published files: the
+  latest listed file ends the source's coverage, so later days are skipped with the last
+  published day in the message, both when fetching and in a dry run. The index is read from the
+  requested year back to the period's `start`; if it cannot be read, the static `coverage` applies.
 - `time_column`, `region_columns: [lat_column, lon_column]`: columns rows are filtered on.
 - `time_format`: `strptime` format of `time_column` in the CSV; parsed values are taken as UTC.
 - `convert`: `parquet` or `spec_only`.
@@ -53,18 +58,25 @@ frame), which is fine for a day of AIS data (a few GB) but sets the scale this a
 
 from __future__ import annotations
 
+import calendar
 import json
 import os
+import re
 import shutil
 import zipfile
-from dataclasses import dataclass
-from datetime import date
+from dataclasses import dataclass, replace
+from datetime import date, datetime
 from functools import partial
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any
 
 from collekt.core.availability import (
+    GLOBAL_EAST,
+    GLOBAL_NORTH,
+    GLOBAL_SOUTH,
+    GLOBAL_WEST,
+    AvailabilityMethod,
     Coverage,
     clip_region,
     day_in_range,
@@ -72,6 +84,7 @@ from collekt.core.availability import (
     region_overlaps,
     region_reason,
     static_coverage,
+    today,
 )
 from collekt.core.config import Config, SourceConfig
 from collekt.core.diagnostics import DoctorCheck, package_check
@@ -89,7 +102,7 @@ from collekt.sources.base import (
 )
 from collekt.sources.batching.common import daily_output_errors, staged_output
 from collekt.sources.batching.files import run_file_batch
-from collekt.sources.planning import plan_source, static_source_coverage
+from collekt.sources.planning import plan_source
 from collekt.sources.tabular import (
     TabularConfigError,
     layout_files,
@@ -103,6 +116,7 @@ CONVERT_MODES = ("parquet", "spec_only")
 SPEC_DIR = Path(__file__).parent
 DOWNLOAD_CHUNK_BYTES = 8 * 1024 * 1024
 DOWNLOAD_TIMEOUT_S = 60
+INDEX_TIMEOUT_S = 30
 ARCHIVE_ROOT_ENV = "COLLEKT_ARCHIVE_ROOT"
 DEFAULT_ARCHIVE_BASE = Path("~/.cache/collekt/archive")
 TIME_FORMAT_SAMPLE_ROWS = 1000
@@ -121,6 +135,7 @@ class ArchivePeriod:
     start: date | None = None
     until: date | None = None
     member: str | None = None
+    index: str | None = None
 
     def covers(self, day: date) -> bool:
         """Return whether `day` falls inside this period (bounds inclusive)."""
@@ -129,6 +144,12 @@ class ArchivePeriod:
     def anchor(self, day: date) -> date:
         """Return the date the file holding `day` is named after."""
         return day.replace(day=1) if self.every == "month" else day
+
+    def last_day(self, anchor: date) -> date:
+        """Return the last day held by the file named after `anchor`."""
+        if self.every == "month":
+            return anchor.replace(day=calendar.monthrange(anchor.year, anchor.month)[1])
+        return anchor
 
 
 @dataclass(frozen=True)
@@ -148,7 +169,7 @@ class ArchiveSpec:
 
 @dataclass(frozen=True)
 class RemoteFile:
-    """One remote archive file, and the CSV member inside it that holds a given day."""
+    """One remote file (a zip or a single CSV), and the CSV member inside it that holds a given day."""
 
     url: str
     stem: str
@@ -226,6 +247,7 @@ def parse_archive_spec(source: SourceConfig) -> ArchiveSpec:
                 start=_optional_date(entry.get("start")),
                 until=_optional_date(entry.get("until")),
                 member=None if entry.get("member") is None else str(entry["member"]),
+                index=None if entry.get("index") is None else str(entry["index"]),
             )
         )
     if not periods:
@@ -278,9 +300,96 @@ def remote_file_for_day(spec: ArchiveSpec, day: date) -> RemoteFile | None:
         if period.covers(day):
             url = format_pattern(period.url, {"date": period.anchor(day)})
             member = None if period.member is None else format_pattern(period.member, {"date": day})
-            stem = url.rstrip("/").rsplit("/", maxsplit=1)[-1].removesuffix(".zip")
-            return RemoteFile(url=url, stem=stem, member=member)
+            return RemoteFile(url=url, stem=_stem(_file_name(url)), member=member)
     return None
+
+
+def _listed_files(index_url: str) -> list[str] | None:
+    """Return the file names an index page links to: `[]` when it does not exist (HTTP 404), `None` when unreadable."""
+    import requests
+
+    try:
+        response = requests.get(index_url, timeout=INDEX_TIMEOUT_S)
+        if response.status_code == 404:
+            return []
+        response.raise_for_status()
+    except requests.RequestException:
+        return None
+    return [_file_name(href) for href in re.findall(r'href="([^"?#]+)"', response.text)]
+
+
+def latest_published_day(spec: ArchiveSpec, day: date) -> date | None:
+    """Return the last day the provider has published up to `day`, read from the period's `index`.
+
+    The index of `day`'s year is read first, then each earlier year back to the period's `start`,
+    until one lists a file named like the period's `url`.
+
+    Example:
+
+    ```python
+    latest_published_day(spec, date(2027, 1, 1))  # e.g. date(2026, 6, 30)
+    ```
+
+    Args:
+        spec: Parsed source configuration.
+        day: The latest day of interest.
+
+    Returns:
+        The last published day, or `None` when the period covering `day` has no `index`, an index
+        cannot be read, or none lists a matching file.
+    """
+    period = next((p for p in spec.periods if p.covers(day)), None)
+    if period is None or period.index is None:
+        return None
+    file_format = re.sub(r"\{date:([^}]*)\}", r"\1", _file_name(period.url))
+    first_year = day.year if period.start is None else period.start.year
+    for year in range(day.year, first_year - 1, -1):
+        names = _listed_files(format_pattern(period.index, {"date": date(year, 1, 1)}))
+        if names is None:
+            return None
+        anchors = []
+        for name in names:
+            try:
+                anchors.append(datetime.strptime(name, file_format).date())
+            except ValueError:
+                continue
+        published = [period.last_day(anchor) for anchor in anchors if period.covers(anchor)]
+        if published:
+            return min(max(published), day)
+    return None
+
+
+def published_coverage(spec: ArchiveSpec, source: SourceConfig, last_day: date) -> Coverage | None:
+    """Return the source's static `coverage`, ending no later than the last day its `index` lists.
+
+    Args:
+        spec: Parsed source configuration.
+        source: Resolved source configuration.
+        last_day: Last requested day; the index is read up to it (or today, if earlier).
+
+    Returns:
+        The coverage to gate requests with, or `None` when there is neither a static `coverage`
+        nor a readable `index`.
+    """
+    coverage = static_coverage(source)
+    latest = latest_published_day(spec, min(last_day, today()))
+    if latest is None or (coverage is not None and coverage.end is not None and coverage.end <= latest):
+        return coverage
+    if coverage is None:
+        return Coverage(GLOBAL_WEST, GLOBAL_EAST, GLOBAL_SOUTH, GLOBAL_NORTH, start=None, end=latest)
+    return replace(coverage, end=latest)
+
+
+def _file_name(url: str) -> str:
+    return url.rstrip("/").rsplit("/", maxsplit=1)[-1]
+
+
+def _stem(name: str) -> str:
+    """Return a remote file's mirror name: without `.zip`, or without `.csv` and any compression suffix."""
+    lowered = name.lower()
+    if ".csv" in lowered:
+        return name[: lowered.rindex(".csv")]
+    return name.removesuffix(".zip")
 
 
 def mirror_marker(spec: ArchiveSpec, remote: RemoteFile) -> Path:
@@ -302,12 +411,12 @@ def _download(url: str, target: Path) -> None:
 
 
 def _downloaded_archive(spec: ArchiveSpec, remote: RemoteFile, progress: ProgressCallback, source_name: str) -> Path:
-    """Return the downloaded zip of `remote`, downloading it unless an earlier run already did.
+    """Return the downloaded file of `remote`, downloading it unless an earlier run already did.
 
-    The zip is kept until `remote` is mirrored completely, so a failed conversion is retried from
+    The file is kept until `remote` is mirrored completely, so a failed conversion is retried from
     disk instead of downloading the file again. An interrupted download keeps its `.part` suffix.
     """
-    archive = spec.archive_root / ".downloads" / f"{remote.stem}.zip"
+    archive = spec.archive_root / ".downloads" / _file_name(remote.url)
     if archive.is_file():
         return archive
     archive.parent.mkdir(parents=True, exist_ok=True)
@@ -381,7 +490,7 @@ def _with_column_type(metadata, column: str, schema):
 
 
 def _convert_to_partitions(csv: Path, spec: ArchiveSpec, url: str, out_dir: Path) -> list[Path]:
-    """Write `csv` as annotated Parquet partitions per `spec.layout` under `out_dir`, then remove it.
+    """Write `csv` (plain or compressed) as annotated Parquet partitions per `spec.layout` under `out_dir`.
 
     The time column is parsed to UTC first, since the partitions are cut along it; rows whose
     timestamp does not parse are dropped, as they belong to no partition.
@@ -399,9 +508,7 @@ def _convert_to_partitions(csv: Path, spec: ArchiveSpec, url: str, out_dir: Path
         lazy = lazy.with_columns(parsed).drop_nulls(spec.time_column)
     metadata = _with_column_type(_metadata_for(spec, lazy, url), spec.time_column, lazy.collect_schema())
     adf = damast.core.AnnotatedDataFrame(lazy, metadata, validation_mode=damast.core.ValidationMode.UPDATE_DATA)
-    written = adf.export_partitioned(out_dir, damast.core.SaveAs.parse(spec.layout).strategy)
-    csv.unlink()
-    return written
+    return adf.export_partitioned(out_dir, damast.core.SaveAs.parse(spec.layout).strategy)
 
 
 def _publish_partition(staged: Path, target: Path) -> None:
@@ -442,16 +549,30 @@ def _write_spec_sidecar(csv: Path, spec: ArchiveSpec, url: str) -> None:
     _metadata_for(spec, lazy, url).save_yaml(damast.core.MetaData.specfile([csv]))
 
 
+def _publish_csv(csv: Path, spec: ArchiveSpec, url: str, work_dir: Path) -> list[Path]:
+    """Convert one CSV into partitions under `work_dir` and publish them; return their paths relative to `archive_root`."""
+    partitions = work_dir / "partitions"
+    published = []
+    for path in _convert_to_partitions(csv, spec, url, partitions):
+        relative = path.relative_to(partitions)
+        _publish_partition(path, spec.archive_root / relative)
+        published.append(relative)
+    return published
+
+
 def _mirror_as_parquet(
     archive: Path, spec: ArchiveSpec, url: str, staging_dir: Path, progress: ProgressCallback, source_name: str
 ) -> list[Path]:
-    """Convert the CSV members of `archive` one at a time and publish their partitions.
+    """Convert `archive` - a single CSV, or each CSV member of a zip in turn - and publish its partitions.
 
-    Each member is extracted, converted and published before the next, so only one CSV is on disk
+    Zip members are extracted, converted and published one at a time, so only one CSV is on disk
     at a time, and a partition that several members contribute to (a day's late rows in the next
     day's file) is merged rather than overwritten. Returns the published paths relative to
     `archive_root`.
     """
+    if not zipfile.is_zipfile(archive):
+        progress(source_name, f"converting {archive.name}")
+        return list(dict.fromkeys(_publish_csv(archive, spec, url, staging_dir)))
     published: dict[Path, None] = {}
     with zipfile.ZipFile(archive) as bundle:
         for index, info in enumerate(_csv_members(bundle)):
@@ -459,11 +580,7 @@ def _mirror_as_parquet(
             member_dir.mkdir()
             csv = _extract_member(bundle, info, member_dir)
             progress(source_name, f"converting {csv.name}")
-            partitions = member_dir / "partitions"
-            for path in _convert_to_partitions(csv, spec, url, partitions):
-                relative = path.relative_to(partitions)
-                _publish_partition(path, spec.archive_root / relative)
-                published[relative] = None
+            published.update(dict.fromkeys(_publish_csv(csv, spec, url, member_dir)))
             shutil.rmtree(member_dir)
     return list(published)
 
@@ -481,8 +598,14 @@ def _mirror_as_csv(
     Returns the published paths relative to `archive_root`.
 
     Raises:
+        TabularConfigError: `archive` is not a zip; damast cannot read a compressed CSV as-is.
         ValueError: Two members share a file name, which one flat directory cannot keep apart.
     """
+    if not zipfile.is_zipfile(archive):
+        raise TabularConfigError(
+            f"{archive.name}: convert 'spec_only' needs zipped CSVs, since damast cannot read this file as-is;"
+            " use convert 'parquet'"
+        )
     unpacked = staging_dir / remote.stem
     unpacked.mkdir()
     with zipfile.ZipFile(archive) as bundle:
@@ -602,10 +725,14 @@ def fetch_file_archive(
     out_dir.mkdir(parents=True, exist_ok=True)
     plan = sampling_plan(request, source)
     mirror_errors: dict[str, Exception | None] = {}
+    days = tuple(request.iter_days()) if _days is None else _days
     # The declared coverage gates downloads: a remote file can be gigabytes, so a request outside
-    # the provider's region or date range is skipped before anything is fetched.
+    # the provider's region or date range is skipped before anything is fetched. A period's
+    # `index` ends the date range at the last day the provider has published.
     coverage = static_coverage(source)
     region_miss = None if coverage is None or region_overlaps(request.region, coverage) else coverage
+    if region_miss is None and days:
+        coverage = published_coverage(spec, source, max(days))
     # Rows are read within the request region clipped to the coverage box, so an entry only ever
     # returns rows of the region it declares - two entries that share one mirror and differ only
     # in region (e.g. either side of the antimeridian) never return the same rows.
@@ -614,7 +741,7 @@ def fetch_file_archive(
         read_region = Region.from_bbox(clip_region(request.region, coverage))
 
     results: list[SourceResult] = []
-    for day in request.iter_days() if _days is None else _days:
+    for day in days:
         details: dict[str, Any] = {"temporal": plan.day_dict(day), "archive_root": str(spec.archive_root)}
         values = pattern_values(
             source=source.name,
@@ -723,17 +850,18 @@ def _day_details(
 
 
 def plan_file_archive(request: Request, source: SourceConfig, config: Config, request_dir: Path) -> list[SourceResult]:
-    """Plan file-archive reads using the source's declarative coverage, without downloading."""
-    coverage, method, checked = static_source_coverage(source)
+    """Plan file-archive reads from the source's coverage and `index`, without downloading any data file."""
+    spec = parse_archive_spec(source)
+    coverage = published_coverage(spec, source, max(request.iter_days()))
     return plan_source(
         request,
         source,
         request_dir,
         coverage=coverage,
-        method=method,
-        checked=checked,
+        method=AvailabilityMethod.COVERAGE if coverage is not None else AvailabilityMethod.NOT_CHECKED,
+        checked=coverage is not None,
         dataset_for_day=_dataset_for_day,
-        day_details=partial(_day_details, parse_archive_spec(source)),
+        day_details=partial(_day_details, spec),
         planned_format="parquet",
     )
 

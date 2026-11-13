@@ -25,7 +25,7 @@ source's `kind`.
 | `geonorge` | Norwegian maritime reference vectors: fairways, navigation aids, aquaculture, restricted zones, ... (features) | open | GeoParquet |
 | `eodyn` | eOdyn surface currents / drifters | open (preview archive) | NetCDF |
 | `local` | Row-filtered subset of a local `damast`-managed tabular archive (features) | none — local filesystem | Parquet |
-| `file_archive` | Row-filtered subset of a remote archive of zipped CSVs, mirrored locally (AIS positions: AISDK, Marine Cadastre) | open | Parquet |
+| `file_archive` | Row-filtered subset of a remote archive of zipped or compressed CSVs, mirrored locally (AIS positions: AISDK, Marine Cadastre) | open | Parquet |
 
 Open sources need no secrets; credential-gated sources resolve their secrets from
 the environment or provider tools — see [Credentials](credentials.qmd). The eOdyn
@@ -414,13 +414,14 @@ collekt fetch --bbox -6 20 35 45 --start 2026-01-01 \
 
 ## Remote file archives (AIS)
 
-The `file_archive` adapter serves providers that publish tabular data as zipped
-CSV files over HTTP, one file per day or month. Two AIS archives are bundled:
+The `file_archive` adapter serves providers that publish tabular data as CSV
+files over HTTP, one file per day or month, either zipped or as a single
+(possibly compressed, e.g. `.csv.zst`) CSV. Two AIS archives are bundled:
 
 | Source | Provider | Files | Coverage |
 |---|---|---|---|
 | `aisdk_ais` | Danish Maritime Authority | monthly zips until 2024-02, daily from 2024-03 (bucket root from 2025-02-27) | Danish EEZ, 2006-03-01 to a few days ago |
-| `marine_cadastre_ais` | NOAA Marine Cadastre | daily zips | U.S. EEZ east of 180°, 2015-01-01 to 2023-12-31 |
+| `marine_cadastre_ais` | NOAA Marine Cadastre | daily zstd-compressed CSVs (Broadcast Points) | U.S. EEZ east of 180°, 2015-01-01 to the latest published day |
 | `marine_cadastre_ais_west` | NOAA Marine Cadastre | same files and mirror | U.S. EEZ west of 180° (western Aleutians, far end of the Hawaiian chain) |
 
 ```python
@@ -437,7 +438,7 @@ loads on import, see [Credentials](credentials.qmd)):
 COLLEKT_ARCHIVE_ROOT=/data/collekt/archive
 ```
 
-Each catalog entry's relative `archive_root` (`aisdk`, `marine_cadastre`) is a
+Each catalog entry's relative `archive_root` (`aisdk`, `marine_cadastre_points`) is a
 directory under it; without the variable, mirrors go to
 `~/.cache/collekt/archive/<provider>`. An absolute `archive_root` is used as is.
 Mirrors can be large (one AISDK day is ~0.6 GB zipped), so point the variable
@@ -453,6 +454,13 @@ that share one mirror and differ only in their region; select both to cover
 the whole EEZ (a day is still downloaded only once). Columns keep
 the provider's own names.
 
+A period can name an `index`: a listing page of the published files, such as
+Marine Cadastre's yearly file lists. The latest file it lists then ends the
+entry's date range, so a request for a later day is skipped with the last
+published day in the message (`... is outside the available date range
+(2015-01-01 to 2026-06-30)`), both when fetching and in a dry run. If the index
+cannot be read, the static `coverage` applies.
+
 `convert` decides what the mirror keeps:
 
 - `parquet` (default): each CSV is converted to annotated Parquet with a parsed
@@ -464,7 +472,9 @@ the provider's own names.
   contribute to the same partition are merged, not overwritten.
 - `spec_only`: the original CSVs stay byte-identical, one directory per remote
   file, with only a damast `<file>.spec.yaml` sidecar written next to each. The
-  time column is parsed at read time.
+  time column is parsed at read time. This needs zipped CSVs: damast cannot read
+  a compressed single CSV such as `.csv.zst` as-is, so Marine Cadastre uses
+  `parquet`.
 
 Column metadata (descriptions, units) comes from the provider's bundled damast
 spec (`aisdk.spec.yaml`, `marine_cadastre.spec.yaml`, next to the adapter); a
@@ -490,6 +500,8 @@ sources:
       - every: day
         start: "2020-01-01"
         url: "https://example.org/{date:%Y}/ais-{date:%Y-%m-%d}.zip"
+        # Optional yearly listing; its latest file ends the date range.
+        index: "https://example.org/{date:%Y}/index.html"
     time_column: timestamp
     time_format: "%Y-%m-%d %H:%M:%S"
     region_columns: [lat, lon]

@@ -1,102 +1,102 @@
 damast_version: "0.3.7"
 columns:
-  - name: "MMSI"
+  - name: "mmsi"
     representation_type: "int"
     description: "Maritime Mobile Service Identity (9-digit vessel identifier)"
     is_optional: false
 
-  - name: "BaseDateTime"
+  - name: "base_date_time"
     representation_type: "str"
-    description: "Full UTC date and time of the position report - format: %Y-%m-%dT%H:%M:%S"
+    description: "Full UTC date and time of the position report - format: %Y-%m-%d %H:%M:%S"
     is_optional: false
 
-  - name: "LAT"
+  - name: "latitude"
     representation_type: "float"
     description: "Latitude coordinate in decimal degrees (WGS84)"
     is_optional: false
     unit: deg
 
-  - name: "LON"
+  - name: "longitude"
     representation_type: "float"
     description: "Longitude coordinate in decimal degrees (WGS84)"
     is_optional: false
     unit: deg
 
-  - name: "SOG"
+  - name: "sog"
     representation_type: "float"
     description: "Speed over ground in knots"
     is_optional: true
     unit: knots
 
-  - name: "COG"
+  - name: "cog"
     representation_type: "float"
     description: "Course over ground in degrees"
     is_optional: true
     unit: deg
 
-  - name: "Heading"
-    representation_type: "float"
-    description: "True heading in degrees (0..359, 511 = not available)"
+  - name: "heading"
+    representation_type: "int"
+    description: "True heading in degrees (0..359); empty when not available"
     is_optional: true
     unit: deg
 
-  - name: "VesselName"
+  - name: "vessel_name"
     representation_type: "string"
     description: "Name of the vessel as reported in the AIS message"
     is_optional: true
 
-  - name: "IMO"
+  - name: "imo"
     representation_type: "string"
     description: "International Maritime Organization number, prefixed with 'IMO' (e.g. IMO9935492)"
     is_optional: true
 
-  - name: "CallSign"
+  - name: "call_sign"
     representation_type: "string"
     description: "Vessel radio call sign"
     is_optional: true
 
-  - name: "VesselType"
+  - name: "vessel_type"
     representation_type: "int"
     description: "AIS vessel type code (ITU-R M.1371 ship and cargo type)"
     is_optional: true
 
-  - name: "Status"
+  - name: "status"
     representation_type: "int"
     description: "AIS navigational status code (e.g. 0 = under way using engine, 1 = at anchor, 15 = not defined)"
     is_optional: true
 
-  - name: "Length"
-    representation_type: "float"
+  - name: "length"
+    representation_type: "int"
     description: "Overall length of the vessel in meters"
     is_optional: true
     unit: m
 
-  - name: "Width"
-    representation_type: "float"
+  - name: "width"
+    representation_type: "int"
     description: "Overall width (beam) of the vessel in meters"
     is_optional: true
     unit: m
 
-  - name: "Draft"
+  - name: "draft"
     representation_type: "float"
     description: "Draft of the vessel in meters"
     is_optional: true
     unit: m
 
-  - name: "Cargo"
+  - name: "cargo"
     representation_type: "int"
     description: "AIS cargo type code"
     is_optional: true
 
-  - name: "TransceiverClass"
+  - name: "transceiver"
     representation_type: "string"
-    description: "AIS transceiver class (A or B)"
+    description: "AIS transceiver class (A or B); empty in files before 2018"
     is_optional: true
 
 annotations:
   id: "marine_cadastre"
   name: "NOAA Marine Cadastre AIS Vessel Traffic Data"
-  description: "Daily AIS vessel position reports in U.S. and international waters, collected by the U.S. Coast Guard and published by BOEM and NOAA."
+  description: "Daily AIS vessel position reports (broadcast points) in U.S. and international waters, collected by the U.S. Coast Guard and published by BOEM and NOAA as zstd-compressed CSV files."
   provider: "NOAA Office for Coastal Management / BOEM"
   url: "https://hub.marinecadastre.gov/pages/vesseltraffic"
   license: "Public Domain (U.S. Government work)"
