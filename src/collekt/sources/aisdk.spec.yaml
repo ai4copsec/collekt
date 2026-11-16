@@ -1,0 +1,152 @@
+damast_version: "0.3.9"
+columns:
+  - name: "# Timestamp"
+    representation_type: str
+    description: "Timestamp from the AIS basestation (UTC) - format: %d/%m/%Y %H:%M:%S"
+    is_optional: false
+
+  - name: "Type of mobile"
+    representation_type: "string"
+    description: "Type of target sending the message (e.g., Class A AIS Vessel, Class B AIS Vessel, Base Station)"
+    is_optional: true
+
+  - name: "MMSI"
+    representation_type: "int"
+    description: "Maritime Mobile Service Identity (9-digit vessel identifier)"
+    is_optional: false
+
+  - name: "Latitude"
+    representation_type: "float"
+    description: "Latitude coordinate in decimal degrees (WGS84)"
+    is_optional: false
+    unit: deg
+
+  - name: "Longitude"
+    representation_type: "float"
+    description: "Longitude coordinate in decimal degrees (WGS84)"
+    is_optional: false
+    unit: deg
+
+  - name: "Navigational status"
+    representation_type: "string"
+    description: "Navigational status (e.g., Under way using engine, At anchor, Engaged in fishing)"
+    is_optional: true
+
+  - name: "ROT"
+    representation_type: "float"
+    description: "Rate of turn in degrees per minute"
+    is_optional: true
+    unit: deg / min
+
+  - name: "SOG"
+    representation_type: "float"
+    description: "Speed over ground in knots"
+    is_optional: true
+    unit: knots
+
+  - name: "COG"
+    representation_type: "float"
+    description: "Course over ground in degrees"
+    is_optional: true
+    unit: deg
+
+  - name: "Heading"
+    representation_type: "int"
+    description: "True heading in degrees (0..359, 511 = not available)"
+    is_optional: true
+    unit: deg
+
+  - name: "IMO"
+    representation_type: "str"
+    description: "International Maritime Organization number (7-digit identifier) - including 'Unknown'"
+    is_optional: true
+
+  - name: "Callsign"
+    representation_type: "string"
+    description: "Vessel radio call sign"
+    is_optional: true
+
+  - name: "Name"
+    representation_type: "string"
+    description: "Name of the vessel"
+    is_optional: true
+
+  - name: "Ship type"
+    representation_type: "string"
+    description: "Classification of vessel type (e.g., Cargo, Tanker, Passenger)"
+    is_optional: true
+
+  - name: "Cargo type"
+    representation_type: "string"
+    description: "Category of cargo carried by the vessel"
+    is_optional: true
+
+  - name: "Width"
+    representation_type: "float"
+    description: "Overall width (beam) of the vessel in meters"
+    is_optional: true
+    unit: m
+
+  - name: "Length"
+    representation_type: "float"
+    description: "Overall length of the vessel in meters"
+    is_optional: true
+    unit: m
+
+  - name: "Type of position fixing device"
+    representation_type: "string"
+    description: "Type of positional fixing device (e.g., GPS, DGPS, Loran-C)"
+    is_optional: true
+
+  - name: "Draught"
+    representation_type: "float"
+    description: "Maximum static draught in meters"
+    is_optional: true
+    unit: m
+
+  - name: "Destination"
+    representation_type: "string"
+    description: "Reported destination port"
+    is_optional: true
+
+  - name: "ETA"
+    representation_type: "string"
+    description: "Estimated Time of Arrival as reported by vessel (MMDDHHMM UTC)"
+    is_optional: true
+
+  - name: "Data source type"
+    representation_type: "string"
+    description: "Source identifier of the data feed (e.g., AIS)"
+    is_optional: true
+
+  - name: "A"
+    representation_type: "int"
+    description: "Distance from GPS position reference point to the bow (meters)"
+    is_optional: true
+    unit: m
+
+  - name: "B"
+    representation_type: "int"
+    description: "Distance from GPS position reference point to the stern (meters)"
+    is_optional: true
+    unit: m
+
+  - name: "C"
+    representation_type: "int"
+    description: "Distance from GPS position reference point to the starboard side (meters)"
+    is_optional: true
+    unit: m
+
+  - name: "D"
+    representation_type: "int"
+    description: "Distance from GPS position reference point to the port side (meters)"
+    is_optional: true
+    unit: m
+
+annotations:
+  id: "aisdk"
+  name: "Danish Maritime Authority Historical AIS Data"
+  description: "Daily (monthly before 2024-03) AIS data archives containing vessel static and dynamic position reports collected by the DMA basestation network."
+  provider: "Danish Maritime Authority (DMA)"
+  url: "http://aisdata.ais.dk/"
+  license: "Open Data / Public Domain"

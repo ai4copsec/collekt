@@ -15,6 +15,7 @@ from collekt.sources import (  # noqa: F401
     eodyn,
     era5,
     era5_arco,
+    file_archive,
     geonorge,
     gfs,
     gfw,

@@ -81,6 +81,7 @@ quartodoc:
         - ERA5ARCO
         - GFS
         - eOdyn
+        - FileArchive
         - Local
         - SkyTruth
         - CopernicusDataSpace

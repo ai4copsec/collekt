@@ -7,6 +7,24 @@ under `[main]`; `just bump` copies them under the new version.
 
 ### Added
 
+- a generic `file_archive` source adapter and `FileArchive` `DatasetSelection`
+  for providers that publish CSV files per day or month over HTTP, zipped or as
+  a single (possibly compressed, e.g. `.csv.zst`) CSV, with bundled `aisdk_ais`
+  (Danish Maritime Authority) and `marine_cadastre_ais` (NOAA Broadcast Points,
+  2015 to the latest published day) AIS catalogs and their damast specs. Files
+  are mirrored once under a shared `archive_root` and either converted to a
+  day-partitioned damast Parquet archive via `export_partitioned`
+  (`convert: parquet`, default; also readable by the `local` adapter) or kept as-is with
+  only damast spec sidecars (`convert: spec_only`); each request day is cut to
+  the request region. Each entry declares a coarse EEZ `coverage` box: requests
+  outside it are skipped before any download, and rows are only returned inside
+  it. The U.S. EEZ is split at the antimeridian into `marine_cadastre_ais` and
+  `marine_cadastre_ais_west`, which share one mirror. A period's optional
+  `index` (a listing of the published files) ends the date range at the latest
+  listed file, so later days are skipped with that date in the message. Mirrors
+  live under `$COLLEKT_ARCHIVE_ROOT` (shell or `.env`; default
+  `~/.cache/collekt/archive`).
+
 - an `era5_arco` source adapter, `ERA5ARCO` `DatasetSelection` and bundled
   `era5_arco_reanalysis` catalog entry that read ERA5 anonymously from Google's
   ARCO-ERA5 Zarr store instead of the CDS queue, cropped to daily NetCDF files
@@ -15,6 +33,13 @@ under `[main]`; `just bump` copies them under the new version.
   long series over small regions. Days past the store's `valid_time_stop_era5t`
   are skipped, and `batch_days` reads a group of days at once. Adds the `gcsfs`
   and `zarr` dependencies.
+
+### Changed
+
+- require damast 0.4.1. It reads compressed CSVs (`.csv.gz`, `.csv.zst`) and
+  names their spec `<name>.spec.yaml`, so `file_archive` with
+  `convert: spec_only` now keeps a single compressed CSV as is instead of
+  rejecting it.
 
 ## [0.3.0] - 2026-10-28
 

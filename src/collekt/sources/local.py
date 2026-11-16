@@ -28,14 +28,14 @@ day - prefer a day-partitioned Parquet archive for anything large.
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from datetime import UTC, date, datetime, time, timedelta
+from datetime import date
 from pathlib import Path
 from typing import Any
 
 from collekt.core.availability import Coverage
 from collekt.core.config import Config, SourceConfig
 from collekt.core.naming import format_pattern, pattern_values
-from collekt.core.request import Region, Request
+from collekt.core.request import Request
 from collekt.core.temporal import SamplingPlan, sampling_plan
 from collekt.sources.base import (
     BatchOptions,
@@ -49,17 +49,15 @@ from collekt.sources.base import (
 )
 from collekt.sources.batching.common import batch_details, daily_groups, daily_output_errors, failed, staged_output
 from collekt.sources.planning import plan_source, static_source_coverage
+from collekt.sources.tabular import (
+    TabularConfigError,
+    day_range,
+    layout_files,
+    narrowed_metadata,
+    read_day_subset,
+)
 
 DEFAULT_DATASET_ID = "local-archive"
-
-
-class _ConfigError(ValueError):
-    """The source's configured columns do not match the archive it points at.
-
-    Kept apart from the errors a single unreadable file raises: a column that does not exist is
-    a configuration mistake affecting every day equally, so it is raised rather than reported as
-    a per-day skip that reads like "this archive has no data".
-    """
 
 
 @dataclass(frozen=True)
@@ -147,106 +145,14 @@ def _spec(source: SourceConfig) -> _LocalSpec | _LocalGlobSpec:
     )
 
 
-def _day_bounds(day: date) -> tuple[datetime, datetime]:
-    """Inclusive ``[start, end]`` for `day`, the range `damast.core.SaveAs.expected_paths` takes."""
-    return datetime.combine(day, time.min, tzinfo=UTC), datetime.combine(day, time.max, tzinfo=UTC)
-
-
-def _day_range(day: date) -> tuple[datetime, datetime]:
-    """Half-open ``[start, next_day)`` for `day` - exact whatever the column's time resolution."""
-    start = datetime.combine(day, time.min, tzinfo=UTC)
-    return start, start + timedelta(days=1)
-
-
 def _matched_files(spec: _LocalSpec, day: date) -> list[Path]:
     """Return the archive files that may hold `day`'s data, resolving any glob wildcard."""
-    import damast
-
-    start, end = _day_bounds(day)
-    matches: list[Path] = []
-    for candidate in damast.core.SaveAs.expected_paths(spec.layout, start=start, end=end):
-        if "*" in candidate.as_posix():
-            matches.extend(sorted(spec.archive_root.glob(str(candidate))))
-            continue
-        full = spec.archive_root / candidate
-        if full.exists():
-            matches.append(full)
-            continue
-        # `expected_paths` appends damast's own extension, so an archive written with a
-        # compression suffix (`<name>.zst.parquet`) never equals `<name>.parquet`. Allow exactly
-        # one extra dot-separated segment, which picks up `.zst`/`.gz`/`.snappy` without also
-        # matching an unrelated `<name>_v2.parquet`.
-        compressed = f"{candidate.with_suffix('').as_posix()}.*{candidate.suffix}"
-        matches.extend(sorted(spec.archive_root.glob(compressed)))
-    return matches
+    return layout_files(spec.archive_root, spec.layout, day)
 
 
 def _glob_files(spec: _LocalGlobSpec) -> list[Path]:
     """Return every archive file matching `file_pattern`, resolved once per fetch (day-independent)."""
     return sorted(spec.archive_root.glob(spec.file_pattern))
-
-
-def _narrowed_metadata(metadata, columns):
-    """Return `metadata` restricted to `columns`.
-
-    `AnnotatedDataFrame` validates its metadata against the frame on construction, and a column
-    described by the metadata but absent from the frame is rejected whatever the `ValidationMode`
-    - so a `variables` selection needs the metadata narrowed to match, not validation relaxed.
-    """
-    import damast
-
-    kept = set(columns)
-    annotations = metadata.annotations
-    return damast.core.MetaData(
-        columns=[c for c in metadata.columns if c.name in kept],
-        annotations=list(annotations.values()) if isinstance(annotations, dict) else list(annotations),
-    )
-
-
-def _read_day_subset(
-    files: list[Path],
-    *,
-    time_column: str,
-    lat_column: str,
-    lon_column: str,
-    day: date,
-    region: Region,
-    variables: tuple[str, ...],
-    end_day: date | None = None,
-):
-    """Read `files` and return (rows for `day` within `region`, damast metadata).
-
-    Both modes filter on time as well as region: in `file_pattern` mode `files` span the whole
-    archive, and in `layout` mode a partition may be coarser than a day, so neither can lean on
-    file selection alone to scope a day.
-    """
-    import damast
-    import polars
-
-    adf = damast.core.AnnotatedDataFrame.from_files([str(f) for f in files], metadata_required=False)
-    lazy = adf.lazyframe
-    schema = lazy.collect_schema()
-    missing = sorted({c for c in (time_column, lat_column, lon_column) if c not in schema})
-    if missing:
-        raise _ConfigError(
-            f"column(s) {', '.join(missing)} not found in the archive. Available columns: {', '.join(schema.names())}"
-        )
-
-    start, end = _day_range(day)
-    if end_day is not None:
-        end = _day_range(end_day)[1]
-    if getattr(schema.get(time_column), "time_zone", None) is None:
-        # A naive `time_column` is treated as already UTC (collekt's own datetime parsing does
-        # the same, see `_parse_datetime`), not as a value to localize.
-        start, end = start.replace(tzinfo=None), end.replace(tzinfo=None)
-    lazy = lazy.filter(
-        polars.col(time_column).is_between(start, end, closed="left")
-        & polars.col(lat_column).is_between(region.south, region.north)
-        & polars.col(lon_column).is_between(region.west, region.east)
-    )
-    if variables:
-        lazy = lazy.select(list(variables))
-    return lazy.collect(), adf.metadata
 
 
 def fetch_local(
@@ -335,7 +241,7 @@ def fetch_local(
 
         progress(source.name, f"reading {day.isoformat()} from {len(matched)} local file(s)")
         try:
-            collected, metadata = _read_day_subset(
+            collected, metadata = read_day_subset(
                 matched,
                 time_column=spec.time_column,
                 lat_column=spec.lat_column,
@@ -344,7 +250,7 @@ def fetch_local(
                 region=request.region,
                 variables=source.variables,
             )
-        except _ConfigError as exc:
+        except TabularConfigError as exc:
             raise ValueError(f"local source {source.name!r}: {exc}") from exc
         except Exception as exc:  # noqa: BLE001 - a malformed archive file is a warning, not a crash
             results.append(
@@ -376,7 +282,7 @@ def fetch_local(
 
         subset = damast.core.AnnotatedDataFrame(
             collected,
-            _narrowed_metadata(metadata, collected.columns),
+            narrowed_metadata(metadata, collected.columns),
             validation_mode=damast.core.ValidationMode.IGNORE,
         )
         try:
@@ -500,7 +406,7 @@ def _run_batch(
             if not files:
                 raise ValueError("no archive files for this query")
             variables = tuple(dict.fromkeys((*source.variables, spec.time_column))) if source.variables else ()
-            frame, metadata = _read_day_subset(
+            frame, metadata = read_day_subset(
                 files,
                 time_column=spec.time_column,
                 lat_column=spec.lat_column,
@@ -510,7 +416,7 @@ def _run_batch(
                 region=request.region,
                 variables=variables,
             )
-        except _ConfigError:
+        except TabularConfigError:
             raise
         except Exception as exc:  # noqa: BLE001 - isolate archive failures
             for index in indices:
@@ -519,7 +425,7 @@ def _run_batch(
         for index in indices:
             item = results[index]
             try:
-                start, end = _day_range(date.fromisoformat(item.day))
+                start, end = day_range(date.fromisoformat(item.day))
                 if getattr(frame.schema[spec.time_column], "time_zone", None) is None:
                     start, end = start.replace(tzinfo=None), end.replace(tzinfo=None)
                 daily = frame.filter(pl.col(spec.time_column).is_between(start, end, closed="left"))
@@ -529,7 +435,7 @@ def _run_batch(
                     raise ValueError("no archive rows for this day and region")
                 subset = damast.core.AnnotatedDataFrame(
                     daily,
-                    _narrowed_metadata(metadata, daily.columns),
+                    narrowed_metadata(metadata, daily.columns),
                     validation_mode=damast.core.ValidationMode.IGNORE,
                 )
                 with staged_output(item.path) as staged:

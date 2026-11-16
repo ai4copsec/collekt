@@ -293,13 +293,13 @@ def test_local_reads_shared_archive_once_and_keeps_daily_metadata(tmp_path, monk
     window = request(end="2023-01-03")
     default = Fetcher(window, config=config(tmp_path / "default", "local", **raw)).download()
     calls = []
-    original = local._read_day_subset
+    original = local.read_day_subset
 
     def counted(*args, **kwargs):
         calls.append(kwargs)
         return original(*args, **kwargs)
 
-    monkeypatch.setattr(local, "_read_day_subset", counted)
+    monkeypatch.setattr(local, "read_day_subset", counted)
     batched = Fetcher(window, config=config(tmp_path / "batch", "local", **raw), batch_days=3).download()
     assert len(calls) == 1
     assert batched.summary.downloaded == 3
