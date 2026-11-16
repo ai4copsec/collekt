@@ -39,8 +39,9 @@ Configuration keys (besides the common source keys):
   multi-day archive, so in `spec_only` mode a day reads only its own file. `index` is a yearly
   listing page (formatted with January 1st of the year) whose links name the published files: the
   latest listed file ends the source's coverage, so later days are skipped with the last
-  published day in the message, both when fetching and in a dry run. The index is read from the
-  requested year back to the period's `start`; if it cannot be read, the static `coverage` applies.
+  published day in the message, both when fetching and in a dry run (so planning such an entry
+  is not offline). The index is read from the requested year back to the period's `start`; if it
+  cannot be read, the static `coverage` applies.
 - `time_column`, `region_columns: [lat_column, lon_column]`: columns rows are filtered on.
 - `time_format`: `strptime` format of `time_column` in the CSV; parsed values are taken as UTC.
 - `convert`: `parquet` or `spec_only`.

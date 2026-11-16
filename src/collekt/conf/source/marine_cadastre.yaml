@@ -5,8 +5,8 @@
 # mirrored once under `archive_root` as a day-partitioned damast Parquet archive
 # (`layout`), annotated with the bundled damast spec
 # (`sources/marine_cadastre.spec.yaml`), and each request day is cut to the
-# request region. `convert: spec_only` is not supported: damast cannot read the
-# compressed CSVs as-is.
+# request region. With `convert: spec_only` the `.csv.zst` files are instead kept
+# as they are, each with a damast spec sidecar.
 #
 # Coverage starts in 2015: 2009-2014 are published as yearly geodatabases, which
 # this entry does not describe. It ends at the latest file the yearly `index`

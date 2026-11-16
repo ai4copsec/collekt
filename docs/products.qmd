@@ -458,8 +458,9 @@ A period can name an `index`: a listing page of the published files, such as
 Marine Cadastre's yearly file lists. The latest file it lists then ends the
 entry's date range, so a request for a later day is skipped with the last
 published day in the message (`... is outside the available date range
-(2015-01-01 to 2026-06-30)`), both when fetching and in a dry run. If the index
-cannot be read, the static `coverage` applies.
+(2015-01-01 to 2026-06-30)`), both when fetching and in a dry run. A dry run
+of such an entry therefore reads the index over the network. If the index
+cannot be read (offline, say), the static `coverage` applies.
 
 `convert` decides what the mirror keeps:
 
