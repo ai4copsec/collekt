@@ -15,7 +15,7 @@ import shutil
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
-from urllib.parse import urljoin, urlsplit
+from urllib.parse import unquote, urlsplit
 
 import requests
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -94,7 +94,9 @@ def _download(url: str, token: str, path: Path) -> None:
 def _search_params(request: Request, source: SourceConfig, collection: str) -> dict[str, Any]:
     params: dict[str, Any] = {
         "collections": collection,
-        "sortby": "datetime",
+        # Products of one pass share a datetime; without the `id` tie-break the
+        # catalogue's token paging repeats some and drops others.
+        "sortby": "datetime,id",
         "limit": int(source.raw.get("max_records", 100)),
     }
     start = request.start_datetime.isoformat(timespec="seconds")
@@ -340,7 +342,13 @@ def _run_batch(
 
 
 def _search_pages(token: str, params: dict[str, Any], cap: int) -> list[dict[str, Any]]:
-    """Follow STAC GET next links without forwarding credentials to another host."""
+    """Collect search results across pages, up to `cap` distinct features.
+
+    The catalogue's `next` links embed the datetime without percent-encoding, so the
+    `+` of its UTC offset reaches the server as a space and is rejected (HTTP 400).
+    Only the paging `token` is therefore taken from a `next` link; each page repeats
+    the original, correctly encoded search with that token.
+    """
     catalogue = _search(token, params)
     features = []
     seen = set()
@@ -354,20 +362,28 @@ def _search_pages(token: str, params: dict[str, Any], cap: int) -> list[dict[str
                     seen.add(identity)
             if len(features) >= cap:
                 return features
-        link = next((link for link in catalogue.get("links", []) if link.get("rel") == "next"), None)
-        if link is None:
+        page = _next_page_token(catalogue)
+        if page is None:
             return features
-        url = urljoin(SEARCH_URL, link["href"])
-        if url in visited:
+        if page in visited:
             raise ValueError("catalogue pagination repeated a next link")
-        if urlsplit(url).netloc != urlsplit(SEARCH_URL).netloc or urlsplit(url).scheme != "https":
-            raise ValueError("catalogue next link is outside the authenticated catalogue")
-        if link.get("method", "GET").upper() != "GET":
-            raise ValueError("catalogue pagination requires an unsupported method")
-        visited.add(url)
-        response = requests.get(url, headers={"Authorization": f"Bearer {token}"})
-        response.raise_for_status()
-        catalogue = response.json()
+        visited.add(page)
+        catalogue = _search(token, params | {"token": page})
+
+
+def _next_page_token(catalogue: dict[str, Any]) -> str | None:
+    """Return the paging token of the catalogue's GET `next` link, if there is one."""
+    link = next((link for link in catalogue.get("links", []) if link.get("rel") == "next"), None)
+    if link is None:
+        return None
+    if link.get("method", "GET").upper() != "GET":
+        raise ValueError("catalogue pagination requires an unsupported method")
+    # Read the query literally (no `+` to space) since the server leaves the href unencoded.
+    for part in urlsplit(link["href"]).query.split("&"):
+        key, _, value = part.partition("=")
+        if key == "token" and value:
+            return unquote(value)
+    raise ValueError("catalogue next link has no paging token")
 
 
 register_adapter(
