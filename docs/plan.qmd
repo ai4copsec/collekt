@@ -87,7 +87,7 @@ src/collekt/
     copernicus_dataspace.py  # Sentinel/Landsat product files     (credentials)
     skytruth.py              # oil-slick features → Parquet       (open)
     hozint.py                # threat-intel reports → Parquet     (credentials)
-    eodyn.py                 # eOdyn ocean-data API               (credentials)
+    eodyn.py                 # eOdyn currents, ODA API            (credentials)
     planning.py              # shared static-coverage planning helpers
 
   assemble/
@@ -120,7 +120,7 @@ src/collekt/
 | `sources/cmems.py` | `sources/cmems.py` | General CMEMS adapter using catalog-defined dataset IDs. |
 | `sources/ecmwf_open_data.py` | `sources/ecmwf_open_data.py` | ECMWF Open Data forecast adapter. |
 | `sources/era5.py` | `sources/era5.py` | ERA5/CDS adapter. |
-| `sources/osmose.py` | `sources/eodyn.py` | **Renamed.** Archive-backed impl is an interim mode behind the eOdyn name (see §9.3). |
+| `sources/osmose.py` | `sources/eodyn.py` | **Renamed.** Started as an archive-backed interim mode; now reads eOdyn's ODA API (see §9.3). |
 | `collect.py` | `core/collect.py` + `core/manifest.py` + `core/result.py` | Split orchestration / manifest / result types. |
 | `rea.py` (`Fetcher`) | `core/fetcher.py` | Generalised; drop ocean-specific defaults. |
 | `availability.py` | `core/availability.py` | Online CMEMS describe + declarative coverage checks. |
@@ -276,12 +276,12 @@ declared coverage as an offline fallback.
 is, so any collekt user reaches eOdyn currents/drifters with the same request
 they use for Copernicus.
 
-- Public surface is the future eOdyn ocean-data **API**.
-- The current on-disk archive (tb-rea's `osmose.py`) becomes an **interim
-  `mode: archive`** implementation behind that adapter, emitting the same
-  historical-coverage warning and honouring coverage clipping. A clean seam
-  (`mode: api` vs `mode: archive`) lets the archive be swapped for the live API
-  with no change to the adapter contract or manifest.
+- Public surface is eOdyn's **Ocean Data Access (ODA)** API, through the
+  `python-oda` client. Only the OSmose L4 currents dataset named in the catalog
+  (`oda_dataset`) is queried; ODA's other products are not exposed.
+- Coverage is read live from ODA (first/last file, footprint) and falls back to
+  the catalog's `coverage` block. The interim on-disk archive (`mode: archive`)
+  was removed once the currents were published on ODA.
 
 ## Orchestration
 
@@ -363,7 +363,7 @@ synthetic datasets.
 - Cache-first behaviour without network.
 - Each adapter with a **stubbed client** (`copernicusmarine`, `cdsapi`,
   `ecmwf-opendata`, the Skytruth HTTP layer, `hozint-apiclient`, the eOdyn
-  archive/API).
+  ODA client).
 - Non-blocking warning behaviour for unavailable source/date/region.
 - CLI: red warnings, strict-mode failure, summary counts, arg parsing with
   downloads mocked.
@@ -396,7 +396,7 @@ Implemented:
 - Orchestration and manifest: cache-aware plan/download, strict mode, export
   helpers, relative manifest paths, file inspection, and draft manifest schema.
 - Source adapters: CMEMS, ECMWF Open Data, ERA5, SkyTruth, HOZINT, Copernicus
-  Data Space, and eOdyn archive interim mode.
+  Data Space, and eOdyn (ODA API).
 - Gridded assembler: source identity, spatial regridding, time alignment and
   aggregation, NetCDF/Zarr/NumPy export.
 - CLI and notebooks: `collekt fetch`, `collekt doctor`, `collekt config show`,
@@ -407,8 +407,6 @@ Remaining or deliberately deferred:
 - Publish rendered docs to GitHub Pages instead of only uploading the CI artifact.
 - Decide whether the batteries-included dependency model should stay, or whether
   provider/gridded/feature extras should be reintroduced before a stable release.
-- Replace eOdyn `mode: archive` with the live eOdyn API client when that API is
-  available.
 - Decide when the manifest schema should become strict and versioned as a stable
   downstream contract.
 - Decide whether a tabular assembler is useful once multiple feature sources need

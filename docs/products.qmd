@@ -23,14 +23,15 @@ source's `kind`.
 | `hozint` | Threat-intelligence reports (features) | credentials | Parquet |
 | `gfw` | Fishing / encounter / port-visit / loitering / AIS-gap events (features) | credentials | Parquet |
 | `geonorge` | Norwegian maritime reference vectors: fairways, navigation aids, aquaculture, restricted zones, ... (features) | open | GeoParquet |
-| `eodyn` | eOdyn surface currents / drifters | open (preview archive) | NetCDF |
+| `eodyn` | eOdyn OSmose L4 surface currents, 3-hourly, western Mediterranean (Ocean Data Access API) | credentials | NetCDF (daily, from 3-hourly ODA files) |
 | `local` | Row-filtered subset of a local `damast`-managed tabular archive (features) | none — local filesystem | Parquet |
 | `file_archive` | Row-filtered subset of a remote archive of zipped or compressed CSVs, mirrored locally (AIS positions: AISDK, Marine Cadastre) | open | Parquet |
 
 Open sources need no secrets; credential-gated sources resolve their secrets from
-the environment or provider tools — see [Credentials](credentials.qmd). The eOdyn
-adapter serves a historical preview archive (`mode: archive`) until the
-production API ships (`mode: api`). The `local` adapter reads an archive that
+the environment or provider tools — see [Credentials](credentials.qmd). eOdyn's
+OSmose currents reach ODA one to two days after their analysis time: more recent
+days are skipped with a message, and `Fetcher.plan()` reports the dates ODA
+currently holds. The `local` adapter reads an archive that
 already exists on disk rather than fetching from a remote provider — see
 [Local data collections](#local-data-collections). The `file_archive` adapter
 downloads a provider's files into a local mirror first — see
@@ -515,6 +516,5 @@ Conversion loads one CSV at a time into memory, which suits a day of AIS data
 collekt installs all provider clients and the gridded `Assembler` by default, so
 every source works out of the box after `uv sync`. Clients are imported lazily,
 so importing collekt stays fast and a source only pulls its client into memory
-when it actually runs. The ECMWF Open Data forecast subset, Skytruth, and eOdyn
-(in its current preview-archive mode) need no credentials; the other providers
-do — see [Credentials](credentials.qmd).
+when it actually runs. The ECMWF Open Data forecast subset and Skytruth need no
+credentials; the other providers do — see [Credentials](credentials.qmd).

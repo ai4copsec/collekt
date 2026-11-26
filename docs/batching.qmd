@@ -73,7 +73,7 @@ request may need **more** calls when explicit windows are enabled.
 | CMEMS | Multi-day `subset` calls for `outside` and `nearest` coordinate selection. Daily slices reproduce the Toolbox's selection, including boundary neighbours. `inside` and `strict-inside` retain daily calls because their empty-selection fallback needs the provider's full time index, so batching gains nothing for them. | Original daily NetCDF files. |
 | ECMWF Open Data | One client call for compatible forecast dates/steps. The SDK may still download multiple remote files. Splitting uses forecast run time and retains lead times and valid times. | Original file per forecast run/day. |
 | GFS | Logical groups of analysis cycles; each native cycle still has its own URL and transfer. | Original daily NetCDF files. |
-| eOdyn | Logical groups of the existing daily archive reads. The production API remains unavailable. | Original daily NetCDF files. |
+| eOdyn | Logical groups of daily ODA reads; each 3-hourly file is still listed and downloaded separately. | Original daily NetCDF files. |
 | Local | Consecutive days sharing the same archive files can be read together, then partitioned by UTC day. Different archive file sets start new groups. | Original daily annotated Parquet files. |
 | SkyTruth | Paginated queries for each window; duplicate feature IDs are removed across windows. | One annotated Parquet file for the collection. |
 | Global Fishing Watch | Paginated queries for each window; duplicate event IDs are removed, events are sorted by start time, and `max_events` caps the combined result with a truncation warning. | One annotated Parquet file for the collection. |

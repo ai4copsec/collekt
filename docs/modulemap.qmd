@@ -55,7 +55,7 @@ src/collekt/
     hozint.py              # threat-intel reports -> Parquet        (credentials)
     gfw.py                 # GFW events -> Parquet                  (credentials)
     geonorge.py            # Geonorge maritime vectors (WFS) -> GeoParquet (open)
-    eodyn.py               # eOdyn ocean-data (archive/api)         (credentials)
+    eodyn.py               # eOdyn OSmose currents via ODA (python-oda) (credentials)
     local.py               # local damast-managed tabular archive   (no catalog entry)
     file_archive.py        # remote zipped-CSV archives, mirrored + damast-converted (open)
     tabular.py             # shared day/region row reads + damast layout lookup (local, file_archive)

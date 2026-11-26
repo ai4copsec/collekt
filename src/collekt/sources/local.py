@@ -1,9 +1,8 @@
 """Local archive adapter.
 
 Reads a pre-existing tabular collection on disk as a collekt source, row-filtered to each
-request day and region, and written into the request directory. This is the tabular analogue
-of eOdyn's `mode: archive`, generalized so any local collection can be queried without
-per-source code. Two ways to locate a day's rows are supported - see `_spec`:
+request day and region, and written into the request directory, so any local collection can
+be queried without per-source code. Two ways to locate a day's rows are supported - see `_spec`:
 
 - `layout`: the archive is already time-partitioned, e.g. via ``damast convert --save-as`` or
   `AnnotatedDataFrame.export_partitioned` - the files that may hold a day are resolved from the

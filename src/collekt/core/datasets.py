@@ -147,7 +147,23 @@ class ERA5ARCO(DatasetSelection):
 
 @dataclass(frozen=True, init=False)
 class eOdyn(DatasetSelection):
-    """eOdyn dataset selection."""
+    """eOdyn dataset selection.
+
+    Reads eOdyn's OSmose L4 surface currents from the Ocean Data Access (ODA)
+    API: 3-hourly analyses on a 0.05° grid over the western Mediterranean,
+    written as one region-cropped NetCDF per day. Needs the `ODA_USERNAME` and
+    `ODA_PASSWORD` environment variables (shell or `.env`).
+
+    Example:
+
+    ```python
+    collekt.DatasetConfig(collekt.eOdyn("eodyn_osmose_currents", variables=["totalewct", "totalnsct"]))
+    ```
+
+    Args:
+        key: Catalog key to select.
+        variables: OSmose variable names to fetch.
+    """
 
     provider: ClassVar[str] = "eodyn"
 

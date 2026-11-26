@@ -36,6 +36,16 @@ under `[main]`; `just bump` copies them under the new version.
 
 ### Changed
 
+- the `eodyn` adapter reads eOdyn's OSmose L4 surface currents from the Ocean
+  Data Access (ODA) API through the new `python-oda` dependency, instead of the
+  frozen 2023 preview archive (`mode: archive`, `archive_root`, `day_pattern`
+  and `eOdynArchiveWarning` are removed). Each request day's 3-hourly files are
+  cropped to the request region and joined into one NetCDF per day. Coverage is
+  read live from ODA and falls back to the catalog's `coverage` block. The
+  bundled `eodyn_osmose_currents` entry reads the `current-os-osmose-l4` dataset
+  (`oda_dataset`), with a 3-hour cadence and its ten variables. Needs
+  `ODA_USERNAME` / `ODA_PASSWORD`; `collekt doctor --online` checks the dataset.
+
 - require damast 0.4.1. It reads compressed CSVs (`.csv.gz`, `.csv.zst`) and
   names their spec `<name>.spec.yaml`, so `file_archive` with
   `convert: spec_only` now keeps a single compressed CSV as is instead of

@@ -584,28 +584,12 @@ def test_gfs_batch_does_not_download_days_excluded_by_its_plan(tmp_path, monkeyp
     assert len(calls) == 8 and not any("20230101" in url for url in calls)
 
 
-def test_eodyn_batch_keeps_archive_daily_output(tmp_path):
-    from collekt.sources.eodyn import eOdynArchiveWarning
-
-    archive = tmp_path / "archive"
-    archive.mkdir()
-    for day in range(1, 4):
-        xr.Dataset(
-            {"u10": (("latitude", "longitude"), [[float(day)]], {"units": "m/s"})},
-            coords={"latitude": [40.5], "longitude": [4.5]},
-            attrs={"source": "synthetic archive"},
-        ).to_netcdf(archive / f"2023010{day}.nc")
-    raw = {
-        "archive_root": str(archive),
-        "day_pattern": "{date:%Y%m%d}.nc",
-        "coverage": {"start": "2023-01-01", "end": "2023-01-03"},
-        "mode": "archive",
-    }
+def test_eodyn_batch_keeps_daily_output(tmp_path, fake_oda):
+    fake_oda([datetime(2023, 1, day, hour, tzinfo=UTC) for day in range(1, 4) for hour in (0, 12)])
+    raw = {"variables": ["totalewct"], "temporal_sampling": "3h"}
     window = request(end="2023-01-03")
-    with pytest.warns(eOdynArchiveWarning):
-        default = Fetcher(window, config=config(tmp_path / "default", "eodyn", **raw)).download()
-    with pytest.warns(eOdynArchiveWarning):
-        batch = Fetcher(window, config=config(tmp_path / "batch", "eodyn", **raw), batch_days=3).download()
+    default = Fetcher(window, config=config(tmp_path / "default", "eodyn", **raw)).download()
+    batch = Fetcher(window, config=config(tmp_path / "batch", "eodyn", **raw), batch_days=3).download()
     assert batch.summary.downloaded == 3
     for left, right in zip(default.files, batch.files, strict=True):
         with xr.open_dataset(left) as a, xr.open_dataset(right) as b:
