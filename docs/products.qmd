@@ -15,6 +15,7 @@ source's `kind`.
 |---|---|---|---|
 | `cmems` | Gridded ocean fields (currents, SST, waves, biogeochemistry) | open | NetCDF |
 | `ecmwf_open_data` | Gridded forecast wind | open | NetCDF (cropped from global GRIB2) |
+| `ecmwf_open_data_latest` | Gridded IFS wind, freshest run at every 3-hourly time (analysis or forecast) | open | NetCDF (daily, from cropped GRIB2 pieces) |
 | `era5` | Gridded reanalysis wind | credentials (CDS) | NetCDF |
 | `era5_arco` | The same ERA5 reanalysis, read from Google's public ARCO-ERA5 Zarr store | open | NetCDF (cropped from global hourly chunks) |
 | `gfs` | Gridded NOAA GFS analysis wind (NOMADS GRIB filter, last ~10 days) | open | NetCDF (daily, from GRIB2 analysis cycles) |
@@ -63,7 +64,7 @@ uses, grouped into catalogs under `collekt/conf/source/`:
 | `cmems_med` | `cmems_med_currents_nrt`, `cmems_med_currents_nrt_15min`, `cmems_med_currents_nrt_2d_hourly`, `cmems_med_currents_nrt_3d_hourly`, `cmems_med_currents_my`, `cmems_med_currents_my_2d_hourly`, `cmems_med_waves`, `cmems_med_chl_obs`, `cmems_med_bgc_model` |
 | `cmems_ibi` | `cmems_ibi_currents`, `cmems_ibi_currents_2d_hourly`, `cmems_ibi_currents_3d_hourly`, `cmems_ibi_waves`, `cmems_atl_chl_obs_nrt`, `cmems_atl_chl_obs_my`, `cmems_ibi_bgc_model` |
 | `cmems_nws` | `cmems_nws_currents`, `cmems_nws_currents_2d_hourly`, `cmems_nws_currents_3d_hourly`, `cmems_nws_waves`, `cmems_nws_chl_obs`, `cmems_nws_bgc_model` |
-| `ecmwf` | `ecmwf_open_data_forecast`, `era5_reanalysis`, `era5_arco_reanalysis` |
+| `ecmwf` | `ecmwf_open_data_forecast`, `ecmwf_ifs_latest_0p25`, `ecmwf_ifs_latest_0p1`, `era5_reanalysis`, `era5_arco_reanalysis` |
 | `gfs` | `gfs_analysis` |
 | `eodyn` | `eodyn_osmose_currents` |
 | `skytruth` | `skytruth` |

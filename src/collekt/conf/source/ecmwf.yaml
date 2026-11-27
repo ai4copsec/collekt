@@ -9,24 +9,81 @@ sources:
   ecmwf_open_data_forecast:
     kind: ecmwf_open_data
     path: "ecmwf/open_data"
-    filename_pattern: "ecmwf_open_data_{date:%Y%m%d}_{time}z_{bbox_hash}.nc"
+    # {run} is the date of the run a day is read from: the day itself, or the
+    # newest run when the day lies in its forecast. Keeping it in the name stops
+    # a forecast file from being reused once the day's own run is published.
+    filename_pattern: "ecmwf_open_data_{date:%Y%m%d}_{run}_{time}z_{bbox_hash}.nc"
     dataset_id: "ecmwf-open-data-ifs"
     temporal_sampling: 3h
-    # ECMWF Open Data keeps only a rolling window of recent runs; dates are
-    # relative to "now". The provider always serves the global grid, so
+    # Read from ECMWF's Google Cloud mirror of Open Data, which keeps past runs
+    # (ECMWF's own server keeps only the last four days). Coverage starts with
+    # IFS cycle 50r1 (2026-05-12); use ERA5 for earlier dates. The AWS mirror
+    # (source: aws) throttles range requests with HTTP 503, which the client
+    # retries only after 120 s.
+    # Days after the newest run come from its forecast: 3-hourly to 6 days
+    # ahead, then 6-hourly. The provider always serves the global grid, so
     # downloaded GRIB2 files are cropped to the padded request region and
     # written out as NetCDF.
     coverage:
-      start: "now-4d"
+      start: "2026-05-12"
       end: "now+10d"
     model: ifs
-    source: ecmwf
+    source: google
     resol: 0p25
     type: fc
     levtype: sfc
     stream: oper
     time: "00"
     steps: [0, 3, 6, 9, 12, 15, 18, 21, 24]
+    pad_deg: 0.5
+    available_variables: [10u, 10v, 10fg, 100u, 100v]
+    url: "https://www.ecmwf.int/en/forecasts/datasets/open-data"
+
+  # Freshest IFS value at every 3-hourly time step, from all four daily runs:
+  # a time is read from its own run once published (lead 0 h or +3 h), and
+  # from the newest run's forecast before that. A newer run replaces the
+  # forecast values it covers. {run} is the newest run a day file uses and
+  # {hours} the hours it spans (e.g. 00-21, or 00-06_12-21 around a gap).
+  # Cropped pieces (one per run and lead time) are cached under
+  # <output.root>/<path>/pieces/ for every request.
+  ecmwf_ifs_latest_0p25:
+    kind: ecmwf_open_data_latest
+    path: "ecmwf/ifs_latest_0p25"
+    filename_pattern: "ecmwf_ifs_latest_0p25_{date:%Y%m%d}_{hours}_{run}_{bbox_hash}.nc"
+    dataset_id: "ecmwf-open-data-ifs"
+    temporal_sampling: 3h
+    # Google Cloud mirror, from IFS cycle 50r1 (2026-05-12; use ERA5 before).
+    # A run is published about 7 h after its start, and its forecast reaches
+    # 144 h (06/18 UTC) or 360 h (00/12 UTC).
+    coverage:
+      start: "2026-05-12"
+      end: "now+5d"
+    model: ifs
+    source: google
+    resol: 0p25
+    type: fc
+    levtype: sfc
+    stream: oper
+    pad_deg: 0.5
+    available_variables: [10u, 10v, 10fg, 100u, 100v]
+    url: "https://www.ecmwf.int/en/forecasts/datasets/open-data"
+
+  # Same at 0.1 degree, published since 2026-10-21, about 2 h after 0.25 degree.
+  ecmwf_ifs_latest_0p1:
+    kind: ecmwf_open_data_latest
+    path: "ecmwf/ifs_latest_0p1"
+    filename_pattern: "ecmwf_ifs_latest_0p1_{date:%Y%m%d}_{hours}_{run}_{bbox_hash}.nc"
+    dataset_id: "ecmwf-open-data-ifs"
+    temporal_sampling: 3h
+    coverage:
+      start: "2026-10-21"
+      end: "now+5d"
+    model: ifs
+    source: google
+    resol: 0p1
+    type: fc
+    levtype: sfc
+    stream: oper
     pad_deg: 0.5
     available_variables: [10u, 10v, 10fg, 100u, 100v]
     url: "https://www.ecmwf.int/en/forecasts/datasets/open-data"

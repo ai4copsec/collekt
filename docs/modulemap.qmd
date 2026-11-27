@@ -47,6 +47,7 @@ src/collekt/
       files.py             # run_file_batch: logical groups of per-file URLs (GFS/eOdyn)
     cmems.py               # copernicusmarine.subset               (open)
     ecmwf_open_data.py     # forecast wind, GRIB2 cropped to NetCDF (open)
+    ecmwf_open_data_latest.py # freshest IFS run per time step, cached pieces (open)
     era5.py                # reanalysis wind, cdsapi                (credentials)
     era5_arco.py           # same ERA5, Google ARCO Zarr store, cropped (open)
     gfs.py                 # GFS analysis wind, NOMADS GRIB filter  (open)

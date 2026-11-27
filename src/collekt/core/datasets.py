@@ -96,6 +96,34 @@ class ECMWFOpenData(DatasetSelection):
 
 
 @dataclass(frozen=True, init=False)
+class ECMWFOpenDataLatest(DatasetSelection):
+    """ECMWF Open Data selection of the freshest IFS value at every time step.
+
+    Each 3-hourly time of the request is read from the newest IFS run that covers
+    it: its own run (lead 0 h or +3 h) once published, otherwise the newest
+    published run's forecast. A later request reads the times covered by a newer
+    run again from it, so values always come from the freshest run available.
+    Each day file records the run (`source_cycle`) and lead time
+    (`forecast_step`) of every value. Downloads are cached per run and lead time
+    under the output root, so a rolling window only fetches what is new. The
+    bundled `ecmwf_ifs_latest_0p25` and `ecmwf_ifs_latest_0p1` entries serve the
+    0.25 and 0.1 degree grids.
+
+    Example:
+
+    ```python
+    now = datetime.now(UTC)
+    collekt.Fetcher(
+        collekt.Request(region=region, start=now - timedelta(hours=72), end=now),
+        config=collekt.DatasetConfig(collekt.ECMWFOpenDataLatest("ecmwf_ifs_latest_0p25", variables=["10u", "10v"])),
+    ).download()
+    ```
+    """
+
+    provider: ClassVar[str] = "ecmwf_open_data_latest"
+
+
+@dataclass(frozen=True, init=False)
 class GFS(DatasetSelection):
     """NOAA GFS analysis selection.
 
@@ -367,6 +395,7 @@ class Geonorge(DatasetSelection):
 DatasetLike = (
     CMEMS
     | ECMWFOpenData
+    | ECMWFOpenDataLatest
     | ERA5
     | ERA5ARCO
     | GFS
@@ -385,6 +414,7 @@ _PROVIDERS: dict[str, type[DatasetLike]] = {
     for cls in (
         CMEMS,
         ECMWFOpenData,
+        ECMWFOpenDataLatest,
         ERA5,
         ERA5ARCO,
         GFS,

@@ -7,13 +7,14 @@ inline to keep these adapter tests independent from the bundled catalog.
 import json
 import sys
 import types
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
 from collekt import Fetcher
+from collekt.core.availability import today
 from collekt.core.config import get_config
 from collekt.core.request import Region, Request
 from collekt.sources.base import SourceStatus
@@ -332,6 +333,27 @@ def test_ecmwf_crop_dataset_normalizes_longitude_and_clips_to_region():
     assert float(cropped.latitude.max()) == 45.5
 
 
+def test_ecmwf_crop_dataset_keeps_the_padded_edges_of_a_0p1_grid():
+    """Float noise (1.5 / 0.1, 181.6 - 180) must not drop the edge rows of a 0.1 degree grid."""
+    import numpy as np
+    import xarray as xr
+
+    from collekt.sources.ecmwf_open_data import _crop_dataset
+
+    latitude = np.arange(90.0, -90.05, -0.1)  # accumulates noise: 41.000000000002785
+    longitude = np.arange(3600) * 0.1
+    dataset = xr.Dataset(
+        {"u10": (("latitude", "longitude"), np.zeros((latitude.size, longitude.size)))},
+        coords={"latitude": latitude, "longitude": longitude},
+    )
+
+    cropped = _crop_dataset(dataset, Region.from_bbox((2.0, 4.0, 39.0, 40.5)), pad_deg=0.5, resolution=0.1)
+
+    assert cropped.longitude.values.tolist() == [round(1.5 + 0.1 * i, 6) for i in range(31)]
+    assert (float(cropped.latitude.min()), float(cropped.latitude.max())) == (38.5, 41.0)
+    assert cropped.latitude.size == 26
+
+
 def _write_mixed_step_type_grib(path):
     """Write a tiny synthetic GRIB2 file mixing instantaneous winds (10u/10v) with a
     3-hourly running-max gust (10fg), reproducing the ECMWF Open Data combination that
@@ -424,7 +446,8 @@ def test_ecmwf_crop_to_netcdf_reports_params_missing_from_the_file(tmp_path):
     assert missing == ["not_in_the_file"]
 
 
-def test_ecmwf_plan_available_within_rolling_window(tmp_path):
+def test_ecmwf_plan_available_within_rolling_window(tmp_path, monkeypatch):
+    monkeypatch.setattr("collekt.sources.ecmwf_open_data._latest_run", lambda source: today())
     request = Request(region=Region.from_bbox((-6, 20, 35, 45)))  # defaults to today
     result = Fetcher(request, config=_cfg(tmp_path, ecmwf_open_data_forecast=ECMWF)).plan()
 
@@ -432,6 +455,81 @@ def test_ecmwf_plan_available_within_rolling_window(tmp_path):
     availability = result.results[0].details["availability"]
     assert availability["status"] == "available"
     assert availability["method"] == "coverage"
+
+
+def test_ecmwf_published_steps_follow_the_ifs_schedule():
+    from collekt.sources.ecmwf_open_data import _published_steps
+
+    steps = _published_steps(0)
+    assert steps[:3] == [0, 3, 6] and 144 in steps and 147 not in steps and 150 in steps and steps[-1] == 360
+    assert _published_steps(12) == steps
+    assert _published_steps(6) == _published_steps(18) == list(range(0, 145, 3))
+
+
+def test_ecmwf_plans_days_after_the_latest_run_from_its_forecast(tmp_path, monkeypatch):
+    latest = today()
+    monkeypatch.setattr("collekt.sources.ecmwf_open_data._latest_run", lambda source: latest)
+    pattern = "ecmwf_{date:%Y%m%d}_{run}_{time}z.nc"
+    config = _cfg(tmp_path, ecmwf_open_data_forecast=ECMWF | {"filename_pattern": pattern})
+    days = [latest, latest + timedelta(days=2), latest + timedelta(days=7)]
+    planned = {day: Fetcher(_request(start=day.isoformat()), config=config).plan().results[0] for day in days}
+
+    for day, item in planned.items():
+        assert item.details["request"]["date"] == f"{latest:%Y%m%d}"
+        assert item.path.name == f"ecmwf_{day:%Y%m%d}_{latest:%Y%m%d}_00z.nc"
+    assert planned[days[0]].details["request"]["step"] == list(range(0, 24, 3))
+    assert planned[days[1]].details["request"]["step"] == list(range(48, 72, 3))
+    # Beyond 144 h the run is only published every 6 hours.
+    assert planned[days[2]].details["request"]["step"] == [168, 174, 180, 186]
+
+
+def test_ecmwf_past_days_use_their_own_run_without_probing(tmp_path, monkeypatch):
+    def probe(source):
+        raise AssertionError("past days must not probe the latest run")
+
+    monkeypatch.setattr("collekt.sources.ecmwf_open_data._latest_run", probe)
+    day = today() - timedelta(days=2)
+    result = Fetcher(_request(start=day.isoformat()), config=_cfg(tmp_path, ecmwf_open_data_forecast=ECMWF)).plan()
+    assert result.results[0].details["request"]["date"] == f"{day:%Y%m%d}"
+
+
+def test_ecmwf_latest_run_probes_the_last_lead_time_and_falls_back_to_today(tmp_path, monkeypatch):
+    from collekt.sources import ecmwf_open_data
+
+    calls = []
+
+    class Client:
+        def __init__(self, **kwargs):
+            calls.append(kwargs)
+
+        def latest(self, **kwargs):
+            calls.append(kwargs)
+            return datetime(2026, 11, 25)
+
+    source = _cfg(tmp_path, ecmwf_open_data_forecast=ECMWF).sources["ecmwf_open_data_forecast"]
+    monkeypatch.setattr(ecmwf_open_data, "_client_class", lambda: Client)
+    assert ecmwf_open_data._latest_run(source) == date(2026, 11, 25)
+    assert calls[1] == {"type": "fc", "stream": "oper", "time": 0, "step": 360}
+
+    class Offline(Client):
+        def latest(self, **kwargs):
+            raise ValueError("Cannot establish latest date")
+
+    monkeypatch.setattr(ecmwf_open_data, "_client_class", lambda: Offline)
+    monkeypatch.setattr(ecmwf_open_data, "today", lambda: date(2026, 11, 26))
+    assert ecmwf_open_data._latest_run(source) == date(2026, 11, 26)
+
+
+def test_ecmwf_batch_split_selects_the_run_the_day_was_read_from():
+    import numpy as np
+    import xarray as xr
+
+    from collekt.sources.ecmwf_open_data import _split_batch
+
+    runs = np.array(["2026-11-25T00", "2026-11-26T00"], dtype="datetime64[ns]")
+    dataset = xr.Dataset({"u10": (("time",), [1.0, 2.0])}, coords={"time": runs})
+    item = SimpleNamespace(day="2026-11-28", details={"request": {"date": "20261126", "time": "00"}})
+    assert float(_split_batch(dataset, item)["u10"]) == 2.0
 
 
 # --- CMEMS availability via describe ---------------------------------------

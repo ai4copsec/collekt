@@ -969,7 +969,7 @@ requires-dist = [
     { name = "copernicusmarine", specifier = ">=2.4.1" },
     { name = "damast", specifier = ">=0.4.1" },
     { name = "eccodeslib", marker = "sys_platform != 'win32'", specifier = ">=2.47.3.21" },
-    { name = "ecmwf-opendata", specifier = ">=0.3.30" },
+    { name = "ecmwf-opendata", specifier = ">=0.3.35" },
     { name = "gcsfs", specifier = ">=2024.6.1" },
     { name = "geopandas" },
     { name = "geopy" },
@@ -1589,14 +1589,14 @@ wheels = [
 
 [[package]]
 name = "ecmwf-opendata"
-version = "0.3.34"
+version = "0.3.35"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "multiurl" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/84/ac/6f6e409135292c3d6f716b655d06f83cf5012a3a05ecad102e3dc143b6f3/ecmwf_opendata-0.3.34.tar.gz", hash = "sha256:c174e1d2cacd7bca0b27abc0e067d11d0a2242ebefaa87708805ac2551a09e62", size = 32081, upload-time = "2026-07-30T12:36:56.772Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/5b/0b/6325a31d6538283549affe7b39d45e1ddfdd3359aa3e5e8713081cf6ea8d/ecmwf_opendata-0.3.35.tar.gz", hash = "sha256:690439816a455745aa107e7dd207eee4a2eb01d6f88bb0be11917286dedbe449", size = 37372, upload-time = "2026-10-16T10:19:46.622Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ab/9b/c6f8400c3ada14c8a042a4bd919ebf9d62dc25e7f882eff698200207bb74/ecmwf_opendata-0.3.34-py3-none-any.whl", hash = "sha256:2ed33e30af73ed7180da9e21552f3d28bd284376cce93286c01b1fa436a8df49", size = 24263, upload-time = "2026-07-30T12:36:55.563Z" },
+    { url = "https://files.pythonhosted.org/packages/7b/44/09d6faa835f595c5b15f57a63296173cff12f853ed2a01f5f7dbc461bff9/ecmwf_opendata-0.3.35-py3-none-any.whl", hash = "sha256:8bf1505db3dd4d98e007c4206bd76aa40c32aa2ac72b4a9af739335c9aa5342b", size = 26453, upload-time = "2026-10-16T10:19:45.546Z" },
 ]
 
 [[package]]
