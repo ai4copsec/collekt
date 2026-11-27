@@ -34,6 +34,22 @@ under `[main]`; `just bump` copies them under the new version.
   are skipped, and `batch_days` reads a group of days at once. Adds the `gcsfs`
   and `zarr` dependencies.
 
+- an `ecmwf_open_data_latest` source adapter, `ECMWFOpenDataLatest`
+  `DatasetSelection` and bundled `ecmwf_ifs_latest_0p25` (since 2026-05-12) and
+  `ecmwf_ifs_latest_0p1` (since 2026-10-21) catalog entries: the freshest IFS
+  value at every 3-hourly time, e.g. the last 72 hours of wind up to now. A time
+  is read from its own 6-hourly run once published (lead 0 h or +3 h), and from
+  the newest published run's forecast before that; a later request reads the
+  times a newer run covers again from it. Each day file records the run
+  (`source_cycle`) and lead time (`forecast_step`) of every value. Cropped
+  pieces (one per run and lead time) are cached under the output root and shared
+  by every request, so a rolling window downloads only what is new. The newest
+  run is probed online only when a request reaches the last day; if the probe
+  fails, times that may need a newer run are reported as unavailable. A lead
+  time that fails to download leaves a gap in its day file (shown in the
+  `{hours}` placeholder, e.g. `00-06_12-21`) and is retried by the next request.
+  Requires ecmwf-opendata 0.3.35 (0.1 degree files).
+
 ### Changed
 
 - the `eodyn` adapter reads eOdyn's OSmose L4 surface currents from the Ocean
@@ -48,6 +64,12 @@ under `[main]`; `just bump` copies them under the new version.
   (`oda_dataset`), with a 3-hour cadence and its ten variables. Needs
   `ODA_USERNAME` / `ODA_PASSWORD`; `collekt doctor --online` checks the dataset.
 
+- `ecmwf_open_data_forecast` reads from ECMWF's Google Cloud mirror of Open Data
+  (`source: google`) and covers every run since 2026-05-12 (IFS cycle 50r1),
+  instead of ECMWF's own server, which keeps only the last four days. Its
+  `filename_pattern` gains a `{run}` placeholder (the date of the run a day was
+  read from), so ECMWF files cached under the old name are downloaded again once.
+
 - require damast 0.4.1. It reads compressed CSVs (`.csv.gz`, `.csv.zst`) and
   names their spec `<name>.spec.yaml`, so `file_archive` with
   `convert: spec_only` now keeps a single compressed CSV as is instead of
@@ -55,6 +77,16 @@ under `[main]`; `just bump` copies them under the new version.
 
 ### Fixed
 
+- ECMWF Open Data days after the newest published run are read from that run's
+  forecast (3-hourly to 144 h, then 6-hourly to 360 h) instead of requesting
+  their own run, which does not exist yet. Every future day used to be skipped
+  although the catalog declared coverage up to `now+10d`. The newest run is
+  probed online only when a request reaches today; lead times a run does not
+  publish are no longer requested (beyond 360 h for the 00 and 12 UTC runs,
+  144 h for the 06 and 18 UTC runs).
+- ECMWF Open Data crops on 0.1 degree grids keep their edge rows and columns:
+  float noise in the grid (e.g. `181.6 - 180`) and in the padded bounds
+  (`1.5 / 0.1`) used to drop them.
 - Copernicus Data Space searches spanning more than one page no longer fail with
   HTTP 400 ("Invalid RFC3339 datetime"). The catalogue's `next` links leave the
   datetime unencoded, so collekt now takes only the paging token from them and

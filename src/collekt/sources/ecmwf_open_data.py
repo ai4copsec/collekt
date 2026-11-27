@@ -4,6 +4,10 @@ ECMWF Open Data always serves the full global grid; there is no server-side
 region subsetting. Downloaded GRIB2 files are therefore cropped to the padded
 request region and written out as NetCDF, matching the region-scoped output
 of the other gridded adapters (`cmems`, `era5`).
+
+Each day is read from its own run (lead times 0-24 h). Days after the newest
+fully published run are read from that run's forecast instead, at the lead
+times that reach them.
 """
 
 from __future__ import annotations
@@ -15,7 +19,7 @@ from functools import partial
 from pathlib import Path
 from typing import Any
 
-from collekt.core.availability import Coverage
+from collekt.core.availability import Coverage, today
 from collekt.core.config import Config, SourceConfig
 from collekt.core.diagnostics import DoctorCheck, package_check
 from collekt.core.naming import format_pattern, pattern_values
@@ -51,6 +55,57 @@ def _client_class():
     return Client
 
 
+def _run_hour(source: SourceConfig) -> int:
+    """Return the configured run hour (``time``, e.g. ``"00"``) as an integer."""
+    return int(str(source.raw.get("time", "00")).split(":", 1)[0])
+
+
+def _published_steps(run_hour: int) -> list[int]:
+    """Return the lead times (hours) ECMWF Open Data publishes for an IFS run.
+
+    The 00 and 12 UTC runs are 3-hourly up to 144 h, then 6-hourly up to 360 h.
+    The 06 and 18 UTC runs are 3-hourly up to 144 h. This holds since IFS cycle
+    49r1 (2024-11-12), before the catalogs' coverage starts.
+    """
+    if run_hour in (0, 12):
+        return [*range(0, 145, 3), *range(150, 361, 6)]
+    return list(range(0, 145, 3))
+
+
+def _latest_run(source: SourceConfig) -> date:
+    """Return the date of the newest run published up to its last lead time.
+
+    Probes ECMWF Open Data with ``HEAD`` requests. If the probe fails, assumes
+    today's run, so download errors still name the missing run.
+    """
+    run_hour = _run_hour(source)
+    try:
+        client = _client_class()(
+            source=str(source.raw.get("source", "ecmwf")),
+            model=str(source.raw.get("model", "ifs")),
+            resol=str(source.raw.get("resol", "0p25")),
+        )
+        latest = client.latest(
+            type=str(source.raw.get("type", "fc")),
+            stream=str(source.raw.get("stream", "oper")),
+            time=run_hour,
+            step=max(_published_steps(run_hour)),
+        )
+    except Exception:  # noqa: BLE001 - an unreachable provider falls back to today's run
+        return today()
+    return latest.date()
+
+
+def _latest_run_for(request: Request, source: SourceConfig) -> date | None:
+    """Return the newest run when the request reaches today, else ``None`` (no probe needed)."""
+    return _latest_run(source) if request.iter_days()[-1] >= today() else None
+
+
+def _run_for_day(day: date, latest_run: date | None) -> date:
+    """Read a day from its own run, or from the newest run's forecast once past it."""
+    return day if latest_run is None or day <= latest_run else latest_run
+
+
 def _grid_resolution(resol: str, default: float = DEFAULT_RESOLUTION) -> float:
     """Parse an ECMWF Open Data ``resol`` label (e.g. ``0p25``) into degrees."""
     text = str(resol).split("-", 1)[0]
@@ -60,12 +115,17 @@ def _grid_resolution(resol: str, default: float = DEFAULT_RESOLUTION) -> float:
         return default
 
 
+def _snap(value: float, resolution: float, rounding: Any) -> float:
+    """Snap ``value`` to the grid, ignoring float noise (e.g. ``1.5 / 0.1 == 15.000000000000002``)."""
+    return round(rounding(round(value / resolution, 9)) * resolution, 6)
+
+
 def _padded_bbox(region: Region, pad_deg: float, resolution: float) -> tuple[float, float, float, float]:
     """Return ``(south, north, west, east)`` padded and snapped to the native grid."""
-    south = max(-90.0, math.floor((region.south - pad_deg) / resolution) * resolution)
-    north = min(90.0, math.ceil((region.north + pad_deg) / resolution) * resolution)
-    west = max(-180.0, math.floor((region.west - pad_deg) / resolution) * resolution)
-    east = min(180.0, math.ceil((region.east + pad_deg) / resolution) * resolution)
+    south = max(-90.0, _snap(region.south - pad_deg, resolution, math.floor))
+    north = min(90.0, _snap(region.north + pad_deg, resolution, math.ceil))
+    west = max(-180.0, _snap(region.west - pad_deg, resolution, math.floor))
+    east = min(180.0, _snap(region.east + pad_deg, resolution, math.ceil))
     return south, north, west, east
 
 
@@ -111,7 +171,11 @@ def _crop_dataset(dataset: Any, region: Region, pad_deg: float, resolution: floa
     south, north, west, east = _padded_bbox(region, pad_deg, resolution)
     lat_name = "latitude" if "latitude" in dataset.coords else "lat"
     lon_name = "longitude" if "longitude" in dataset.coords else "lon"
-    normalized = dataset.assign_coords({lon_name: ((dataset[lon_name] + 180) % 360) - 180})
+    # Rounding drops float noise in the grid (e.g. 181.6 - 180 == 1.5999999999999943),
+    # which would otherwise push edge rows just outside the snapped bounds.
+    normalized = dataset.assign_coords(
+        {lat_name: dataset[lat_name].round(6), lon_name: (((dataset[lon_name] + 180) % 360) - 180).round(6)}
+    )
     sorted_dataset = normalized.sortby([lat_name, lon_name])
     return sorted_dataset.sel({lat_name: slice(south, north), lon_name: slice(west, east)})
 
@@ -137,14 +201,18 @@ def _crop_to_netcdf(
     return [param for param in params if param not in cropped.data_vars]
 
 
-def _request_for_day(source: SourceConfig, day: date, plan: SamplingPlan | None = None) -> dict[str, object]:
+def _request_for_day(
+    source: SourceConfig, day: date, plan: SamplingPlan | None = None, run_day: date | None = None
+) -> dict[str, object]:
     raw = source.raw
+    run_day = run_day or day
     run_time = str(raw.get("time", "00"))
-    steps = raw.get("steps", raw.get("step", [0, 3, 6, 9, 12, 15, 18, 21, 24]))
+    lead = 24 * (day - run_day).days
+    steps = [lead + step for step in raw.get("steps", raw.get("step", [0, 3, 6, 9, 12, 15, 18, 21, 24]))]
     if plan is not None:
-        steps = _steps_for_day(source, day, plan)
+        steps = _steps_for_day(source, day, plan, run_day)
     request = {
-        "date": day.strftime("%Y%m%d"),
+        "date": run_day.strftime("%Y%m%d"),
         "time": run_time,
         "step": steps,
         "type": str(raw.get("type", "fc")),
@@ -175,9 +243,11 @@ def fetch_ecmwf_open_data(
     pad_deg = float(source.raw.get("pad_deg", DEFAULT_PAD_DEG))
     resolution = _grid_resolution(resol)
     plan = sampling_plan(request, source)
+    latest_run = _latest_run_for(request, source)
     client = None
     for day in request.iter_days():
         run_time = str(source.raw.get("time", "00"))
+        run_day = _run_for_day(day, latest_run)
         values = pattern_values(
             source=source.name,
             dataset_id=dataset_id,
@@ -185,7 +255,7 @@ def fetch_ecmwf_open_data(
             start=request.start_datetime,
             end=request.end_datetime,
             day=day,
-        ) | {"time": run_time}
+        ) | {"time": run_time, "run": f"{run_day:%Y%m%d}"}
         output_path = out_dir / format_pattern(source.filename_pattern, values)
         if should_reuse_cache(output_path.exists(), config):
             results.append(
@@ -203,11 +273,14 @@ def fetch_ecmwf_open_data(
             continue
 
         raw_path = output_path.with_suffix(".raw.grib2")
-        progress(source.name, f"downloading {day.isoformat()} {run_time} UTC forecast from ECMWF Open Data")
+        progress(
+            source.name,
+            f"downloading {day.isoformat()} from the {run_day.isoformat()} {run_time} UTC run of ECMWF Open Data",
+        )
         try:
             if client is None:
                 client = _client_class()(source=str(source.raw.get("source", "ecmwf")), model=model, resol=resol)
-            client.retrieve(_request_for_day(source, day, plan), target=str(raw_path))
+            client.retrieve(_request_for_day(source, day, plan, run_day), target=str(raw_path))
             missing = _crop_to_netcdf(raw_path, output_path, request.region, pad_deg, resolution, source.variables)
         except Exception as exc:  # noqa: BLE001 - provider availability failures are warnings
             results.append(
@@ -248,16 +321,19 @@ def fetch_ecmwf_open_data(
     return results
 
 
-def _steps_for_day(source: SourceConfig, day: date, plan: SamplingPlan) -> list[int]:
-    run_hour = int(str(source.raw.get("time", "00")).split(":", 1)[0])
-    run = datetime.combine(day, time(hour=run_hour), tzinfo=plan.source_timestamps[0].tzinfo)
+def _steps_for_day(source: SourceConfig, day: date, plan: SamplingPlan, run_day: date | None = None) -> list[int]:
+    """Return the published lead times of ``run_day``'s run that fall on ``day``'s sampled timestamps."""
+    run_day = run_day or day
+    run_hour = _run_hour(source)
+    run = datetime.combine(run_day, time(hour=run_hour), tzinfo=plan.source_timestamps[0].tzinfo)
+    published = set(_published_steps(run_hour))
     steps: list[int] = []
     for timestamp in plan.timestamps_for_day(day):
         delta = timestamp - run
         step_hours = delta.total_seconds() / 3600
-        if step_hours >= 0 and step_hours.is_integer():
+        if step_hours.is_integer() and int(step_hours) in published:
             steps.append(int(step_hours))
-    return steps or [0]
+    return steps or [24 * (day - run_day).days]
 
 
 def _ecmwf_dataset_for_day(source: SourceConfig, day: date) -> str:
@@ -265,10 +341,17 @@ def _ecmwf_dataset_for_day(source: SourceConfig, day: date) -> str:
 
 
 def _ecmwf_day_details(
-    request: Request, source: SourceConfig, day: date, plan: SamplingPlan, coverage: Coverage | None
+    request: Request,
+    source: SourceConfig,
+    day: date,
+    plan: SamplingPlan,
+    coverage: Coverage | None,
+    *,
+    latest_run: date | None = None,
 ) -> tuple[str, dict[str, Any], dict[str, Any]]:
     dataset_id = source.dataset_id or DEFAULT_DATASET_ID
     run_time = str(source.raw.get("time", "00"))
+    run_day = _run_for_day(day, latest_run)
     pad_deg = float(source.raw.get("pad_deg", DEFAULT_PAD_DEG))
     resolution = _grid_resolution(str(source.raw.get("resol", "0p25")))
     south, north, west, east = _padded_bbox(request.region, pad_deg, resolution)
@@ -276,17 +359,22 @@ def _ecmwf_day_details(
         "provider": "ecmwf-opendata",
         "method": "retrieve",
         "temporal": plan.day_dict(day),
-        "request": _request_for_day(source, day, plan),
+        "request": _request_for_day(source, day, plan, run_day),
         "crop": {"south": south, "north": north, "west": west, "east": east},
     }
-    return dataset_id, details, {"time": run_time}
+    return dataset_id, details, {"time": run_time, "run": f"{run_day:%Y%m%d}"}
 
 
 def plan_ecmwf_open_data(
     request: Request, source: SourceConfig, config: Config, request_dir: Path
 ) -> list[SourceResult]:
-    """Plan ECMWF Open Data downloads using the source's declarative coverage."""
+    """Plan ECMWF Open Data downloads using the source's declarative coverage.
+
+    When the request reaches today, the newest published run is probed online so
+    that later days are planned from its forecast.
+    """
     coverage, method, checked = static_source_coverage(source)
+    day_details = partial(_ecmwf_day_details, latest_run=_latest_run_for(request, source))
     return plan_source(
         request,
         source,
@@ -295,7 +383,7 @@ def plan_ecmwf_open_data(
         method=method,
         checked=checked,
         dataset_for_day=_ecmwf_dataset_for_day,
-        day_details=_ecmwf_day_details,
+        day_details=day_details,
         planned_format="netcdf",
     )
 
@@ -348,8 +436,9 @@ def _split_batch(dataset: Any, item: SourceResult) -> Any:
     import numpy as np
 
     # `time` is the run, whereas `valid_time` combines run and lead time.
-    hour = int(str(item.details["request"]["time"]).split(":", 1)[0])
-    run = np.datetime64(f"{item.day}T{hour:02d}:00:00")
+    request = item.details["request"]
+    hour = int(str(request["time"]).split(":", 1)[0])
+    run = np.datetime64(f"{datetime.strptime(request['date'], '%Y%m%d'):%Y-%m-%d}T{hour:02d}:00:00")
     if "time" in dataset.dims:
         return dataset.sel(time=run)
     if dataset.coords["time"].values != run:

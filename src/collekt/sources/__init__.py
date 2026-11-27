@@ -12,6 +12,7 @@ from collekt.sources import (  # noqa: F401
     cmems,
     copernicus_dataspace,
     ecmwf_open_data,
+    ecmwf_open_data_latest,
     eodyn,
     era5,
     era5_arco,
