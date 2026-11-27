@@ -15,7 +15,9 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     """Register the ``doctor`` subcommand."""
     parser = subparsers.add_parser("doctor", help="Check the local environment and source configuration")
     parser.add_argument("--conf-dir", type=Path)
-    parser.add_argument("--online", action="store_true", help="Validate CMEMS datasets and variables online")
+    parser.add_argument(
+        "--online", action="store_true", help="Validate provider datasets online (CMEMS catalogue, eOdyn ODA)"
+    )
     parser.set_defaults(handler=execute)
 
 

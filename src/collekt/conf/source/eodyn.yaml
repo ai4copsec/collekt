@@ -1,10 +1,10 @@
 # eOdyn products.
 #
-# OSmose surface currents. A production API is planned; until it exists the
-# adapter serves a frozen historical L4 archive (`mode: archive`), limited to
-# the western Mediterranean for April-August 2023, and skips requests outside
-# that coverage. Point `archive_root` at the local archive, or switch to
-# `mode: api` once the API is available. Not part of the Copernicus Marine
+# OSmose L4 surface currents, read from eOdyn's Ocean Data Access (ODA) API:
+# one NetCDF per 3-hour analysis time on a 0.05 deg grid over the western
+# Mediterranean. Needs ODA_USERNAME / ODA_PASSWORD (shell or .env). Coverage is
+# read live from ODA; the `coverage` block below is only the fallback used when
+# ODA cannot be reached while planning. Not part of the Copernicus Marine
 # catalogue, so `available_variables` is maintained by hand.
 
 sources:
@@ -12,16 +12,15 @@ sources:
     kind: eodyn
     path: "eodyn/osmose"
     dataset_id: "EODYN-OS-VELOCITY-L4"
-    mode: archive
-    archive_root: "$HOME/Research/OmniSitu/OSmose/results/MARES/causal"
-    day_pattern: "{date:%Y%m%d}_MARES/{date:%Y%m%d}_MARES_osmose_L4.nc"
+    oda_dataset: "current-os-osmose-l4"
     coverage:
       west: -6.0
       east: 20.0
       south: 35.0
       north: 45.0
-      start: "2023-04-01"
-      end: "2023-08-31"
-    temporal_sampling: 24h
-    available_variables: [totalewct, totalnsct, ewct, nsct, totalspeed, posterior_std]
-    url: "https://www.eodyn.com"
+      start: "2026-11-20"
+      end: "now-1d"
+    temporal_sampling: 3h
+    available_variables:
+      [ewct, nsct, speed, totalewct, totalnsct, totalspeed, ci, posterior_std, quality, blending]
+    url: "https://oda.eodyn.com"
