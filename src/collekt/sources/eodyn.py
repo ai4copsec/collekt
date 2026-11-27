@@ -14,7 +14,8 @@ products (e.g. AIS) that collekt does not expose. Credentials come from the
 from __future__ import annotations
 
 import os
-from datetime import date
+from dataclasses import replace
+from datetime import UTC, date, datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any
@@ -40,6 +41,18 @@ from collekt.sources.planning import output_path, plan_source, static_source_cov
 DEFAULT_DATASET_ID = "EODYN-OS-VELOCITY-L4"
 DEFAULT_ODA_DATASET = "current-os-osmose-l4"
 CREDENTIAL_ENVS = ("ODA_USERNAME", "ODA_PASSWORD")
+# Global attributes describing one analysis (its time, creation date, fit
+# statistics). They differ between a day's files, so daily outputs drop them.
+PER_ANALYSIS_ATTRS = (
+    "analysis_time",
+    "Creation_date",
+    "time_coverage_start",
+    "time_coverage_end",
+    "ekman_residual_gain_factor",
+    "ekman_residual_obs_count",
+    "ekman_residual_rmse_after_mps",
+    "ekman_residual_rmse_before_mps",
+)
 
 
 def _oda_dataset(source: SourceConfig) -> str:
@@ -70,6 +83,11 @@ def _connect() -> tuple[Any, str | None]:
         return None, f"could not connect to ODA: {exc}"
 
 
+def _as_utc(moment: datetime) -> datetime:
+    """Return ``moment`` in UTC, reading a timestamp without a time zone as UTC."""
+    return moment.astimezone(UTC) if moment.tzinfo else moment.replace(tzinfo=UTC)
+
+
 def _footprint(document: Any) -> Coverage | None:
     """Return the bounding box of a document's ODA footprint, if it declares one."""
     if document.area_geojson is None:
@@ -81,19 +99,27 @@ def _footprint(document: Any) -> Coverage | None:
 
 
 def _oda_coverage(client: Any, source: SourceConfig) -> Coverage | None:
-    """Return the dataset's live extent: first footprint, first and last analysis days."""
+    """Return the dataset's live extent from its first and last files.
+
+    The box spans both files' footprints, so a footprint that grew over time is
+    covered. Returns ``None`` when the dataset is empty or either file lacks an
+    analysis time or a footprint.
+    """
     name = _oda_dataset(source)
     first = next(iter(client.documents.find(dataset_name=name, order_by="+start_datetime")), None)
-    if first is None or (box := _footprint(first)) is None:
+    last = next(iter(client.documents.find(dataset_name=name, order_by="-start_datetime")), None)
+    if first is None or last is None or first.start_datetime is None or last.start_datetime is None:
         return None
-    last = next(iter(client.documents.find(dataset_name=name, order_by="-start_datetime")))
+    boxes = [_footprint(first), _footprint(last)]
+    if None in boxes:
+        return None
     return Coverage(
-        west=box.west,
-        east=box.east,
-        south=box.south,
-        north=box.north,
-        start=first.start_datetime.date(),
-        end=last.start_datetime.date(),
+        west=min(box.west for box in boxes),
+        east=max(box.east for box in boxes),
+        south=min(box.south for box in boxes),
+        north=max(box.north for box in boxes),
+        start=_as_utc(first.start_datetime).date(),
+        end=_as_utc(last.start_datetime).date(),
     )
 
 
@@ -105,7 +131,9 @@ def _day_documents(client: Any, request: Request, source: SourceConfig, day: dat
     )
     # ODA returns every file whose 3-hour window overlaps [low, high], so the
     # previous day's last file shows up too; keep only analysis times inside.
-    return [document for document in found if document.start_datetime and low <= document.start_datetime <= high]
+    return [
+        document for document in found if document.start_datetime and low <= _as_utc(document.start_datetime) <= high
+    ]
 
 
 def _ascending_slice(values, low: float, high: float) -> slice:
@@ -125,7 +153,11 @@ def _crop(dataset: Any, region: Region, variables: tuple[str, ...], name: str) -
         longitude=_ascending_slice(dataset["longitude"].values, region.west, region.east),
     )
     if not subset.sizes["latitude"] or not subset.sizes["longitude"]:
-        raise ValueError(f"the request region contains no grid point of {name}")
+        spacing = abs(float(dataset["latitude"][1] - dataset["latitude"][0]))
+        raise ValueError(
+            f"the request region contains no grid point of {name}, whose grid spacing is {spacing:g}°; "
+            "widen the region to span at least one grid point"
+        )
     return subset.load()
 
 
@@ -154,11 +186,12 @@ def _read_day(documents: list[Any], region: Region, variables: tuple[str, ...], 
                     handle.write(chunk)
             with xr.open_dataset(raw) as dataset:
                 steps.append(_crop(dataset, region, variables, document.name))
-    if len(steps) == 1:
-        return steps[0]
-    # Per-file attributes (analysis time, creation date, fit statistics) differ
-    # between time steps; keep only those every step shares.
+    # Drop per-analysis attributes whatever the number of steps, so the output
+    # does not depend on the request window; drop_conflicts catches any other
+    # attribute that differs between steps.
     combined = xr.concat(steps, dim="time", coords="minimal", compat="override", combine_attrs="drop_conflicts")
+    for name in PER_ANALYSIS_ATTRS:
+        combined.attrs.pop(name, None)
     return combined.sortby("time")
 
 
@@ -280,17 +313,22 @@ def fetch_eodyn(
     return results
 
 
-def _eodyn_coverage(source: SourceConfig) -> tuple[Coverage | None, AvailabilityMethod, bool]:
-    """Resolve coverage from ODA, falling back to the catalog's ``coverage`` block."""
-    client, _ = _connect()
+def _eodyn_coverage(source: SourceConfig) -> tuple[Coverage | None, AvailabilityMethod, bool, str | None]:
+    """Resolve coverage from ODA, falling back to the catalog's ``coverage`` block.
+
+    The last item says why ODA's coverage could not be used, or is ``None``.
+    """
+    client, reason = _connect()
     if client is not None:
         try:
             coverage = _oda_coverage(client, source)
-        except Exception:  # noqa: BLE001 - an unreachable ODA falls back to the declared coverage
-            coverage = None
-        if coverage is not None:
-            return coverage, AvailabilityMethod.DESCRIBE, True
-    return static_source_coverage(source)
+        except Exception as exc:  # noqa: BLE001 - an unreachable ODA falls back to the declared coverage
+            reason = f"could not read the extent of {_oda_dataset(source)} on ODA: {exc}"
+        else:
+            if coverage is not None:
+                return coverage, AvailabilityMethod.DESCRIBE, True, None
+            reason = f"ODA lists no dated file with a footprint in {_oda_dataset(source)}"
+    return *static_source_coverage(source), reason
 
 
 def _eodyn_dataset_for_day(source: SourceConfig, day: date) -> str:
@@ -325,9 +363,13 @@ def _eodyn_day_details(
 
 
 def plan_eodyn(request: Request, source: SourceConfig, config: Config, request_dir: Path) -> list[SourceResult]:
-    """Plan eOdyn reads, resolving coverage from ODA when credentials allow it."""
-    coverage, method, checked = _eodyn_coverage(source)
-    return plan_source(
+    """Plan eOdyn reads, resolving coverage from ODA when credentials allow it.
+
+    When ODA cannot be used, days are planned from the catalog coverage and each
+    planned result says why, since fetching them will likely fail the same way.
+    """
+    coverage, method, checked, fallback = _eodyn_coverage(source)
+    results = plan_source(
         request,
         source,
         request_dir,
@@ -338,6 +380,16 @@ def plan_eodyn(request: Request, source: SourceConfig, config: Config, request_d
         day_details=_eodyn_day_details,
         planned_format="netcdf",
     )
+    if fallback is None:
+        return results
+    note = f"{fallback}; planned from the catalog coverage"
+    return [_with_note(result, note) if result.status == SourceStatus.PLANNED else result for result in results]
+
+
+def _with_note(result: SourceResult, note: str) -> SourceResult:
+    details = dict(result.details or {})
+    details["availability"] = {**details.get("availability", {}), "reason": note}
+    return replace(result, message=note, details=details)
 
 
 def diagnose(config: Config, online: bool) -> list[DoctorCheck]:

@@ -279,8 +279,9 @@ they use for Copernicus.
 - Public surface is eOdyn's **Ocean Data Access (ODA)** API, through the
   `python-oda` client. Only the OSmose L4 currents dataset named in the catalog
   (`oda_dataset`) is queried; ODA's other products are not exposed.
-- Coverage is read live from ODA (first/last file, footprint) and falls back to
-  the catalog's `coverage` block. The interim on-disk archive (`mode: archive`)
+- Coverage is read live from ODA (first/last file, union of their footprints)
+  and falls back to the catalog's `coverage` block; the planned days then say
+  why ODA could not be used. The interim on-disk archive (`mode: archive`)
   was removed once the currents were published on ODA.
 
 ## Orchestration

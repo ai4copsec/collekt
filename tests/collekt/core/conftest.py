@@ -1,6 +1,6 @@
 """Shared fixtures for the core test suite."""
 
-from datetime import timedelta
+from datetime import UTC, timedelta
 from types import SimpleNamespace
 
 import numpy as np
@@ -20,13 +20,19 @@ class FakeDocuments:
 
     def find(self, *, dataset_name, date__gte=None, date__lte=None, order_by="+name"):
         self.queries.append(dataset_name)
+        # The server filters on its own clock, so naive times (see the tests
+        # for timestamps without a time zone) are compared as UTC here.
         found = [
             document
             for document in self.documents
-            if (date__gte is None or document.end_datetime >= date__gte)
-            and (date__lte is None or document.start_datetime <= date__lte)
+            if (date__gte is None or _utc(document.end_datetime) >= date__gte)
+            and (date__lte is None or _utc(document.start_datetime) <= date__lte)
         ]
         return sorted(found, key=lambda document: document.start_datetime, reverse=order_by.startswith("-"))
+
+
+def _utc(moment):
+    return moment if moment.tzinfo else moment.replace(tzinfo=UTC)
 
 
 def _osmose_file(path, time):

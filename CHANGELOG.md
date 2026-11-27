@@ -40,8 +40,10 @@ under `[main]`; `just bump` copies them under the new version.
   Data Access (ODA) API through the new `python-oda` dependency, instead of the
   frozen 2023 preview archive (`mode: archive`, `archive_root`, `day_pattern`
   and `eOdynArchiveWarning` are removed). Each request day's 3-hourly files are
-  cropped to the request region and joined into one NetCDF per day. Coverage is
-  read live from ODA and falls back to the catalog's `coverage` block. The
+  cropped to the request region and joined into one NetCDF per day, without the
+  attributes that describe a single analysis. Coverage is read live from ODA;
+  when ODA cannot be reached, the plan falls back to the catalog's `coverage`
+  block and says why on each planned day. The
   bundled `eodyn_osmose_currents` entry reads the `current-os-osmose-l4` dataset
   (`oda_dataset`), with a 3-hour cadence and its ten variables. Needs
   `ODA_USERNAME` / `ODA_PASSWORD`; `collekt doctor --online` checks the dataset.
